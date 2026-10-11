@@ -39,6 +39,8 @@ from agentbounty.models import (
     Finding,
     FindingState,
     LedgerKind,
+    PaymentAction,
+    PaymentAudit,
     Payout,
     PayoutState,
     Refund,
@@ -85,6 +87,47 @@ async def go_live_if_funded(session: AsyncSession, bounty: Bounty) -> bool:
     bounty.state = BountyState.LIVE
     bounty.live_config_id = config_id
     return True
+
+
+async def audit(
+    session: AsyncSession,
+    action: PaymentAction,
+    *,
+    ref_id: uuid.UUID,
+    bounty_id: uuid.UUID | None = None,
+    amount_zatoshi: int | None = None,
+    txid: str | None = None,
+    detail: str | None = None,
+) -> None:
+    """Record one payment action in the append-only audit log, and in the process log.
+
+    The audit row is written in the caller's transaction, so it exists exactly
+    when the action it describes does.
+    """
+    session.add(
+        PaymentAudit(
+            action=action,
+            ref_id=ref_id,
+            bounty_id=bounty_id,
+            amount_zatoshi=amount_zatoshi,
+            txid=txid,
+            detail=detail,
+        )
+    )
+    await session.flush()
+    logger.info(
+        "payment action: %s",
+        action.value,
+        extra={
+            "audit": True,
+            "action": action.value,
+            "ref_id": str(ref_id),
+            "bounty_id": str(bounty_id) if bounty_id else None,
+            "amount_zatoshi": amount_zatoshi,
+            "txid": txid,
+            "detail": detail,
+        },
+    )
 
 
 class _RejectedError(Exception):
@@ -154,16 +197,25 @@ class PaymentService:
             bounty = await self._bounty_awaiting(session, deposit.memo_code)
             if bounty is None:
                 deposit.state = DepositState.UNMATCHED
-                logger.warning(
-                    "deposit %s of %d zatoshi matches no open bounty (memo %r); it needs"
-                    " manual handling",
-                    deposit.txid,
-                    deposit.amount_zatoshi,
-                    deposit.memo_code,
+                await audit(
+                    session,
+                    PaymentAction.DEPOSIT_UNMATCHED,
+                    ref_id=deposit.id,
+                    amount_zatoshi=deposit.amount_zatoshi,
+                    txid=deposit.txid,
+                    detail="the memo matches no open bounty; needs manual handling",
                 )
             else:
                 deposit.bounty_id = bounty.id
                 deposit.state = DepositState.MATCHED
+                await audit(
+                    session,
+                    PaymentAction.DEPOSIT_MATCHED,
+                    ref_id=deposit.id,
+                    bounty_id=bounty.id,
+                    amount_zatoshi=deposit.amount_zatoshi,
+                    txid=deposit.txid,
+                )
 
         if (
             deposit.state is DepositState.MATCHED
@@ -184,16 +236,28 @@ class PaymentService:
                     ref_id=deposit.id,
                 )
                 deposit.state = DepositState.CREDITED
+                await audit(
+                    session,
+                    PaymentAction.DEPOSIT_CREDITED,
+                    ref_id=deposit.id,
+                    bounty_id=bounty.id,
+                    amount_zatoshi=deposit.amount_zatoshi,
+                    txid=deposit.txid,
+                )
                 if await go_live_if_funded(session, bounty):
                     logger.info("bounty %s is funded and live", bounty.id)
             else:
                 # The bounty closed while the deposit was confirming. Crediting it now
                 # would strand the money behind a refund that has already been computed.
                 deposit.state = DepositState.UNMATCHED
-                logger.warning(
-                    "deposit %s arrived for bounty %s after it closed; it needs manual handling",
-                    deposit.txid,
-                    bounty.id,
+                await audit(
+                    session,
+                    PaymentAction.DEPOSIT_UNMATCHED,
+                    ref_id=deposit.id,
+                    bounty_id=bounty.id,
+                    amount_zatoshi=deposit.amount_zatoshi,
+                    txid=deposit.txid,
+                    detail="arrived after the bounty closed; needs manual handling",
                 )
 
     @staticmethod
@@ -252,16 +316,23 @@ class PaymentService:
                 amount, fee = bounty.reward_zatoshi, fee_for(bounty)
                 # The unique constraint on finding_id is what makes a retry safe: a second
                 # row for this finding cannot be inserted, here or by another process.
-                session.add(
-                    Payout(
-                        finding_id=finding.id,
-                        amount_zatoshi=amount,
-                        fee_zatoshi=fee,
-                        to_address=attempt.payout_address,
-                    )
+                payout = Payout(
+                    finding_id=finding.id,
+                    amount_zatoshi=amount,
+                    fee_zatoshi=fee,
+                    to_address=attempt.payout_address,
                 )
+                session.add(payout)
                 await session.flush()
                 await self._check(session, bounty, amount, fee)
+                await audit(
+                    session,
+                    PaymentAction.PAYOUT_CREATED,
+                    ref_id=payout.id,
+                    bounty_id=bounty.id,
+                    amount_zatoshi=amount,
+                    detail=f"finding {finding.id}",
+                )
         except _RejectedError as rejected:
             logger.error("payout for finding %s rejected: %s", finding_id, rejected)
         except IntegrityError:
@@ -317,20 +388,24 @@ class PaymentService:
         result = await self._wallet.send_payment(to_address, amount, f"finding {finding_id}")
 
         if result.txid is None:
-            if result.ambiguous:
-                logger.error(
-                    "payout %s may or may not have been sent (%s); it stays 'sending' and"
-                    " needs manual handling",
-                    payout_id,
-                    result.error,
-                )
-                return
-            logger.warning(
-                "payout %s was not sent (%s); it will be retried", payout_id, result.error
+            # Nobody can know whether an ambiguous send left the wallet, so the row stays
+            # "sending" for a person to resolve. A clear refusal goes back to "pending".
+            action = (
+                PaymentAction.PAYOUT_UNRESOLVED if result.ambiguous else PaymentAction.PAYOUT_RETRY
             )
             async with self._sessions.begin() as session:
                 payout = await session.get_one(Payout, payout_id, with_for_update=True)
-                payout.state = PayoutState.PENDING
+                finding = await session.get_one(Finding, payout.finding_id)
+                if not result.ambiguous:
+                    payout.state = PayoutState.PENDING
+                await audit(
+                    session,
+                    action,
+                    ref_id=payout.id,
+                    bounty_id=finding.bounty_id,
+                    amount_zatoshi=amount,
+                    detail=result.error,
+                )
             return
 
         async with self._sessions.begin() as session:
@@ -354,7 +429,14 @@ class PaymentService:
                     ref_id=payout.id,
                 )
             finding.state = FindingState.PAID
-        logger.info("payout %s sent: %s", payout_id, result.txid)
+            await audit(
+                session,
+                PaymentAction.PAYOUT_SENT,
+                ref_id=payout.id,
+                bounty_id=finding.bounty_id,
+                amount_zatoshi=payout.amount_zatoshi,
+                txid=result.txid,
+            )
 
     # --- closing and refunds --------------------------------------------------------------
 
@@ -417,6 +499,13 @@ class PaymentService:
                 amount_zatoshi=-remaining,
                 ref_id=refund.id,
             )
+            await audit(
+                session,
+                PaymentAction.REFUND_CREATED,
+                ref_id=refund.id,
+                bounty_id=bounty.id,
+                amount_zatoshi=remaining,
+            )
         bounty.state = BountyState.CLOSED
         logger.info("bounty %s closed; %d zatoshi to refund", bounty.id, max(remaining, 0))
 
@@ -453,24 +542,27 @@ class PaymentService:
             )
         result = await self._wallet.send_payment(to_address, amount, f"refund {bounty_id}")
 
-        if result.txid is None and result.ambiguous:
-            logger.error(
-                "refund %s may or may not have been sent (%s); it stays 'sending' and needs"
-                " manual handling",
-                refund_id,
-                result.error,
-            )
-            return
         async with self._sessions.begin() as session:
             refund = await session.get_one(Refund, refund_id, with_for_update=True)
-            if result.txid is None:
-                logger.warning(
-                    "refund %s was not sent (%s); it will be retried", refund_id, result.error
-                )
-                refund.state = PayoutState.PENDING
-            else:
+            if result.txid is not None:
                 refund.txid = result.txid
                 refund.state = PayoutState.SENT
+                action = PaymentAction.REFUND_SENT
+            elif result.ambiguous:
+                # Stays "sending": it may have gone out, so it is not sent again.
+                action = PaymentAction.REFUND_UNRESOLVED
+            else:
+                refund.state = PayoutState.PENDING
+                action = PaymentAction.REFUND_RETRY
+            await audit(
+                session,
+                action,
+                ref_id=refund.id,
+                bounty_id=bounty_id,
+                amount_zatoshi=amount,
+                txid=result.txid,
+                detail=result.error,
+            )
 
 
 def _open_for_deposits(bounty: Bounty) -> bool:

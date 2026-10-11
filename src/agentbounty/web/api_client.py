@@ -33,9 +33,14 @@ def _detail(response: httpx.Response) -> str:
 
 
 class Api:
-    def __init__(self, app: FastAPI, bearer: str | None = None) -> None:
+    def __init__(
+        self, app: FastAPI, bearer: str | None = None, client: tuple[str, int] | None = None
+    ) -> None:
         self._app = app
         self._bearer = bearer
+        # The browser's address, so the API's per-client limits count the real caller
+        # and not this process.
+        self._client = client or ("127.0.0.1", 0)
 
     async def call(
         self, method: str, path: str, *, json: Any = None, bearer: str | None = None
@@ -43,7 +48,7 @@ class Api:
         """Make one API call and return its JSON body. Raises ApiError on a 4xx or 5xx."""
         token = bearer or self._bearer
         headers = {"Authorization": f"Bearer {token}"} if token else {}
-        transport = httpx.ASGITransport(app=self._app)
+        transport = httpx.ASGITransport(app=self._app, client=self._client)
         async with httpx.AsyncClient(transport=transport, base_url="http://api.internal") as client:
             response = await client.request(method, path, json=json, headers=headers)
         if response.is_error:

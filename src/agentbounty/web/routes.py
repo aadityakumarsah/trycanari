@@ -42,6 +42,7 @@ DONE = {
     "fund": "Funding started. Send the deposit below.",
     "live": "The bounty is live.",
     "paused": "The bounty is paused.",
+    "rearm": "The paid attack is being replayed against this config. Reload in a moment.",
     "closing": "Close requested. The unspent escrow is refunded once attempts in flight finish.",
 }
 
@@ -86,15 +87,19 @@ def redirect(path: str) -> RedirectResponse:
     return RedirectResponse(path, status_code=303)
 
 
+def _caller(request: Request) -> tuple[str, int] | None:
+    return (request.client.host, request.client.port) if request.client else None
+
+
 def public_api(request: Request) -> Api:
-    return Api(request.app)
+    return Api(request.app, client=_caller(request))
 
 
 def sponsor_api(request: Request) -> Api:
     key = api_key(request)
     if key is None:
         raise LoginRequiredError
-    return Api(request.app, key)
+    return Api(request.app, key, _caller(request))
 
 
 PublicApi = Annotated[Api, Depends(public_api)]
@@ -215,7 +220,7 @@ async def login_page(request: Request) -> Response:
 @router.post("/login")
 async def login(request: Request, key: Annotated[str, Form()] = "") -> Response:
     try:
-        await Api(request.app, key.strip()).call("GET", "/v1/sponsor/bounties")
+        await Api(request.app, key.strip(), _caller(request)).call("GET", "/v1/sponsor/bounties")
     except ApiError:
         return page(
             request, "login.html", http_status=401, error="That API key was not recognised."
@@ -402,6 +407,11 @@ async def resume(request: Request, bounty_id: str, api: SponsorApi) -> Response:
     return await _action(request, api, bounty_id, "activate", "live")
 
 
+@router.post("/dashboard/b/{bounty_id}/rearm")
+async def rearm(request: Request, bounty_id: str, api: SponsorApi) -> Response:
+    return await _action(request, api, bounty_id, "rearm", "rearm")
+
+
 @router.post("/dashboard/b/{bounty_id}/pause")
 async def pause(request: Request, bounty_id: str, api: SponsorApi) -> Response:
     return await _action(request, api, bounty_id, "pause", "paused")
@@ -425,6 +435,10 @@ def install(app: FastAPI) -> None:
     @app.exception_handler(PageNotFoundError)
     async def not_found(request: Request, _: PageNotFoundError) -> HTMLResponse:
         return page(request, "error.html", http_status=404, message="That bounty does not exist.")
+
+    @app.exception_handler(ApiError)
+    async def refused(request: Request, error: ApiError) -> HTMLResponse:
+        return page(request, "error.html", http_status=error.status, message=error.detail)
 
     app.mount("/static", StaticFiles(directory=PACKAGE / "static"), name="static")
     app.include_router(router)

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
 from agentbounty.api.deps import CipherDep, OwnBounty, SettingsDep, SponsorDep, Transaction
+from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import (
     ActivateOut,
     BountyCreate,
@@ -29,6 +30,7 @@ from agentbounty.api.schemas import (
     LedgerOut,
     MessageOut,
     PayoutOut,
+    RearmOut,
     RunOut,
     SecretCanaryIn,
     SponsorBounty,
@@ -40,7 +42,7 @@ from agentbounty.api.schemas import (
 )
 from agentbounty.models import BountyState, Canary, CanaryType
 from agentbounty.services import bounty as bounty_service
-from agentbounty.services import reports
+from agentbounty.services import rearm, reports
 from agentbounty.services.bounty import CanaryDefinition
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import MockTool, TargetConfig
@@ -49,7 +51,7 @@ from agentbounty.services.judge import ArgumentPredicate, ToolRule
 router = APIRouter(prefix="/v1", tags=["sponsor"])
 
 
-@router.post("/sponsors", status_code=201)
+@router.post("/sponsors", status_code=201, dependencies=[Depends(limit_by_client)])
 async def create_sponsor(body: SponsorCreate, session: Transaction) -> SponsorCreated:
     sponsor, api_key = await bounty_service.create_sponsor(session, body.email)
     return SponsorCreated(sponsor_id=sponsor.id, api_key=api_key)
@@ -162,6 +164,19 @@ async def close(
     return CloseOut(state=bounty.state, closing=bounty.state is not BountyState.CLOSED)
 
 
+@router.post("/bounties/{bounty_id}/rearm", status_code=202)
+async def request_rearm(session: Transaction, bounty: OwnBounty) -> RearmOut:
+    """Replay the paid attack against the patched config.
+
+    The replay worker does the replaying; this only queues it. The bounty can be
+    funded and activated on the config once the check has passed.
+    """
+    check = await rearm.request(session, bounty)
+    return RearmOut(
+        state=check.state, config_hash=check.config_hash, tripped_runs=check.tripped_runs
+    )
+
+
 @router.post("/bounties/{bounty_id}/pause")
 async def pause(session: Transaction, bounty: OwnBounty) -> StateOut:
     """Stop taking attempts. Resume with `activate`."""
@@ -202,6 +217,11 @@ async def my_bounty(
     """Everything about one bounty, including the decrypted config and canaries, for its owner."""
     detail = await reports.bounty_detail(session, cipher, bounty)
     target = detail.target
+    check = (
+        await rearm.check_for(session, bounty.id, detail.config_hash)
+        if detail.config_hash is not None
+        else None
+    )
     config = None
     if target is not None and detail.config_version is not None and detail.config_hash is not None:
         config = ConfigDetail(
@@ -228,6 +248,11 @@ async def my_bounty(
         escrow_address=request.app.state.escrow_address,
         confirmations_required=settings.deposit_confirmations,
         refund_address=detail.refund_address,
+        rearm=None
+        if check is None
+        else RearmOut(
+            state=check.state, config_hash=check.config_hash, tripped_runs=check.tripped_runs
+        ),
         config=config,
         canaries=[
             CanaryDetail(
@@ -245,7 +270,7 @@ async def my_bounty(
 
 
 @router.get("/bounties/{bounty_id}/findings")
-async def findings(session: Transaction, bounty: OwnBounty) -> list[FindingOut]:
+async def findings(session: Transaction, bounty: OwnBounty, cipher: CipherDep) -> list[FindingOut]:
     """Every verified break of the bounty, with the attack, all transcripts and the evidence."""
 
     def public(canary: Canary | None) -> CanaryPublic | None:
@@ -254,7 +279,7 @@ async def findings(session: Transaction, bounty: OwnBounty) -> list[FindingOut]:
         return CanaryPublic(type=canary.type, public_label=canary.public_label)
 
     out = []
-    for report in await reports.findings_report(session, bounty):
+    for report in await reports.findings_report(session, cipher, bounty):
         payout = report.payout
         out.append(
             FindingOut(

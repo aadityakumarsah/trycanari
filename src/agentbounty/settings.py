@@ -11,7 +11,7 @@ from pydantic import Field, SecretStr, ValidationError, field_validator, model_v
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ASYNC_DRIVER_PREFIX = "postgresql+asyncpg://"
-ENCRYPTION_KEY_BYTES = 32
+SECRET_ENCRYPTION_KEY_BYTES = 32
 
 
 class SettingsError(RuntimeError):
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # Holds the database password, so it is kept out of repr() and logs.
     database_url: str = Field(repr=False)
     # 32 random bytes, base64. Encrypts system prompts, tool definitions and canary secrets.
-    encryption_key: SecretStr
+    secret_encryption_key: SecretStr
 
     # "fake" is the deterministic FakeModel; "real" calls the API below.
     model_backend: Literal["fake", "real"]
@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     # The platform's fee, as a fraction of the reward.
     fee_rate: Decimal = Field(default=Decimal("0.1"), ge=0, le=1)
 
+    # Requests a minute one client address may make to the public endpoints.
+    rate_limit_per_minute: int = Field(default=120, ge=1)
+    # Attempts an hour: per payout address, and per bounty across all hunters.
+    attempts_per_address_per_hour: int = Field(default=20, ge=1)
+    attempts_per_bounty_per_hour: int = Field(default=60, ge=1)
+    # Model tokens a bounty's replays may use in a rolling 24 hours. Once spent, the
+    # bounty takes no more attempts until some of that spend ages out.
+    bounty_daily_token_budget: int = Field(default=2_000_000, ge=1)
+
     worker_poll_seconds: float = Field(default=2.0, gt=0)
     # A running attempt older than this is taken to belong to a dead worker and is retried.
     attempt_timeout_seconds: float = Field(default=900.0, gt=0)
@@ -89,15 +98,15 @@ class Settings(BaseSettings):
             raise ValueError(f"must start with {ASYNC_DRIVER_PREFIX}")
         return value
 
-    @field_validator("encryption_key")
+    @field_validator("secret_encryption_key")
     @classmethod
     def _requires_a_256_bit_key(cls, value: SecretStr) -> SecretStr:
         try:
             key = base64.b64decode(value.get_secret_value(), validate=True)
         except binascii.Error:
             key = b""
-        if len(key) != ENCRYPTION_KEY_BYTES:
-            raise ValueError(f"must be {ENCRYPTION_KEY_BYTES} bytes, base64-encoded")
+        if len(key) != SECRET_ENCRYPTION_KEY_BYTES:
+            raise ValueError(f"must be {SECRET_ENCRYPTION_KEY_BYTES} bytes, base64-encoded")
         return value
 
     @model_validator(mode="after")

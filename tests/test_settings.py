@@ -5,7 +5,7 @@ import pytest
 from agentbounty.services.crypto import generate_key
 from agentbounty.settings import SettingsError, load_settings
 
-REQUIRED = ("APP_ENV", "DATABASE_URL", "ENCRYPTION_KEY", "MODEL_BACKEND")
+REQUIRED = ("APP_ENV", "DATABASE_URL", "SECRET_ENCRYPTION_KEY", "MODEL_BACKEND")
 
 
 @pytest.fixture
@@ -13,7 +13,7 @@ def environment(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     """A complete, valid environment that a test can then break."""
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:hunter2@localhost/db")
-    monkeypatch.setenv("ENCRYPTION_KEY", generate_key())
+    monkeypatch.setenv("SECRET_ENCRYPTION_KEY", generate_key())
     monkeypatch.setenv("MODEL_BACKEND", "fake")
     monkeypatch.setenv("WALLET_BACKEND", "fake")
     for optional in ("MODEL_API_BASE", "MODEL_API_KEY", "FEE_RATE", "ZCASH_NETWORK"):
@@ -35,7 +35,7 @@ def test_a_complete_environment_loads(environment: pytest.MonkeyPatch) -> None:
     assert settings.allow_unfunded_activation
     # Secrets stay out of the repr.
     assert "hunter2" not in repr(settings)
-    assert settings.encryption_key.get_secret_value() not in repr(settings)
+    assert settings.secret_encryption_key.get_secret_value() not in repr(settings)
 
 
 def test_missing_variables_are_named(environment: pytest.MonkeyPatch) -> None:
@@ -49,13 +49,13 @@ def test_missing_variables_are_named(environment: pytest.MonkeyPatch) -> None:
 def test_invalid_values_are_reported_without_echoing_them(environment: pytest.MonkeyPatch) -> None:
     environment.setenv("APP_ENV", "staging")
     environment.setenv("DATABASE_URL", "postgresql://user:hunter2@localhost/db")
-    environment.setenv("ENCRYPTION_KEY", "c2hvcnQtc2VjcmV0")
+    environment.setenv("SECRET_ENCRYPTION_KEY", "c2hvcnQtc2VjcmV0")
     with pytest.raises(SettingsError, match="invalid environment") as raised:
         load_settings()
     message = str(raised.value)
     assert "APP_ENV" in message
     assert "DATABASE_URL: Value error, must start with postgresql+asyncpg://" in message
-    assert "ENCRYPTION_KEY: Value error, must be 32 bytes, base64-encoded" in message
+    assert "SECRET_ENCRYPTION_KEY: Value error, must be 32 bytes, base64-encoded" in message
     assert "hunter2" not in message
     assert "c2hvcnQtc2VjcmV0" not in message
 

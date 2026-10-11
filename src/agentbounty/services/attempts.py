@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import and_, exists, or_, select, tuple_, update
+from sqlalchemy import and_, exists, func, or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -30,6 +30,7 @@ from agentbounty.models import (
 from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.services import judge
 from agentbounty.services.bounty import LoadedCanary, LoadedTarget, hash_token, lock_bounty
+from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import (
     AttemptError,
@@ -46,12 +47,59 @@ Verdict = Literal["verified", "not_verified", "not_counted"]
 # --- submission -------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class SubmissionLimits:
+    """Caps on what the queue will accept. None switches a cap off."""
+
+    # Attempts in a rolling hour.
+    per_address_per_hour: int | None = None
+    per_bounty_per_hour: int | None = None
+    # Model tokens a bounty's replays may use in a rolling 24 hours.
+    bounty_daily_tokens: int | None = None
+
+
+async def _enforce_limits(
+    session: AsyncSession, bounty: Bounty, payout_address: str, limits: SubmissionLimits
+) -> None:
+    """Raise 429 if accepting one more attempt would break a cap.
+
+    Counted in the database, so the caps hold across every API process.
+    """
+    hour_ago = datetime.now(UTC) - timedelta(hours=1)
+
+    async def attempts_since(*where: Any) -> int:
+        counted = await session.scalar(
+            select(func.count()).select_from(Attempt).where(Attempt.submitted_at > hour_ago, *where)
+        )
+        return int(counted or 0)
+
+    if limits.per_address_per_hour is not None and (
+        await attempts_since(Attempt.payout_address == payout_address)
+        >= limits.per_address_per_hour
+    ):
+        raise ServiceError(429, "too many attempts for this payout address; try again later")
+    if limits.per_bounty_per_hour is not None and (
+        await attempts_since(Attempt.bounty_id == bounty.id) >= limits.per_bounty_per_hour
+    ):
+        raise ServiceError(429, "this bounty has had its attempts for the hour; try again later")
+    if limits.bounty_daily_tokens is not None:
+        day_ago = datetime.now(UTC) - timedelta(days=1)
+        spent = await session.scalar(
+            select(func.coalesce(func.sum(Run.token_usage), 0))
+            .join(Attempt, Attempt.id == Run.attempt_id)
+            .where(Attempt.bounty_id == bounty.id, Attempt.submitted_at > day_ago)
+        )
+        if int(spent or 0) >= limits.bounty_daily_tokens:
+            raise ServiceError(429, "this bounty's daily run budget is spent; try again later")
+
+
 async def submit_attempt(
     session: AsyncSession,
     bounty_id: uuid.UUID,
     fills: Sequence[SlotFill],
     payout_address: str,
     network: Network,
+    limits: SubmissionLimits | None = None,
 ) -> tuple[Attempt, str]:
     """Queue an attempt against the bounty's live config. Returns it with its status token."""
     # A shared lock: submissions do not block each other, but none can slip past a pause.
@@ -72,6 +120,7 @@ async def submit_attempt(
         validate_fills([EntryPoint(slot) for slot in config.entry_points_json], fills)
     except AttemptError as exc:
         raise ServiceError(422, str(exc)) from exc
+    await _enforce_limits(session, bounty, payout_address, limits or SubmissionLimits())
     token = secrets.token_urlsafe(32)
     attempt = Attempt(
         bounty_id=bounty.id,
@@ -256,8 +305,28 @@ async def still_counts(session: AsyncSession, claim: Claim) -> bool:
     return await _counts(session, bounty, attempt)
 
 
+TRANSCRIPT = "runs.transcript"
+EVIDENCE = "runs.evidence"
+
+
+def read_transcript(cipher: Cipher, run: Run) -> list[dict[str, Any]]:
+    """A run's transcript, decrypted. Empty for a run stored before transcripts were encrypted."""
+    if not run.transcript_enc:
+        return []
+    transcript: list[dict[str, Any]] = cipher.decrypt_json(run.transcript_enc, purpose=TRANSCRIPT)
+    return transcript
+
+
+def read_evidence(cipher: Cipher, run: Run) -> list[dict[str, Any]]:
+    if not run.evidence_enc:
+        return []
+    evidence: list[dict[str, Any]] = cipher.decrypt_json(run.evidence_enc, purpose=EVIDENCE)
+    return evidence
+
+
 async def record_result(
     session: AsyncSession,
+    cipher: Cipher,
     claim: Claim,
     results: Sequence[RunResult] = (),
     judgement: Judgement | None = None,
@@ -280,9 +349,11 @@ async def record_result(
             Run(
                 attempt_id=attempt.id,
                 run_index=result.run_index,
-                transcript_json=_transcript_json(result),
+                transcript_enc=cipher.encrypt_json(_transcript_json(result), purpose=TRANSCRIPT),
                 tripped_canaries_json=[str(i) for i in judgement.tripped_by_run[result.run_index]],
-                evidence_json=list(judgement.evidence_by_run[result.run_index]),
+                evidence_enc=cipher.encrypt_json(
+                    list(judgement.evidence_by_run[result.run_index]), purpose=EVIDENCE
+                ),
                 token_usage=result.total_tokens,
             )
         )
@@ -320,7 +391,9 @@ class AttemptStatus:
     payout: Payout | None = None
 
 
-async def attempt_status(session: AsyncSession, attempt_id: uuid.UUID, token: str) -> AttemptStatus:
+async def attempt_status(
+    session: AsyncSession, cipher: Cipher, attempt_id: uuid.UUID, token: str
+) -> AttemptStatus:
     """What the holder of the status token may see. Raises 404 for a wrong token too."""
     attempt = await session.get(Attempt, attempt_id)
     if attempt is None or not secrets.compare_digest(attempt.status_token, hash_token(token)):
@@ -358,7 +431,8 @@ async def attempt_status(session: AsyncSession, attempt_id: uuid.UUID, token: st
     shown = next(
         (run for run in runs if top in run.tripped_canaries_json), runs[0] if runs else None
     )
-    replies = tuple(m for m in shown.transcript_json if m["role"] == "assistant") if shown else ()
+    transcript = read_transcript(cipher, shown) if shown else []
+    replies = tuple(message for message in transcript if message["role"] == "assistant")
     return AttemptStatus(
         state=attempt.state,
         verdict=verdict,

@@ -24,7 +24,7 @@ from agentbounty.services.model import (
 )
 from agentbounty.workers import replay
 
-from .platform import DEMO_CONFIG, STRONG, WEAK, Platform
+from .platform import PATCHED_CONFIG, STRONG, WEAK, Platform
 
 
 class CountingModel(FakeModel):
@@ -99,7 +99,7 @@ async def test_attempts_of_a_bounty_run_one_at_a_time_in_arrival_order(platform:
     assert (await platform.status(a1))["state"] == "running"
 
     async with platform.sessions.begin() as session:
-        await attempts.record_result(session, first)
+        await attempts.record_result(session, platform.cipher, first)
     third = await claim(platform)
     assert third is not None
     assert third.attempt_id not in (first.attempt_id, second.attempt_id)
@@ -131,9 +131,13 @@ async def test_an_attempt_bound_to_a_replaced_config_does_not_count(platform: Pl
     blocked = await sponsor.call("POST", f"/v1/bounties/{bounty_id}/activate", 409)
     assert "has been broken" in blocked["detail"]
 
-    patched = {**DEMO_CONFIG, "system_prompt": DEMO_CONFIG["system_prompt"] + "\nBe careful."}
-    version = await sponsor.call("PUT", f"/v1/bounties/{bounty_id}/config", json=patched)
+    version = await sponsor.call("PUT", f"/v1/bounties/{bounty_id}/config", json=PATCHED_CONFIG)
     assert version["version"] == 2
+    await sponsor.call("POST", f"/v1/bounties/{bounty_id}/rearm", 202)
+    # The worker replays the paid attack against the patch, then finds the stale attempt.
+    model = CountingModel()
+    await platform.work(model)
+    assert model.conversations == 5
     reactivated = await sponsor.call("POST", f"/v1/bounties/{bounty_id}/activate")
     assert reactivated == {"state": "live", "config_hash": version["config_hash"]}
     # The canaries came along to the new version.
@@ -143,18 +147,15 @@ async def test_an_attempt_bound_to_a_replaced_config_does_not_count(platform: Pl
         "unapproved_transfer",
     ]
 
-    # The bounty is live again, but on another config: the old attempt is void.
-    model = CountingModel()
-    await platform.work(model)
+    # The bounty is live again, but on another config: the old attempt is void and was
+    # never replayed as an attempt.
     assert (await platform.status(stale))["verdict"] == "not_counted"
-    assert model.conversations == 0
+    assert await count(platform, Run) == 5
 
-    # A fresh attempt against the new config is a new hole and counts.
+    # The same attack against the patched config is judged afresh, and now fails.
     fresh = await platform.submit(bounty_id, STRONG)
-    assert (await platform.poll(fresh))["verdict"] == "verified"
-    async with platform.sessions() as session:
-        hashes = (await session.scalars(select(Finding.config_hash))).all()
-    assert len(set(hashes)) == 2
+    assert (await platform.poll(fresh))["verdict"] == "not_verified"
+    assert await count(platform, Finding) == 1
 
 
 async def test_a_break_found_after_the_bounty_moved_on_is_recorded_but_not_counted(
@@ -178,7 +179,9 @@ async def test_a_break_found_after_the_bounty_moved_on_is_recorded_but_not_count
     async with platform.sessions.begin() as session:
         await session.execute(update(Bounty).values(state=BountyState.PAUSED))
     async with platform.sessions.begin() as session:
-        assert await attempts.record_result(session, held, results, judgement) is None
+        assert (
+            await attempts.record_result(session, platform.cipher, held, results, judgement) is None
+        )
 
     status = await platform.status(attempt)
     assert (status["verdict"], status["tripped_runs"], status["total_runs"]) == (
@@ -223,7 +226,7 @@ async def test_an_attempt_whose_worker_died_is_retried_from_scratch(platform: Pl
 
     # The dead worker turns out to be alive and tries to record its result: it is ignored.
     async with platform.sessions.begin() as session:
-        assert await attempts.record_result(session, dead) is None
+        assert await attempts.record_result(session, platform.cipher, dead) is None
     assert await count(platform, Run) == 5
     assert await count(platform, Finding) == 1
 
@@ -244,11 +247,11 @@ async def test_a_slow_worker_cannot_overwrite_the_worker_that_replaced_it(
 
     # The slow worker finishes first, with a result that must not be written.
     async with platform.sessions.begin() as session:
-        assert await attempts.record_result(session, slow) is None
+        assert await attempts.record_result(session, platform.cipher, slow) is None
         await attempts.release(session, slow, max_tries=3)
     assert (await platform.status(attempt))["state"] == "running"
     async with platform.sessions.begin() as session:
-        await attempts.record_result(session, replacement)
+        await attempts.record_result(session, platform.cipher, replacement)
     assert (await platform.status(attempt))["state"] == "done"
 
 

@@ -48,6 +48,31 @@ class PayoutState(enum.StrEnum):
     FAILED = "failed"
 
 
+class RearmState(enum.StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    # The paid attack no longer breaks the config: the bounty may reopen on it.
+    PASSED = "passed"
+    FAILED = "failed"
+
+
+class PaymentAction(enum.StrEnum):
+    """Every kind of entry in the payment audit log."""
+
+    DEPOSIT_MATCHED = "deposit_matched"
+    DEPOSIT_UNMATCHED = "deposit_unmatched"
+    DEPOSIT_CREDITED = "deposit_credited"
+    PAYOUT_CREATED = "payout_created"
+    PAYOUT_SENT = "payout_sent"
+    PAYOUT_CONFIRMED = "payout_confirmed"
+    PAYOUT_RETRY = "payout_retry"
+    PAYOUT_UNRESOLVED = "payout_unresolved"
+    REFUND_CREATED = "refund_created"
+    REFUND_SENT = "refund_sent"
+    REFUND_RETRY = "refund_retry"
+    REFUND_UNRESOLVED = "refund_unresolved"
+
+
 class LedgerKind(enum.StrEnum):
     DEPOSIT = "deposit"
     PAYOUT = "payout"

@@ -35,7 +35,7 @@ def test_ciphertext_is_bound_to_its_key_its_purpose_and_its_bytes() -> None:
     damaged = ciphertext[:-1] + bytes([ciphertext[-1] ^ 1])
     with pytest.raises(DecryptionError, match="authentication"):
         cipher.decrypt(damaged, purpose="canaries.secret")
-    for unrecognised in (b"", b"\x02" + ciphertext[1:], b"\x01short"):
+    for unrecognised in (b"", b"\x03" + ciphertext[1:], b"\x02short", b"\x01short"):
         with pytest.raises(DecryptionError, match="unrecognised"):
             cipher.decrypt(unrecognised, purpose="canaries.secret")
 

@@ -448,7 +448,7 @@ async def test_zcash_wallet_sends_in_two_steps_and_signs_only_the_second(cli: St
         "seed words",
     )
     for call in cli.calls:
-        assert not {"DATABASE_URL", "ENCRYPTION_KEY", "MODEL_API_KEY"} & call["env"].keys()
+        assert not {"DATABASE_URL", "SECRET_ENCRYPTION_KEY", "MODEL_API_KEY"} & call["env"].keys()
 
 
 async def test_zcash_wallet_reports_a_failed_proposal_as_safe_to_retry(cli: StubCli) -> None:

@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentbounty.db import create_engine, create_session_factory
+from agentbounty.logs import configure_logging
 from agentbounty.models import Bounty, BountyState, Deposit
 from agentbounty.services.ledger import bounty_balance
 from agentbounty.services.payment import PaymentService, SpendingCaps, required_balance
@@ -87,7 +88,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    configure_logging()
     settings = load_settings()
 
     async def serve() -> None:

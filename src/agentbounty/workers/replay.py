@@ -18,9 +18,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentbounty.db import create_engine, create_session_factory
+from agentbounty.logs import configure_logging
 from agentbounty.models import Attempt
 from agentbounty.models import TargetConfig as TargetConfigRow
-from agentbounty.services import attempts
+from agentbounty.services import attempts, rearm
 from agentbounty.services.bounty import LoadedTarget, load_target
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.harness import (
@@ -30,7 +31,7 @@ from agentbounty.services.harness import (
     SlotFill,
     run_attempt,
 )
-from agentbounty.services.judge import RUNS_PER_ATTEMPT
+from agentbounty.services.judge import RUNS_PER_ATTEMPT, TRIP_THRESHOLD
 from agentbounty.services.model import FakeModel, ModelClient, RealModel
 from agentbounty.settings import Settings, load_settings
 
@@ -89,7 +90,7 @@ async def process(
     loaded = await _load(sessions, cipher, claim)
     if loaded is None:
         async with sessions.begin() as session:
-            await attempts.record_result(session, claim)
+            await attempts.record_result(session, cipher, claim)
         return
     target, fills = loaded
     try:
@@ -103,7 +104,7 @@ async def process(
         return
     judgement = attempts.judge_runs(target, results)
     async with sessions.begin() as session:
-        finding = await attempts.record_result(session, claim, results, judgement)
+        finding = await attempts.record_result(session, cipher, claim, results, judgement)
     if finding is not None:
         logger.info("attempt %s verified: finding %s", claim.attempt_id, finding.id)
 
@@ -116,13 +117,92 @@ async def work_once(
     max_tries: int,
     limits: SandboxLimits = DEFAULT_LIMITS,
 ) -> bool:
-    """Claim and process one attempt. Returns False when nothing is runnable."""
+    """Do one unit of work: an attempt, or else a re-arm check. False when there is none."""
     async with sessions.begin() as session:
         claim = await attempts.claim_next(session)
-    if claim is None:
+    if claim is not None:
+        await process(sessions, cipher, model, claim, max_tries=max_tries, limits=limits)
+        return True
+    async with sessions.begin() as session:
+        check = await rearm.claim_next(session)
+    if check is None:
         return False
-    await process(sessions, cipher, model, claim, max_tries=max_tries, limits=limits)
+    await process_rearm(sessions, cipher, model, check, limits=limits)
     return True
+
+
+async def process_rearm(
+    sessions: SessionFactory,
+    cipher: Cipher,
+    model: ModelClient,
+    claim: rearm.RearmClaim,
+    *,
+    limits: SandboxLimits = DEFAULT_LIMITS,
+) -> None:
+    """Replay every paid attack of a bounty against its patched config.
+
+    The check passes only if none of them is a verified break again. An attack
+    that no longer fits the config's entry points cannot be made at all, which
+    counts as not breaking it.
+    """
+    async with sessions() as session:
+        config = await session.scalar(
+            select(TargetConfigRow)
+            .where(
+                TargetConfigRow.bounty_id == claim.bounty_id,
+                TargetConfigRow.config_hash == claim.config_hash,
+            )
+            .order_by(TargetConfigRow.version.desc())
+            .limit(1)
+        )
+        target = await load_target(session, cipher, config) if config else None
+        attacks = await rearm.paid_attacks(session, claim.bounty_id)
+    if target is None:
+        # The config was edited after the check was asked for: it proves nothing now.
+        async with sessions.begin() as session:
+            await rearm.record(session, claim, passed=False, tripped_runs=0)
+        return
+
+    worst = 0
+    try:
+        for payload in attacks:
+            fills = [
+                SlotFill(EntryPoint(fill["slot"]), fill["content"])
+                for fill in payload
+                if fill["slot"] in target.config.entry_points
+            ]
+            if not fills:
+                continue
+            results = await run_attempt(
+                target.config, fills, model, runs=RUNS_PER_ATTEMPT, limits=limits
+            )
+            judgement = attempts.judge_runs(target, results)
+            worst = max(worst, _most_trips(judgement))
+            if judgement.broken_canary is not None:
+                break
+    except Exception:
+        logger.exception("re-arm replay for bounty %s failed", claim.bounty_id)
+        async with sessions.begin() as session:
+            await rearm.release(session, claim)
+        return
+    passed = worst < TRIP_THRESHOLD
+    async with sessions.begin() as session:
+        await rearm.record(session, claim, passed=passed, tripped_runs=worst)
+    logger.info(
+        "re-arm check for bounty %s %s",
+        claim.bounty_id,
+        "passed" if passed else "failed",
+        extra={"bounty_id": str(claim.bounty_id), "tripped_runs": worst},
+    )
+
+
+def _most_trips(judgement: attempts.Judgement) -> int:
+    """The most runs any single canary tripped in."""
+    counts: dict[object, int] = {}
+    for tripped in judgement.tripped_by_run:
+        for canary_id in tripped:
+            counts[canary_id] = counts.get(canary_id, 0) + 1
+    return max(counts.values(), default=0)
 
 
 async def drain(
@@ -143,7 +223,7 @@ async def drain(
 async def run(settings: Settings, stop: asyncio.Event) -> None:
     engine = create_engine(settings.database_url)
     sessions = create_session_factory(engine)
-    cipher = Cipher(settings.encryption_key.get_secret_value())
+    cipher = Cipher(settings.secret_encryption_key.get_secret_value())
     model = make_model(settings)
     stale_after = timedelta(seconds=settings.attempt_timeout_seconds)
     logger.info("replay worker started (model backend: %s)", settings.model_backend)
@@ -154,6 +234,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                     await attempts.requeue_stale(
                         session, older_than=stale_after, max_tries=settings.attempt_max_tries
                     )
+                    await rearm.requeue_stale(session, older_than=stale_after)
                 if await work_once(sessions, cipher, model, max_tries=settings.attempt_max_tries):
                     continue
             except Exception:
@@ -167,7 +248,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    configure_logging()
     settings = load_settings()
 
     async def serve() -> None:

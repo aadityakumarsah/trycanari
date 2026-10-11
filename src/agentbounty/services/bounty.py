@@ -353,30 +353,6 @@ async def lock_bounty(session: AsyncSession, bounty_id: uuid.UUID) -> Bounty | N
     return await session.scalar(select(Bounty).where(Bounty.id == bounty_id).with_for_update())
 
 
-def listing_problems(target: LoadedTarget) -> list[str]:
-    """Reasons a bounty would be unwinnable. Empty means every canary can trip."""
-    if not target.canaries:
-        return ["the config has no canaries"]
-    config = target.config
-    context = [config.system_prompt, *(tool.result for tool in config.tools)]
-    tool_names = {tool.name for tool in config.tools}
-    problems = []
-    for canary in target.canaries:
-        definition = canary.definition
-        if definition.secret is not None:
-            if not any(definition.secret in text for text in context):
-                problems.append(
-                    f"canary '{definition.public_label}': the secret is not in the system"
-                    " prompt or any tool result, so the agent could never leak it"
-                )
-        elif definition.rule is not None and definition.rule.tool not in tool_names:
-            problems.append(
-                f"canary '{definition.public_label}': the agent has no tool named"
-                f" '{definition.rule.tool}'"
-            )
-    return problems
-
-
 async def activate(
     session: AsyncSession, cipher: Cipher, bounty: Bounty, *, allow_unfunded: bool
 ) -> TargetConfigRow:
@@ -394,11 +370,15 @@ async def activate(
 
 
 async def _listable(session: AsyncSession, cipher: Cipher, bounty: Bounty) -> TargetConfigRow:
-    """The working config, if it passes the listing check and has not been broken."""
+    """The working config, if every canary can trip on it, it has not been broken, and,
+    for a bounty that has been broken before, the paid attack no longer breaks it."""
     row = await latest_config(session, bounty.id)
     if row is None:
         raise ServiceError(409, "upload a config first")
-    problems = listing_problems(await load_target(session, cipher, row))
+    # Imported here: both modules build on the types defined above.
+    from agentbounty.services import listing, rearm
+
+    problems = await listing.problems(await load_target(session, cipher, row))
     if problems:
         raise ServiceError(409, "listing check failed: " + "; ".join(problems))
     broken = await session.scalar(
@@ -408,6 +388,8 @@ async def _listable(session: AsyncSession, cipher: Cipher, bounty: Bounty) -> Ta
     )
     if broken:
         raise ServiceError(409, "this config has been broken; upload a patched config first")
+    # A bounty that has been broken reopens only on a config the paid attack no longer breaks.
+    await rearm.require_passed(session, bounty, row)
     return row
 
 

@@ -33,6 +33,21 @@
         </form>
       {% endif %}
     </div>
+    {% if findings and bounty.state == 'paused' and not bounty.closing %}
+      <h3>Re-arm</h3>
+      {% if bounty.config and bounty.config.live %}
+        <p class="muted">This config was broken. Save a patched config, then replay the paid attack against it. The bounty can reopen only once that replay fails.</p>
+      {% elif bounty.rearm and bounty.rearm.state == 'passed' %}
+        <p class="done">The paid attack no longer breaks this config ({{ bounty.rearm.tripped_runs }} of 5 runs tripped). Fund the bounty to reopen it.</p>
+      {% elif bounty.rearm and bounty.rearm.state == 'failed' %}
+        <p class="error">The paid attack still breaks this config ({{ bounty.rearm.tripped_runs }} of 5 runs tripped). Patch it again.</p>
+      {% elif bounty.rearm %}
+        <p class="notice">The paid attack is being replayed against this config. Reload in a moment.</p>
+      {% else %}
+        <form method="post" action="{{ base }}/rearm"><button>Replay the paid attack</button></form>
+        <p class="muted">The bounty can reopen only once the attack you paid for fails against the new config.</p>
+      {% endif %}
+    {% endif %}
     {% if bounty.closing %}<p class="muted">Closing: the unspent escrow is refunded once attempts in flight have been judged and paid.</p>{% endif %}
   </section>
 

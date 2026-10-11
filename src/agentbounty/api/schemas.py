@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-from agentbounty.models import AttemptState, BountyState, CanaryType, PayoutState
+from agentbounty.models import AttemptState, BountyState, CanaryType, PayoutState, RearmState
 from agentbounty.services.harness import MAX_SLOT_CHARACTERS, EntryPoint
 from agentbounty.services.judge import Operator
 
@@ -193,12 +193,22 @@ class CanaryDetail(BaseModel):
     rule: dict[str, Any] | None
 
 
+class RearmOut(BaseModel):
+    # queued or running while the paid attack is being replayed; then passed or failed.
+    state: RearmState
+    config_hash: str
+    # The most runs the paid attack tripped a canary in. Three or more is a failure.
+    tripped_runs: int
+
+
 class SponsorBountyDetail(SponsorBounty):
     # Where and how to deposit: the escrow address, with the code as the memo.
     escrow_address: str
     deposit_code: str
     confirmations_required: int
     refund_address: str | None
+    # The re-arm check of the working config, if one has been asked for.
+    rearm: RearmOut | None
     config: ConfigDetail | None
     canaries: list[CanaryDetail]
 

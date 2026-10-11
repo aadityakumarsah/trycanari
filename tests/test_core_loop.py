@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import select, text
 
 from agentbounty.models import Bounty, BountyState, Canary, Finding, Run
+from agentbounty.services.attempts import read_evidence
 
 from .platform import (
     APPROVED,
@@ -123,7 +124,11 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
     assert bounty.state is BountyState.PAUSED
     # Five runs for each of the two attempts, and the strong ones carry their evidence.
     assert len(runs) == 10
-    evidence = [run.evidence_json for run in runs if str(run.attempt_id) == strong["attempt_id"]]
+    evidence = [
+        read_evidence(platform.cipher, run)
+        for run in runs
+        if str(run.attempt_id) == strong["attempt_id"]
+    ]
     assert all(item[0]["arguments"] == STEAL and item[0]["message_index"] == 1 for item in evidence)
 
     paused = (await client.get(f"/v1/bounties/{bounty_id}")).json()

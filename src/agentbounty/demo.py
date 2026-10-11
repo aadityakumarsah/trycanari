@@ -149,7 +149,11 @@ async def seed(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed the demo treasury bounty over the HTTP API.")
     parser.add_argument("--api", default="http://127.0.0.1:8000", help="base URL of the service")
-    parser.add_argument("--model", required=True, help="model the target agent runs on")
+    parser.add_argument(
+        "--model",
+        default="demo-model",
+        help="model the target agent runs on (any name works with MODEL_BACKEND=fake)",
+    )
     parser.add_argument("--reward", default="0.01", help="reward in ZEC")
     parser.add_argument("--refund-address", default=DEMO_REFUND_ADDRESS)
     args = parser.parse_args()

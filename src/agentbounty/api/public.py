@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentbounty.api.deps import BearerToken, SettingsDep, Transaction
+from agentbounty.api.deps import BearerToken, CipherDep, SettingsDep, Transaction
+from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import (
     AttemptAccepted,
     AttemptIn,
@@ -22,10 +23,11 @@ from agentbounty.api.schemas import (
 from agentbounty.models import Bounty, BountyState
 from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.services import attempts as attempt_service
+from agentbounty.services.attempts import SubmissionLimits
 from agentbounty.services.bounty import canary_rows
 from agentbounty.services.harness import EntryPoint, SlotFill
 
-router = APIRouter(prefix="/v1", tags=["public"])
+router = APIRouter(prefix="/v1", tags=["public"], dependencies=[Depends(limit_by_client)])
 
 
 async def _public(session: AsyncSession, bounty: Bounty) -> BountyPublic:
@@ -72,16 +74,25 @@ async def submit_attempt(
 ) -> AttemptAccepted:
     fills = [SlotFill(fill.slot, fill.content) for fill in body.fills]
     attempt, token = await attempt_service.submit_attempt(
-        session, bounty_id, fills, body.payout_address, settings.zcash_network
+        session,
+        bounty_id,
+        fills,
+        body.payout_address,
+        settings.zcash_network,
+        SubmissionLimits(
+            per_address_per_hour=settings.attempts_per_address_per_hour,
+            per_bounty_per_hour=settings.attempts_per_bounty_per_hour,
+            bounty_daily_tokens=settings.bounty_daily_token_budget,
+        ),
     )
     return AttemptAccepted(attempt_id=attempt.id, status_token=token)
 
 
 @router.get("/attempts/{attempt_id}")
 async def get_attempt(
-    attempt_id: uuid.UUID, session: Transaction, token: BearerToken
+    attempt_id: uuid.UUID, session: Transaction, token: BearerToken, cipher: CipherDep
 ) -> AttemptStatusOut:
-    status = await attempt_service.attempt_status(session, attempt_id, token)
+    status = await attempt_service.attempt_status(session, cipher, attempt_id, token)
     return AttemptStatusOut(
         state=status.state,
         verdict=status.verdict,

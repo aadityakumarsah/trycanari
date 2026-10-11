@@ -35,7 +35,9 @@ from agentbounty.models.enums import (
     DepositState,
     FindingState,
     LedgerKind,
+    PaymentAction,
     PayoutState,
+    RearmState,
     pg_enum,
 )
 
@@ -151,9 +153,11 @@ class Run(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     attempt_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("attempts.id"), index=True)
     run_index: Mapped[int] = mapped_column(Integer)
-    transcript_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    # Ciphertext. A transcript of a successful leak contains the secret, and evidence can
+    # quote it, so neither is stored in the clear.
+    transcript_enc: Mapped[bytes] = mapped_column(LargeBinary)
     tripped_canaries_json: Mapped[list[str]] = mapped_column(JSONB)
-    evidence_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    evidence_enc: Mapped[bytes] = mapped_column(LargeBinary)
     token_usage: Mapped[int] = mapped_column(Integer)
 
 
@@ -236,6 +240,44 @@ class Refund(Base):
     state: Mapped[PayoutState] = mapped_column(
         pg_enum(PayoutState, "payout_state"), default=PayoutState.PENDING, server_default="pending"
     )
+    created_at: Mapped[datetime] = created_now()
+
+
+class RearmCheck(Base):
+    """A replay of every paid attack against a patched config, before the bounty reopens."""
+
+    __tablename__ = "rearm_checks"
+    # One check per config: a config that still breaks must be patched, not checked again.
+    __table_args__ = (UniqueConstraint("bounty_id", "config_hash"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"), index=True)
+    config_hash: Mapped[str] = mapped_column(Text)
+    state: Mapped[RearmState] = mapped_column(
+        pg_enum(RearmState, "rearm_state"),
+        default=RearmState.QUEUED,
+        server_default="queued",
+        index=True,
+    )
+    # The most runs any paid attack tripped a canary in, out of the runs per attempt.
+    tripped_runs: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_now()
+
+
+class PaymentAudit(Base):
+    """Append-only: one row for every payment action, written with the action itself."""
+
+    __tablename__ = "payment_audit"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    action: Mapped[PaymentAction] = mapped_column(pg_enum(PaymentAction, "payment_action"))
+    bounty_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bounties.id"), index=True)
+    # The deposit, payout or refund the action is about.
+    ref_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    amount_zatoshi: Mapped[int | None] = mapped_column(BigInteger)
+    txid: Mapped[str | None] = mapped_column(Text)
+    detail: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_now()
 
 

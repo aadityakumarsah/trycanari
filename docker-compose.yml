@@ -2,7 +2,7 @@ x-app: &app
   build: .
   environment:
     APP_ENV: ${APP_ENV:?set APP_ENV in .env}
-    ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
+    SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY in .env}
     MODEL_BACKEND: ${MODEL_BACKEND:?set MODEL_BACKEND in .env}
     MODEL_API_BASE: ${MODEL_API_BASE:-}
     MODEL_API_KEY: ${MODEL_API_KEY:-}

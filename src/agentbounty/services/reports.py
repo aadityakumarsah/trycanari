@@ -23,6 +23,7 @@ from agentbounty.models import (
     Run,
     Sponsor,
 )
+from agentbounty.services.attempts import read_evidence, read_transcript
 from agentbounty.services.bounty import LoadedTarget, latest_config, load_target
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.ledger import bounty_balance
@@ -116,7 +117,9 @@ def _matched_text(transcript: list[dict[str, Any]], item: dict[str, Any]) -> str
     return str(message.get("content", ""))
 
 
-async def findings_report(session: AsyncSession, bounty: Bounty) -> list[FindingReport]:
+async def findings_report(
+    session: AsyncSession, cipher: Cipher, bounty: Bounty
+) -> list[FindingReport]:
     findings = await session.scalars(
         select(Finding)
         .where(Finding.bounty_id == bounty.id)
@@ -130,17 +133,18 @@ async def findings_report(session: AsyncSession, bounty: Bounty) -> list[Finding
         )
         run_reports = []
         for run in runs:
+            transcript = read_transcript(cipher, run)
             evidence = [
                 EvidenceItem(
                     canary=await session.get(Canary, uuid.UUID(item["canary_id"])),
                     message_index=item["message_index"],
                     location=item["location"],
                     representation=item.get("representation"),
-                    matched_text=_matched_text(run.transcript_json, item),
+                    matched_text=_matched_text(transcript, item),
                 )
-                for item in run.evidence_json
+                for item in read_evidence(cipher, run)
             ]
-            run_reports.append(RunReport(run.run_index, run.transcript_json, evidence))
+            run_reports.append(RunReport(run.run_index, transcript, evidence))
         reports.append(
             FindingReport(
                 finding=finding,

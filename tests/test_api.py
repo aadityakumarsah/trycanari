@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
@@ -235,7 +236,12 @@ async def test_in_production_a_bounty_cannot_go_live_unfunded(service_settings: 
             "payout_daily_max_zatoshi": 10**10,
         }
     )
+    root = logging.getLogger()
+    handlers, level = list(root.handlers), root.level
     app = create_app(production)
+    # Outside tests the app sets up JSON logging; put the test run's own handlers back.
+    root.handlers[:] = handlers
+    root.setLevel(level)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:

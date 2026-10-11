@@ -117,8 +117,10 @@ def service_settings(database_url: str) -> Settings:
     return Settings(
         app_env="test",
         database_url=database_url,
-        encryption_key=SecretStr(generate_key()),
+        secret_encryption_key=SecretStr(generate_key()),
         model_backend="fake",
+        # High enough that only the tests about the limit ever reach it.
+        rate_limit_per_minute=100_000,
     )
 
 

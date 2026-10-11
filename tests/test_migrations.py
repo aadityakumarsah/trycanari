@@ -25,6 +25,8 @@ TABLES = {
     "payouts",
     "ledger_entries",
     "refunds",
+    "rearm_checks",
+    "payment_audit",
 }
 ENUM_TYPES = {
     "bounty_state",
@@ -34,6 +36,8 @@ ENUM_TYPES = {
     "deposit_state",
     "payout_state",
     "ledger_kind",
+    "rearm_state",
+    "payment_action",
 }
 
 
