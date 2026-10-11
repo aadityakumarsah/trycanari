@@ -202,3 +202,22 @@ async def test_without_a_build_the_page_says_how_to_make_one(
         assert "make web-build" in page.text
         assert (await client.get("/v1/bounties")).status_code == 200
     await app.state.engine.dispose()
+
+
+async def test_the_agent_guide_lists_live_bounties_and_no_secrets(platform: Platform) -> None:
+    sponsor = await platform.sponsor()
+    bounty_id = await sponsor.live()
+    await sponsor.draft()
+
+    guide = await platform.client.get("/agent.md")
+    assert guide.status_code == 200
+    assert guide.headers["content-type"].startswith("text/markdown")
+    text = guide.text
+    assert text.startswith("# AgentBounty")
+    assert f"`{bounty_id}`" in text
+    assert "secret_leak:signing_reference, forbidden_tool:unapproved_transfer" in text
+    assert "Base URL: http://test/" in text
+    # Only the live bounty is listed, and nothing a hunter must not see.
+    assert text.count("Reward 1000000 zatoshi (0.01 ZEC)") == 1
+    for private in ("TREASURY-KEY", "payroll-ops", "treasury assistant", "dep-"):
+        assert private not in text

@@ -30,7 +30,7 @@ from agentbounty.services.harness import EntryPoint, SlotFill
 router = APIRouter(prefix="/v1", tags=["public"], dependencies=[Depends(limit_by_client)])
 
 
-async def _public(session: AsyncSession, bounty: Bounty) -> BountyPublic:
+async def public_view(session: AsyncSession, bounty: Bounty) -> BountyPublic:
     """A bounty as hunters see it: labels and entry points, never a secret, rule or prompt."""
     config = (
         await session.get(TargetConfigRow, bounty.live_config_id) if bounty.live_config_id else None
@@ -56,7 +56,7 @@ async def list_bounties(session: Transaction) -> list[BountyPublic]:
         .where(Bounty.state == BountyState.LIVE, Bounty.close_requested_at.is_(None))
         .order_by(Bounty.created_at, Bounty.id)
     )
-    return [await _public(session, bounty) for bounty in live]
+    return [await public_view(session, bounty) for bounty in live]
 
 
 @router.get("/bounties/{bounty_id}")
@@ -65,7 +65,7 @@ async def get_bounty(bounty_id: uuid.UUID, session: Transaction) -> BountyPublic
     bounty = await session.get(Bounty, bounty_id)
     if bounty is None or bounty.live_config_id is None:
         raise HTTPException(404, "bounty not found")
-    return await _public(session, bounty)
+    return await public_view(session, bounty)
 
 
 @router.post("/bounties/{bounty_id}/attempts", status_code=202)

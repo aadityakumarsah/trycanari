@@ -21,6 +21,15 @@ function proxy(request: Request): Promise<Response> {
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 5173),
   development: true,
-  routes: { "/v1/*": proxy, "/health": proxy, "/*": index },
+  routes: {
+    "/v1/*": proxy,
+    "/health": proxy,
+    "/agent.md": proxy,
+    "/docs": proxy,
+    "/openapi.json": proxy,
+    // In a build these are copied next to the bundle; here they are served from public/.
+    "/app/fonts/*": (request) => new Response(Bun.file(`./public/fonts/${new URL(request.url).pathname.split("/").pop()}`)),
+    "/*": index,
+  },
 });
 console.log(`web app on ${server.url} (API: ${api})`);
