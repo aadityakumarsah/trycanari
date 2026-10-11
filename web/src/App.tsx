@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { messageOf } from "./api.ts";
@@ -13,6 +13,9 @@ import { useSession } from "./session.tsx";
 
 type Mode = "human" | "agent";
 
+const REPOSITORY = "https://github.com/aadityakumarsah/trycanari";
+
+// In-page sections of the landing page. Each is a real destination.
 const SECTIONS: [string, string][] = [
   ["Bounties", "/#bounties"],
   ["How it works", "/#how"],
@@ -20,12 +23,86 @@ const SECTIONS: [string, string][] = [
   ["FAQ", "/#faq"],
 ];
 
-function Header({ onNavigate }: { onNavigate: () => void }) {
-  const { session, signOut } = useSession();
+/** Closes a menu on Escape or on a click anywhere outside it. */
+function useDismiss(open: boolean, close: () => void, inside: string): void {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && close();
+    const onClick = (event: MouseEvent) => {
+      if (!(event.target as Element).closest(inside)) close();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("click", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("click", onClick);
+    };
+  }, [open, close, inside]);
+}
+
+/** The signed-in sponsor: who they are, with the way to the dashboard and out. */
+function Account({ email, onNavigate }: { email: string; onNavigate: () => void }) {
+  const { signOut } = useSession();
   const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(open, close, ".user");
+  const name = email.split("@")[0] ?? email;
+
+  return (
+    <div className="user">
+      <button
+        type="button"
+        className="user-chip"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-controls="account-menu"
+        onClick={() => setOpen((shown) => !shown)}
+      >
+        <span className="avatar" aria-hidden="true">
+          {name.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="user-name">{name}</span>
+        <Icon name="down" size={14} />
+      </button>
+      {open && (
+        <div id="account-menu" className="drop-menu user-menu" role="menu">
+          <p className="user-email">{email}</p>
+          <Link
+            role="menuitem"
+            to="/dashboard"
+            onClick={() => {
+              onNavigate();
+              close();
+            }}
+          >
+            <Icon name="grid" /> Dashboard
+          </Link>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onNavigate();
+              close();
+              void signOut().then(() => navigate("/"));
+            }}
+          >
+            <Icon name="logout" /> Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Header({ onNavigate }: { onNavigate: () => void }) {
+  const { session } = useSession();
   const location = useLocation();
   const [menu, setMenu] = useState(false);
   const [product, setProduct] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const closeProduct = useCallback(() => setProduct(false), []);
+  useDismiss(product, closeProduct, ".drop");
 
   // Any navigation closes whatever was open.
   useEffect(() => {
@@ -33,18 +110,18 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
     setProduct(false);
   }, [location]);
   useEffect(() => {
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMenu(false);
-        setProduct(false);
-      }
-    };
-    document.addEventListener("keydown", close);
-    return () => document.removeEventListener("keydown", close);
+    const update = () => setScrolled(window.scrollY > 8);
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
   }, []);
 
+  // The section link for where the reader is, so the bar shows it.
+  const current = location.pathname === "/" ? `/${location.hash}` : location.pathname;
+  const link = (to: string) => (current === to ? "nav-link current" : "nav-link");
+
   return (
-    <header className="nav">
+    <header className={scrolled ? "nav scrolled" : "nav"}>
       <Link className="brand" to="/" onClick={onNavigate} aria-label="trycanari, home">
         <Wordmark />
       </Link>
@@ -62,65 +139,70 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
           {product && (
             <div id="product-menu" className="drop-menu">
               <Link to="/#bounties" onClick={onNavigate}>
-                <strong>For hunters</strong>
-                <span>Attack live agents and get paid</span>
+                <Icon name="target" size={18} />
+                <span>
+                  <strong>For hunters</strong>
+                  <small>Attack live agents and get paid</small>
+                </span>
               </Link>
               <Link to="/dashboard" onClick={onNavigate}>
-                <strong>For sponsors</strong>
-                <span>List an agent and lock a reward</span>
+                <Icon name="lock" size={18} />
+                <span>
+                  <strong>For sponsors</strong>
+                  <small>List an agent and lock a reward</small>
+                </span>
               </Link>
               <a href="/agent.md">
-                <strong>For agents</strong>
-                <span>The whole platform as one markdown file</span>
+                <Icon name="doc" size={18} />
+                <span>
+                  <strong>For agents</strong>
+                  <small>The whole platform as one markdown file</small>
+                </span>
               </a>
               <a href="/docs">
-                <strong>API reference</strong>
-                <span>Every endpoint, with schemas</span>
+                <Icon name="box" size={18} />
+                <span>
+                  <strong>API reference</strong>
+                  <small>Every endpoint, with schemas</small>
+                </span>
               </a>
             </div>
           )}
         </div>
         {SECTIONS.map(([label, to]) => (
-          <Link key={to} className="nav-link" to={to} onClick={onNavigate}>
+          <Link key={to} className={link(to)} to={to} onClick={onNavigate}>
             {label}
           </Link>
         ))}
         <a className="nav-link" href="/docs">
-          API
+          Docs
+        </a>
+        <a className="nav-link" href="/agent.md">
+          agent.md
         </a>
       </nav>
       <div className="nav-right">
-        <a className="nav-link nav-file" href="/agent.md">
-          <Icon name="doc" size={18} /> agent.md
+        <a className="nav-icon" href={REPOSITORY} target="_blank" rel="noreferrer" aria-label="trycanari on GitHub">
+          <Icon name="github" size={20} />
+          <span>GitHub</span>
         </a>
-        <span className="account">
-          {session?.signed_in ? (
-            <>
-              <button
-                type="button"
-                className="btn-nav"
-                onClick={() => {
-                  onNavigate();
-                  void signOut().then(() => navigate("/"));
-                }}
-              >
-                Sign out
-              </button>
-              <Link className="btn-nav mint" to="/dashboard" onClick={onNavigate}>
-                Dashboard
-              </Link>
-            </>
-          ) : (
-            <>
-              <Link className="btn-nav" to="/login" onClick={onNavigate}>
-                Login
-              </Link>
-              <Link className="btn-nav mint" to="/login" onClick={onNavigate}>
-                Sign Up
-              </Link>
-            </>
-          )}
-        </span>
+        {session?.signed_in ? (
+          <>
+            <Link className="btn-nav mint" to="/dashboard" onClick={onNavigate}>
+              Dashboard
+            </Link>
+            <Account email={session.email ?? "sponsor"} onNavigate={onNavigate} />
+          </>
+        ) : (
+          <span className="account">
+            <Link className="btn-nav" to="/login" onClick={onNavigate}>
+              Login
+            </Link>
+            <Link className="btn-nav mint" to="/login" onClick={onNavigate}>
+              Sign Up
+            </Link>
+          </span>
+        )}
         <button
           type="button"
           className="menu-button"
@@ -150,6 +232,9 @@ function Footer({ onNavigate }: { onNavigate: () => void }) {
         ))}
         <a href="/docs">API reference</a>
         <a href="/agent.md">agent.md</a>
+        <a href={REPOSITORY} target="_blank" rel="noreferrer">
+          GitHub
+        </a>
       </nav>
       <p>
         Every attack runs against a sandboxed copy of the agent with mock tools. Rewards are paid in shielded
