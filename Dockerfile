@@ -4,8 +4,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md alembic.ini ./
 COPY src ./src
+COPY migrations ./migrations
 RUN pip install --no-cache-dir . \
     && useradd --system --uid 10001 --no-create-home app
 

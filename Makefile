@@ -2,13 +2,17 @@
 -include .env
 export
 
-.PHONY: up down test lint typecheck fmt
+.PHONY: up down migrate test lint typecheck fmt
 
 up:
 	docker compose up --build --detach --wait
 
 down:
 	docker compose down
+
+# Apply migrations to the database in DATABASE_URL.
+migrate:
+	uv run alembic upgrade head
 
 test:
 	uv run pytest

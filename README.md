@@ -16,17 +16,26 @@ curl http://127.0.0.1:8000/health    # {"status":"ok"}
 make down
 ```
 
+`make up` does not migrate. Apply the schema to the database in `DATABASE_URL` with
+`make migrate` from the host, or inside the stack with
+`docker compose run --rm api alembic upgrade head`.
+
 `db` is PostgreSQL 16 with a named volume. `api` starts only after `db` is healthy.
 `worker` and `payment` idle for now; they are built in later steps.
 
 ### Tests and checks
 
 ```sh
-make test         # pytest; needs the database in DATABASE_URL to be reachable
+make migrate      # alembic upgrade head
+make test         # pytest; needs the server in DATABASE_URL to be reachable
 make lint         # ruff check and ruff format --check
 make typecheck    # mypy --strict over src and tests
 make fmt          # apply ruff fixes and formatting
 ```
+
+The tests never touch the database named in `DATABASE_URL`. They connect to that server,
+create a scratch database, apply the migrations to it and drop it afterwards, so the
+role needs permission to create databases.
 
 `make test` reads `DATABASE_URL` from `.env`. With the Compose stack up, the value in
 `.env.example` points at its database on `localhost:5433`.
@@ -68,7 +77,8 @@ src/agentbounty/
   api/           HTTP routes
   services/      bounty, judge, harness, payment
   workers/       Background processes
-  models/        Database models
+  models/        Database models and enum types
   templates/     Jinja2 templates
+migrations/      Alembic environment and versions
 tests/
 ```

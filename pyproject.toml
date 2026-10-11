@@ -53,7 +53,7 @@ select = ["E", "F", "W", "I", "B", "UP", "N", "S", "SIM", "PT", "T20", "ASYNC", 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "migrations"]
 plugins = ["pydantic.mypy"]
 
 [tool.pydantic-mypy]
