@@ -51,11 +51,13 @@ select = ["E", "F", "W", "I", "B", "UP", "N", "S", "SIM", "PT", "T20", "ASYNC", 
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, and their canary secrets are fixtures, not credentials.
 "tests/**" = ["S101", "S105", "S106"]
+# The smoke script is a command-line tool: it prints.
+"scripts/**" = ["T20"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "tests", "migrations"]
+files = ["src", "tests", "migrations", "scripts"]
 plugins = ["pydantic.mypy"]
 
 [tool.pydantic-mypy]

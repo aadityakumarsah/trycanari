@@ -15,7 +15,10 @@ def environment(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:hunter2@localhost/db")
     monkeypatch.setenv("ENCRYPTION_KEY", generate_key())
     monkeypatch.setenv("MODEL_BACKEND", "fake")
-    for optional in ("MODEL_API_BASE", "MODEL_API_KEY", "FEE_RATE"):
+    monkeypatch.setenv("WALLET_BACKEND", "fake")
+    for optional in ("MODEL_API_BASE", "MODEL_API_KEY", "FEE_RATE", "ZCASH_NETWORK"):
+        monkeypatch.delenv(optional, raising=False)
+    for optional in ("ZIPHER_CLI_PATH", "ZIPHER_DATA_DIR", "ZIPHER_SERVER", "ZIPHER_SEED"):
         monkeypatch.delenv(optional, raising=False)
     return monkeypatch
 
@@ -75,4 +78,29 @@ def test_the_fake_model_is_refused_in_production(environment: pytest.MonkeyPatch
     environment.setenv("MODEL_BACKEND", "real")
     environment.setenv("MODEL_API_BASE", "https://model.test/v1")
     environment.setenv("MODEL_API_KEY", "key-123")
+    with pytest.raises(SettingsError, match="WALLET_BACKEND=fake is not allowed"):
+        load_settings()
+    environment.setenv("WALLET_BACKEND", "zcash")
+    environment.setenv("ZIPHER_CLI_PATH", "/usr/local/bin/zipher-cli")
+    environment.setenv("ZIPHER_DATA_DIR", "/wallets/escrow")
     assert not load_settings().allow_unfunded_activation
+
+
+def test_the_wallet_defaults_to_fake_and_zcash_needs_a_binary_and_a_wallet(
+    environment: pytest.MonkeyPatch,
+) -> None:
+    environment.delenv("WALLET_BACKEND")
+    settings = load_settings()
+    assert (settings.wallet_backend, settings.zcash_network) == ("fake", "testnet")
+
+    environment.setenv("WALLET_BACKEND", "zcash")
+    with pytest.raises(SettingsError, match="needs ZIPHER_CLI_PATH and ZIPHER_DATA_DIR"):
+        load_settings()
+    environment.setenv("ZIPHER_CLI_PATH", "/usr/local/bin/zipher-cli")
+    environment.setenv("ZIPHER_DATA_DIR", "/wallets/escrow")
+    environment.setenv("ZIPHER_VAULT_PASS", "passphrase")
+    environment.setenv("ZIPHER_SEED", "abandon ability able")
+    settings = load_settings()
+    assert settings.wallet_backend == "zcash"
+    assert "passphrase" not in repr(settings)
+    assert "abandon" not in repr(settings)

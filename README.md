@@ -69,6 +69,10 @@ to start, naming the variable, if a required one is missing or invalid.
 | `ENCRYPTION_KEY` | app | 32 random bytes, base64. Encrypts system prompts, tool definitions and canary secrets |
 | `MODEL_BACKEND` | app | `fake` (deterministic, no key, refused in production) or `real` |
 | `MODEL_API_BASE`, `MODEL_API_KEY` | app | OpenAI-compatible chat completions endpoint and its key. Required when `MODEL_BACKEND=real` |
+| `WALLET_BACKEND` | app | `fake` (in-memory, the default, refused in production) or `zcash` |
+| `ZCASH_NETWORK` | app | `testnet` (default) or `mainnet` |
+| `ZIPHER_CLI_PATH`, `ZIPHER_DATA_DIR`, `ZIPHER_SERVER` | wallet | The zipher-cli binary, its wallet directory and the lightwalletd server. The first two are required when `WALLET_BACKEND=zcash` |
+| `ZIPHER_VAULT_PASS`, `ZIPHER_SEED` | wallet | What unlocks the seed for signing. Passed only to the signing step |
 | `FEE_RATE` | app | The platform fee as a fraction of the reward. Default `0.1` |
 | `WORKER_POLL_SECONDS`, `ATTEMPT_TIMEOUT_SECONDS`, `ATTEMPT_MAX_TRIES` | worker | Queue polling interval, how long a running attempt may go before its worker is taken for dead, and how many tries an attempt gets. Defaults `2`, `900`, `3` |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Compose | Credentials and database for the `db` service |
@@ -102,6 +106,44 @@ the config it was bound to ends as `not_counted`.
 Until funding exists, a bounty can be activated without a deposit when `APP_ENV` is
 `development` or `test`. In `production`, activation is refused.
 
+## The wallet
+
+Everything that touches the chain goes through `WalletBackend`, which has exactly three
+methods: `list_incoming(since_cursor)`, `send_payment(to_address, amount_zatoshi,
+memo_text)` and `get_balance()`. `validate_address` checks that an address is a
+well-formed shielded address for the network, checksum included.
+
+`WALLET_BACKEND=fake` is an in-memory wallet on a pretend chain. It needs no network and
+is what the tests and local development use. `WALLET_BACKEND=zcash` drives a real light
+wallet by running the zipher-cli binary (tested with v0.2.0) in JSON mode. A send is two steps: `send propose` builds the transaction without
+the seed, and `send confirm` signs and broadcasts it. Only the second is given
+`ZIPHER_VAULT_PASS` or `ZIPHER_SEED`.
+
+### Smoke test on testnet
+
+Run by hand; it is not part of the test suite. It needs the zipher-cli binary and a
+testnet wallet made with it (`zipher-cli --data-dir <dir> --testnet wallet create`).
+
+```sh
+export WALLET_BACKEND=zcash ZCASH_NETWORK=testnet
+export ZIPHER_CLI_PATH=/path/to/zipher-cli ZIPHER_DATA_DIR=/path/to/wallet
+export ZIPHER_SERVER=https://testnet.zec.rocks:443
+export ZIPHER_VAULT_PASS=          # the vault passphrase; empty if it was made without one
+PYTHONPATH=src uv run python scripts/wallet_smoke.py <shielded testnet address>
+```
+
+It prints the wallet's address and spendable balance, lists recent incoming payments,
+and sends 0.001 ZEC with a memo to the address you pass. The wallet needs testnet funds
+first: send some to the printed address from a faucet and wait for a few confirmations.
+With an empty wallet the send step fails with the wallet's own error and nothing is sent.
+
+Status of the real backend: reading the address, the balance and incoming payments has
+been run against a testnet wallet with zipher-cli v0.2.0. A send has not, because that
+wallet holds no funds. With no funds, `send propose` answers "Wallet not synced yet
+(synced: 0, tip: 0)" even straight after a sync; whether a funded wallet gets past that
+is what this script is for. If it does not, the backend is replaced behind the same
+three methods and nothing else changes.
+
 ## Layout
 
 ```
@@ -110,10 +152,11 @@ src/agentbounty/
   settings.py    Environment-driven settings
   db.py          Async engine, session factory, get_session dependency
   api/           HTTP routes
-  services/      bounty, attempts, judge, harness, model, crypto, ledger, payment
+  services/      bounty, attempts, judge, harness, model, wallet, crypto, ledger, payment
   workers/       replay: the worker that turns attempts into verdicts
   models/        Database models and enum types
   templates/     Jinja2 templates
 migrations/      Alembic environment and versions
+scripts/         wallet_smoke.py: manual testnet check of the real wallet
 tests/
 ```

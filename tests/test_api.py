@@ -218,6 +218,9 @@ async def test_in_production_a_bounty_cannot_go_live_unfunded(service_settings: 
             "model_backend": "real",
             "model_api_base": "https://model.test/v1",
             "model_api_key": SecretStr("key"),
+            "wallet_backend": "zcash",
+            "zipher_cli_path": "/usr/local/bin/zipher-cli",
+            "zipher_data_dir": "/wallets/escrow",
         }
     )
     app = create_app(production)

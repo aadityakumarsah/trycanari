@@ -33,6 +33,17 @@ class Settings(BaseSettings):
     model_api_base: str | None = None
     model_api_key: SecretStr | None = None
 
+    # "fake" is the in-memory FakeWallet; "zcash" drives the zipher-cli light wallet.
+    wallet_backend: Literal["fake", "zcash"] = "fake"
+    zcash_network: Literal["testnet", "mainnet"] = "testnet"
+    # The zipher-cli binary, its wallet directory, and the lightwalletd server it talks to.
+    zipher_cli_path: str | None = None
+    zipher_data_dir: str | None = None
+    zipher_server: str | None = None
+    # What unlocks the seed for signing: the vault passphrase, or the seed phrase itself.
+    zipher_vault_pass: SecretStr | None = None
+    zipher_seed: SecretStr | None = None
+
     # The platform's fee, as a fraction of the reward.
     fee_rate: Decimal = Field(default=Decimal("0.1"), ge=0, le=1)
 
@@ -41,7 +52,15 @@ class Settings(BaseSettings):
     attempt_timeout_seconds: float = Field(default=900.0, gt=0)
     attempt_max_tries: int = Field(default=3, ge=1)
 
-    @field_validator("model_api_base", "model_api_key", mode="before")
+    @field_validator(
+        "model_api_base",
+        "model_api_key",
+        "zipher_cli_path",
+        "zipher_data_dir",
+        "zipher_server",
+        "zipher_seed",
+        mode="before",
+    )
     @classmethod
     def _empty_is_unset(cls, value: object) -> object:
         return None if value == "" else value
@@ -71,6 +90,15 @@ class Settings(BaseSettings):
         # FakeModel does whatever an attacker's message says, so every attack would be paid.
         if self.model_backend == "fake" and self.app_env == "production":
             raise ValueError("MODEL_BACKEND=fake is not allowed when APP_ENV=production")
+        return self
+
+    @model_validator(mode="after")
+    def _wallet_backend_is_usable(self) -> Self:
+        if self.wallet_backend == "zcash" and not (self.zipher_cli_path and self.zipher_data_dir):
+            raise ValueError("WALLET_BACKEND=zcash needs ZIPHER_CLI_PATH and ZIPHER_DATA_DIR")
+        # A fake wallet in production would record payouts that were never sent.
+        if self.wallet_backend == "fake" and self.app_env == "production":
+            raise ValueError("WALLET_BACKEND=fake is not allowed when APP_ENV=production")
         return self
 
     @property

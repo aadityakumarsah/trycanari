@@ -6,6 +6,7 @@ x-app: &app
     MODEL_BACKEND: ${MODEL_BACKEND:?set MODEL_BACKEND in .env}
     MODEL_API_BASE: ${MODEL_API_BASE:-}
     MODEL_API_KEY: ${MODEL_API_KEY:-}
+    WALLET_BACKEND: ${WALLET_BACKEND:-fake}
     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
   depends_on:
     db:
