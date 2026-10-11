@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentbounty.api.session import session_key
 from agentbounty.db import get_transaction
 from agentbounty.models import Bounty, Sponsor
 from agentbounty.services import bounty as bounty_service
@@ -34,10 +35,26 @@ def bearer_token(authorization: Annotated[str | None, Header()] = None) -> str:
     return token.strip()
 
 
+def sponsor_key(request: Request, authorization: Annotated[str | None, Header()] = None) -> str:
+    """The caller's API key: a bearer token from a script, or the session cookie of a browser.
+
+    A bearer token wins. A cookie is honoured only on a request that provably
+    came from this site (see api/session.py).
+    """
+    if authorization is not None:
+        return bearer_token(authorization)
+    key = session_key(request)
+    if key is None:
+        raise HTTPException(
+            401, "sign in or send an API key", headers={"WWW-Authenticate": "Bearer"}
+        )
+    return key
+
+
 async def current_sponsor(
-    session: Transaction, token: Annotated[str, Depends(bearer_token)]
+    session: Transaction, key: Annotated[str, Depends(sponsor_key)]
 ) -> Sponsor:
-    sponsor = await bounty_service.sponsor_for_key(session, token)
+    sponsor = await bounty_service.sponsor_for_key(session, key)
     if sponsor is None:
         raise HTTPException(401, "unknown API key", headers={"WWW-Authenticate": "Bearer"})
     return sponsor

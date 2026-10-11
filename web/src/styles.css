@@ -32,7 +32,6 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 sys
 a { color: var(--accent); }
 .top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .top nav { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-left: auto; }
-.top form { margin: 0; }
 .brand { color: var(--text); font-weight: 700; text-decoration: none; }
 main { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
 h1 { margin: 0 0 10px; font-size: 28px; line-height: 1.2; }
@@ -53,9 +52,10 @@ section > h2 { padding-bottom: 6px; border-bottom: 1px solid var(--line); }
 .reward span { color: var(--muted); font-size: 13px; }
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0 0; }
 .facts div { padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
-dt { color: var(--muted); font-size: 13px; }
+dt, .label { display: block; color: var(--muted); font-size: 13px; }
 dd { margin: 2px 0 0; overflow-wrap: anywhere; }
-.copy dd { margin-bottom: 10px; }
+.copy { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.copy div { flex: 1; min-width: 0; }
 .tags, .list { margin: 0; padding: 0; list-style: none; }
 .tags li, .tag { display: inline-block; margin: 2px 6px 2px 0; padding: 1px 8px; border: 1px solid var(--line); border-radius: 4px; font-size: 14px; }
 .list li { padding: 10px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
@@ -67,12 +67,14 @@ dd { margin: 2px 0 0; overflow-wrap: anywhere; }
 form { margin: 0 0 8px; }
 label { display: block; margin-bottom: 14px; font-size: 14px; font-weight: 600; }
 label small { display: block; margin-top: 4px; font-weight: 400; }
-label.check { display: inline-flex; align-items: center; gap: 6px; margin: 0 16px 0 0; font-weight: 400; }
+label.check { display: inline-flex; align-items: center; gap: 6px; margin: 0 16px 0 0; font-weight: 400; text-transform: capitalize; }
 fieldset { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; }
 legend { padding: 0 4px; font-size: 14px; font-weight: 600; }
 input:not([type="checkbox"]), textarea, select { display: block; width: 100%; margin-top: 5px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; }
-textarea, input[spellcheck="false"] { font-family: var(--mono); font-size: 14px; }
+textarea, input.code { font-family: var(--mono); font-size: 14px; }
 button, .button { display: inline-block; padding: 8px 16px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent); color: var(--bg); font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
+button:disabled { opacity: 0.6; cursor: progress; }
+button.secondary { background: transparent; color: var(--accent); }
 button.danger { border-color: var(--bad); background: transparent; color: var(--bad); }
 button.link { padding: 0; border: 0; background: none; color: var(--accent); font-weight: 400; text-decoration: underline; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -81,7 +83,6 @@ button.link { padding: 0; border: 0; background: none; color: var(--accent); fon
 .notice { background: var(--warn-bg); color: var(--warn); }
 .done, .paid { background: var(--accent-bg); color: var(--accent); }
 .error { background: var(--bad-bg); color: var(--bad); }
-.status { min-height: 1px; }
 pre, code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 pre { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); white-space: pre-wrap; }
 .secret { font-size: 15px; }

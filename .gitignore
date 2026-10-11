@@ -6,3 +6,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 dist/
+
+# The built web app (see web/): produced by `make web-build`, never committed.
+src/agentbounty/static/app/
+web/node_modules/

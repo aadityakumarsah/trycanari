@@ -1,8 +1,0 @@
-{% extends "base.html" %}
-{% block title %}Your API key{% endblock %}
-{% block content %}
-  <h1>Your API key</h1>
-  <p class="notice">This is the only time the key is shown. Copy it somewhere safe: it signs you in and authenticates scripts.</p>
-  <pre class="secret">{{ api_key }}</pre>
-  <p><a class="button" href="/dashboard">Continue to the dashboard</a></p>
-{% endblock %}

@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: up down migrate seed e2e test lint typecheck fmt
+.PHONY: up down migrate seed e2e test lint typecheck fmt web-install web-build web-dev web-test web-typecheck check
 
 up:
 	docker compose up --build --detach --wait
@@ -36,3 +36,25 @@ typecheck:
 fmt:
 	uv run ruff check --fix .
 	uv run ruff format .
+
+# --- the web app (web/): React and TypeScript, built and tested with Bun ---
+
+web-install:
+	cd web && bun install --frozen-lockfile
+
+# Builds into src/agentbounty/static/app, where the API serves it.
+web-build: web-install
+	cd web && bun run build
+
+# Hot-reloading pages on :5173, with /v1 proxied to the API (API_URL, default :8000).
+web-dev: web-install
+	cd web && bun run dev
+
+web-test: web-install
+	cd web && bun test
+
+web-typecheck: web-install
+	cd web && bun run typecheck
+
+# Everything CI runs.
+check: lint typecheck test web-typecheck web-test web-build

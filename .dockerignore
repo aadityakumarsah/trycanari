@@ -6,3 +6,5 @@
 .pytest_cache
 .ruff_cache
 tests
+web/node_modules
+src/agentbounty/static/app

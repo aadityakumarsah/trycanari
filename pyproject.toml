@@ -10,10 +10,8 @@ dependencies = [
     "cryptography>=43",
     "fastapi>=0.115",
     "httpx>=0.27",
-    "jinja2>=3.1",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
-    "python-multipart>=0.0.9",
     "sqlalchemy[asyncio]>=2.0.30",
     "uvicorn[standard]>=0.30",
 ]
@@ -32,6 +30,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentbounty"]
+# The built web app is ignored by git but belongs in the wheel.
+artifacts = ["src/agentbounty/static/app/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

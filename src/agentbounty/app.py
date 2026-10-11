@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from agentbounty.api import health, public, sponsor
+from agentbounty.api import health, public, session, spa, sponsor
 from agentbounty.api.ratelimit import RateLimiter
 from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
@@ -19,7 +19,6 @@ from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.wallet import escrow_address
 from agentbounty.settings import Settings, load_settings
-from agentbounty.web import routes as web
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -50,5 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(sponsor.router)
     app.include_router(public.router)
-    web.install(app)
+    app.include_router(session.router)
+    # Last: it answers every path the routes above did not claim.
+    spa.install(app)
     return app

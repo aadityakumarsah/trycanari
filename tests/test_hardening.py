@@ -39,6 +39,8 @@ from .platform import (
 )
 from .test_worker import CountingModel
 
+SAME_ORIGIN = {"Origin": "http://test", "Sec-Fetch-Site": "same-origin"}
+
 # --- rate limits ----------------------------------------------------------------------------
 
 
@@ -58,12 +60,12 @@ async def test_public_endpoints_are_limited_per_client_address(service_settings:
         assert (
             await client.get("/v1/attempts/00000000-0000-0000-0000-000000000000")
         ).status_code == 429
-        # The pages are a client of the API and are counted against the same caller.
-        page = await client.get("/")
-        assert page.status_code == 429
-        assert "too many requests" in page.text
-        # Health checks are not rate limited.
+        assert (
+            await client.post("/v1/session", json={"api_key": "sk_x"}, headers=SAME_ORIGIN)
+        ).status_code == 429
+        # Health checks and the app's own files are not rate limited.
         assert (await client.get("/health")).status_code == 200
+        assert (await client.get("/")).status_code in (200, 503)
 
 
 def test_the_window_slides_and_clients_are_counted_apart(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -22,8 +22,8 @@ from typing import Any
 
 import httpx
 
+from agentbounty.money import format_zec, parse_zec
 from agentbounty.services.wallet import bech32_encode
-from agentbounty.web.formatting import format_zec, parse_zec
 
 SECRET = "TREASURY-KEY-7f3a9c21e8b4"  # noqa: S105 - the demo's planted canary, not a credential
 ALLOWED_RECIPIENTS = ["payroll-ops", "vendor-acme"]
