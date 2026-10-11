@@ -102,7 +102,7 @@ def set_session_cookie(request: Request, response: Response, value: str) -> None
         max_age=MAX_AGE_SECONDS,
         httponly=True,
         samesite="strict",
-        secure=request.app.state.settings.app_env == "production",
+        secure=request.app.state.settings.secure_cookies,
         path="/",
     )
 

@@ -8,9 +8,11 @@ import { Icon } from "../components/Brand.tsx";
 import { Ago, Avatar, ErrorNote, Skeleton } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
 import { useToast } from "../toast.tsx";
-import type { AdminCode, Person } from "../types.ts";
+import type { AdminCode, Page, Person } from "../types.ts";
 
-/** A switch for one thing about one person. It shows the change at once and takes it back if refused. */
+const PAGE = 25;
+
+/** A switch for one thing about one person. */
 function Toggle({
   label,
   on,
@@ -42,20 +44,40 @@ function Toggle({
   );
 }
 
+/** Previous and next, with where you are, for a list too long to show at once. */
+function Pager({ offset, total, onMove }: { offset: number; total: number; onMove: (offset: number) => void }) {
+  if (total <= PAGE) return null;
+  const last = Math.min(offset + PAGE, total);
+  return (
+    <nav className="pager" aria-label="Pages">
+      <span className="muted">
+        {offset + 1}–{last} of {total}
+      </span>
+      <button type="button" className="secondary small-button" disabled={offset === 0} onClick={() => onMove(Math.max(0, offset - PAGE))}>
+        Previous
+      </button>
+      <button type="button" className="secondary small-button" disabled={last >= total} onClick={() => onMove(offset + PAGE)}>
+        Next
+      </button>
+    </nav>
+  );
+}
+
 function People() {
   const [typed, setTyped] = useState("");
   const [query, setQuery] = useState("");
-  const people = useLoad(
-    (signal) => api<Person[]>("GET", `/v1/admin/people${query ? `?q=${encodeURIComponent(query)}` : ""}`, { signal }),
-    query,
-    `admin:people:${query}`,
-  );
+  const [offset, setOffset] = useState(0);
+  const address = `/v1/admin/people?limit=${PAGE}&offset=${offset}${query ? `&q=${encodeURIComponent(query)}` : ""}`;
+  const people = useLoad((signal) => api<Page<Person>>("GET", address, { signal }), address);
   const me = useAccount().data;
   const toast = useToast();
 
-  // Search a moment after typing stops, not on every letter.
+  // Search a moment after typing stops, not on every letter, and from the first page.
   useEffect(() => {
-    const timer = setTimeout(() => setQuery(typed.trim()), 300);
+    const timer = setTimeout(() => {
+      setQuery(typed.trim());
+      setOffset(0);
+    }, 300);
     return () => clearTimeout(timer);
   }, [typed]);
 
@@ -69,7 +91,8 @@ function People() {
     await people.reload();
   }
 
-  const list = people.data ?? [];
+  const list = people.data?.items ?? [];
+  const total = people.data?.total ?? 0;
   const who = (person: Person) => person.name ?? person.email;
   return (
     <section>
@@ -85,7 +108,7 @@ function People() {
           />
         </label>
         <span className="muted count-note">
-          {list.length} {list.length === 1 ? "person" : "people"}
+          {total} {total === 1 ? "person" : "people"}
         </span>
       </div>
       <ErrorNote>{people.error}</ErrorNote>
@@ -128,8 +151,14 @@ function People() {
                     <Toggle
                       label={`Let ${who(person)} take part in bounties`}
                       on={person.can_hunt}
-                      locked={person.can_hunt ? "Access, once given, stays" : undefined}
-                      onChange={() => change(person, { can_hunt: true }, `${who(person)} can hunt now`)}
+                      locked={person.referral_code ? "Joined with an invite, which cannot be taken back" : undefined}
+                      onChange={(next) =>
+                        change(
+                          person,
+                          { hunting_granted: next },
+                          next ? `${who(person)} can hunt now` : `${who(person)} can no longer hunt`,
+                        )
+                      }
                     />
                   </td>
                   <td>
@@ -171,86 +200,89 @@ function People() {
           </table>
         </div>
       )}
+      <Pager offset={offset} total={total} onMove={setOffset} />
     </section>
   );
 }
 
 function Codes() {
-  const codes = useLoad((signal) => api<AdminCode[]>("GET", "/v1/admin/referral-codes", { signal }), "codes", "admin:codes");
-  const [uses, setUses] = useState("10");
+  const [offset, setOffset] = useState(0);
+  const address = `/v1/admin/referral-codes?limit=${PAGE}&offset=${offset}`;
+  const codes = useLoad((signal) => api<Page<AdminCode>>("GET", address, { signal }), address);
+  const [count, setCount] = useState("1");
   const [custom, setCustom] = useState("");
   const making = useAction();
   const toast = useToast();
+  const many = Number(count) > 1;
 
   async function make(event: FormEvent) {
     event.preventDefault();
     await making.run(async () => {
-      const body = { max_uses: Number(uses), ...(custom.trim() ? { code: custom.trim() } : {}) };
-      const made = await api<AdminCode>("POST", "/v1/admin/referral-codes", { body });
-      await navigator.clipboard.writeText(inviteLink(made.code)).catch(() => undefined);
+      const body = { count: Number(count), ...(custom.trim() && !many ? { code: custom.trim() } : {}) };
+      const made = await api<AdminCode[]>("POST", "/v1/admin/referral-codes", { body });
+      await navigator.clipboard.writeText(made.map((item) => inviteLink(item.code)).join("\n")).catch(() => undefined);
       setCustom("");
+      setOffset(0);
       await codes.reload();
-      toast(`${made.code} created. Its invite link is copied.`);
+      toast(made.length === 1 ? `${made[0]?.code} created. Its link is copied.` : `${made.length} invites created. Their links are copied.`);
     });
   }
 
-  const list = codes.data ?? [];
-  const joined = list.reduce((sum, code) => sum + code.used, 0);
+  const list = codes.data?.items ?? [];
+  const total = codes.data?.total ?? 0;
   return (
     <section>
       <form className="panel code-maker" onSubmit={(event) => void make(event)}>
         <div>
-          <h2>New referral code</h2>
-          <p className="muted">
-            Anyone who opens its invite link can take part in bounties, until its places run out.
-          </p>
+          <h2>New invites</h2>
+          <p className="muted">Each invite link lets one person take part in bounties, and works once.</p>
         </div>
         <label>
-          Places
+          How many
           <input
             required
             type="number"
             min={1}
-            max={10000}
+            max={500}
             inputMode="numeric"
-            value={uses}
-            onChange={(event) => setUses(event.target.value)}
+            value={count}
+            onChange={(event) => setCount(event.target.value)}
           />
         </label>
         <label>
-          Code <small>optional</small>
+          Code <small>optional, for one</small>
           <input
             className="code"
-            placeholder="Generated if empty"
-            minLength={4}
+            placeholder={many ? "Generated" : "Generated if empty"}
+            minLength={6}
             maxLength={32}
             pattern="[A-Za-z0-9\-]+"
             spellCheck={false}
-            value={custom}
+            disabled={many}
+            value={many ? "" : custom}
             onChange={(event) => setCustom(event.target.value.toUpperCase())}
           />
         </label>
         <button className="accent" disabled={making.busy}>
-          <Icon name="plus" size={15} /> {making.busy ? "Creating…" : "Create and copy link"}
+          <Icon name="plus" size={15} /> {making.busy ? "Creating…" : "Create and copy"}
         </button>
         <ErrorNote>{making.error}</ErrorNote>
       </form>
 
       <ErrorNote>{codes.error}</ErrorNote>
       {!codes.data && !codes.error && <Skeleton lines={4} />}
-      {codes.data && list.length === 0 && <p className="empty">No referral code has been made yet.</p>}
+      {codes.data && total === 0 && <p className="empty">No invite has been made yet.</p>}
       {list.length > 0 && (
         <>
           <p className="muted count-note">
-            {list.length} {list.length === 1 ? "code" : "codes"}, {joined} {joined === 1 ? "person" : "people"} brought
-            in.
+            {total} {total === 1 ? "invite" : "invites"} in all.
           </p>
           <div className="scroll">
             <table className="people">
               <thead>
                 <tr>
                   <th>Code</th>
-                  <th>Places used</th>
+                  <th>Status</th>
                   <th>Made by</th>
                   <th>Created</th>
                   <th />
@@ -258,32 +290,33 @@ function Codes() {
               </thead>
               <tbody>
                 {list.map((code) => (
-                  <tr key={code.code}>
+                  <tr key={code.code} className={code.used_by ? "spent" : undefined}>
                     <td>
                       <code className="code-chip">{code.code}</code>
                     </td>
                     <td>
-                      <span className="use">
-                        <span className="meter" role="img" aria-label={`${code.used} of ${code.max_uses} places used`}>
-                          <i className={`fill p${Math.min(100, Math.round((code.used / code.max_uses) * 10) * 10)}`} />
-                        </span>
-                        {code.used} / {code.max_uses}
-                      </span>
+                      {code.used_by ? (
+                        <span className="muted">Used by {code.used_by}</span>
+                      ) : (
+                        <span className="badge badge-live">available</span>
+                      )}
                     </td>
                     <td>{code.owner_email ?? "The operator"}</td>
                     <td>
                       <Ago iso={code.created_at} />
                     </td>
                     <td className="num">
-                      <button
-                        type="button"
-                        className="secondary small-button"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(inviteLink(code.code)).then(() => toast("Invite link copied"));
-                        }}
-                      >
-                        <Icon name="link" size={14} /> Copy link
-                      </button>
+                      {!code.used_by && (
+                        <button
+                          type="button"
+                          className="secondary small-button"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(inviteLink(code.code)).then(() => toast("Invite link copied"));
+                          }}
+                        >
+                          <Icon name="link" size={14} /> Copy link
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -292,19 +325,20 @@ function Codes() {
           </div>
         </>
       )}
+      <Pager offset={offset} total={total} onMove={setOffset} />
     </section>
   );
 }
 
 const TABS = ["people", "codes"] as const;
 
-export function Admin() {
+/** The admin area. It is loaded only for an admin: nobody else's browser is sent this code. */
+export default function Admin() {
   const account = useAccount();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "codes" ? "codes" : "people";
 
   if (!account.data) return account.error ? <ErrorNote>{account.error}</ErrorNote> : <Skeleton block lines={4} />;
-  // Not an admin: as far as they are concerned there is no such page.
   if (!account.data.is_admin) return <NotFound />;
 
   return (
@@ -316,7 +350,8 @@ export function Admin() {
         </div>
       </div>
       <p className="lede">
-        Decide who can hunt, who can invite others, and who helps you run trycanari. Changes take effect at once.
+        Decide who can hunt, who can invite others, and who helps you run trycanari. Changes take effect at once
+        and are logged.
       </p>
       <div className="tabs" role="tablist" aria-label="Admin">
         {TABS.map((name) => (
@@ -328,7 +363,7 @@ export function Admin() {
             className={tab === name ? "tab current" : "tab"}
             onClick={() => setParams(name === "people" ? {} : { tab: name }, { replace: true })}
           >
-            {name === "people" ? "People" : "Referral codes"}
+            {name === "people" ? "People" : "Invites"}
           </button>
         ))}
       </div>

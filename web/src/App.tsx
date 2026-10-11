@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { pictureOf, useAccount } from "./account.tsx";
@@ -12,13 +12,27 @@ import { DashboardBounty } from "./pages/DashboardBounty.tsx";
 import { Home } from "./pages/Home.tsx";
 import { Login } from "./pages/Login.tsx";
 import { MyAttempts, useSavedAttempts } from "./pages/MyAttempts.tsx";
-import { Admin } from "./pages/Admin.tsx";
 import { InvitePage } from "./pages/Invite.tsx";
 import { Profile } from "./pages/Profile.tsx";
 import { useSession } from "./session.tsx";
 import { dismissSplash } from "./splash.ts";
 
 type Mode = "human" | "agent";
+
+// Fetched only when an admin opens it, so the admin area's code is never sent to anyone else.
+const Admin = lazy(() => import("./pages/Admin.tsx"));
+
+/** The admin area for an admin, and "Not found" for everyone else, without loading it. */
+function AdminGate() {
+  const account = useAccount();
+  if (!account.data) return account.error ? <NotFound /> : <Skeleton block lines={4} />;
+  if (!account.data.is_admin) return <NotFound />;
+  return (
+    <Suspense fallback={<Skeleton block lines={4} />}>
+      <Admin />
+    </Suspense>
+  );
+}
 
 const REPOSITORY = "https://github.com/aadityakumarsah/trycanari";
 
@@ -443,7 +457,7 @@ export function App() {
               element={
                 <Page wide>
                   <Private>
-                    <Admin />
+                    <AdminGate />
                   </Private>
                 </Page>
               }

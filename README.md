@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="472 tests" src="https://img.shields.io/badge/tests-472%20passing-6ee7b7" />
+  <img alt="476 tests" src="https://img.shields.io/badge/tests-476%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Zcash" src="https://img.shields.io/badge/payouts-shielded%20ZEC-F4B728?logo=zcash&logoColor=black" />
@@ -47,9 +47,9 @@
 
 | Number | |
 |---:|---|
-| **34** | API endpoints |
-| **11** | database migrations |
-| **385** | Python tests |
+| **35** | API endpoints |
+| **12** | database migrations |
+| **389** | Python tests |
 | **87** | web tests |
 | **~8,100** | lines of Python |
 | **~6,600** | lines of TypeScript |
@@ -202,19 +202,19 @@ of canary can be tripped.
 | Role | Can | How someone gets it |
 |---|---|---|
 | **Owner** | Everything an admin can; cannot be removed | Listed in `ADMIN_EMAILS`, and signed in with Google |
-| **Admin** | Make ambassadors and admins, grant hunting access, make referral codes of any size | An admin switches it on, on the Admin page |
-| **Ambassador** | Make referral codes (up to 20, 25 places each) and share invite links | An admin switches it on |
-| **Hunter** | Attack bounties, spending credits | Opens an invite link, or enters a referral code once |
+| **Admin** | Make ambassadors and admins, grant or take back hunting access, make invites in bulk | An admin switches it on, on the Admin page |
+| **Ambassador** | Make single-use invite links (up to 25 unused at a time) and see which were used | An admin switches it on |
+| **Hunter** | Attack bounties, spending credits | Opens an invite link, or enters a referral code. Each works once |
 | **Sponsor** | List agents and fund bounties | Anyone with an account |
 
 **As the owner:** put your Google address in `ADMIN_EMAILS`, sign in with Google, and open
 **Admin** from the menu under your picture. From there:
 
 1. **People** → find someone → switch on **Ambassador** (or **Admin**, or **Can hunt**).
-2. **Referral codes** → choose how many places → **Create and copy link**.
+2. **Invites** → choose how many → **Create and copy**. Each link is for one person.
 
-**As an ambassador:** the dashboard has a *Your referral codes* panel. Make a code, press
-**Copy invite link**, and send it. The link looks like `https://your-site/invite/ABCD-2345`.
+**As an ambassador:** the dashboard has a *Your invites* panel. Create links and send one to
+each person. A link looks like `https://your-site/invite/ABCD-2345` and works once.
 
 **Whoever opens the link** sees who invited them and signs in; the code is applied for them
 and the bounties are open. Someone already signed in accepts with one click.
@@ -222,7 +222,7 @@ and the bounties are open. Someone already signed in accepts with one click.
 The same from a terminal, for a first setup or a script:
 
 ```bash
-python -m agentbounty.admin code --uses 10             # a referral code
+python -m agentbounty.admin code --count 10            # ten single-use invites
 python -m agentbounty.admin ambassador a@example.com   # make an ambassador
 python -m agentbounty.admin admin a@example.com        # make an admin
 ```
@@ -275,7 +275,7 @@ web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
 ├── src/components/   Flow · Transcript · AttemptStatus · ReferralGate · shared pieces
 └── cloudflare/       The Pages worker that proxies API paths
-migrations/versions/  0001 … 0011
+migrations/versions/  0001 … 0012
 tests/                One file per area; a scratch database per test
 docs/REFERENCE.md     The long version of everything on this page
 ```
@@ -284,7 +284,7 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 385 Python tests, each on its own scratch database
+make test         # 389 Python tests, each on its own scratch database
 make web-test     # 87 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
@@ -317,6 +317,13 @@ single origin. Set `API_ORIGIN` on Pages to the API's address. Details are in th
   on it must come from the site itself.
 - **Payments.** A send is recorded before the wallet is asked to make it, and is never
   repeated automatically.
+- **Invites.** A code admits one account, and a unique constraint in the database makes a
+  second use impossible even for simultaneous requests.
+- **The admin area.** Its API answers 404 to anyone who is not an admin and is left out of
+  the published API description; its page is code the browser fetches only for an admin;
+  and every admin action is written to a log the database refuses to edit.
+- **Email is not proof.** Only a Google sign-in proves an address, so only that makes an
+  owner an admin, and it reclaims an account someone else made with your address.
 
 Found a problem? Please open an issue, or write to the address on the maintainer's profile
 for anything sensitive.

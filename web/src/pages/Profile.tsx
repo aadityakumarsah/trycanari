@@ -175,6 +175,57 @@ function Input({
   );
 }
 
+/** A key for scripts and agents. It is shown once, and making one retires the last. */
+function ApiKey() {
+  const [key, setKey] = useState("");
+  const minting = useAction();
+  const toast = useToast();
+
+  async function mint() {
+    if (!window.confirm("Make a new API key? Any key this account already has will stop working at once.")) return;
+    await minting.run(async () => {
+      const made = await api<{ api_key: string }>("POST", "/v1/account/api-key");
+      setKey(made.api_key);
+    });
+  }
+
+  return (
+    <section className="panel form-section">
+      <h2>
+        <Icon name="key" size={17} /> API key
+      </h2>
+      <p className="muted">
+        For scripts and AI agents that act as you. Only one key works at a time, and it is shown once: making a
+        new one retires the old.
+      </p>
+      {key ? (
+        <>
+          <p className="notice">Copy this now. It will not be shown again.</p>
+          <pre className="secret">{key}</pre>
+          <div className="form-foot">
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(key).then(() => toast("API key copied"));
+              }}
+            >
+              Copy key
+            </button>
+            <button type="button" className="secondary" onClick={() => setKey("")}>
+              I have saved it
+            </button>
+          </div>
+        </>
+      ) : (
+        <button type="button" className="secondary" disabled={minting.busy} onClick={() => void mint()}>
+          {minting.busy ? "Making…" : "Make a new API key"}
+        </button>
+      )}
+      <ErrorNote>{minting.error}</ErrorNote>
+    </section>
+  );
+}
+
 export function Profile() {
   const loaded = useAccount();
   const account = loaded.data;
@@ -306,6 +357,8 @@ export function Profile() {
             </section>
             <ErrorNote>{saving.error}</ErrorNote>
           </form>
+
+          <ApiKey />
         </div>
       </div>
 

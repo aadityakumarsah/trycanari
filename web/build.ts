@@ -8,6 +8,8 @@ const result = await Bun.build({
   entrypoints: ["./index.html"],
   outdir,
   minify: true,
+  // Pages loaded on demand, the admin area for one, become files of their own.
+  splitting: true,
   // Absolute, so the hashed assets resolve from any route the browser router owns.
   publicPath: "/app/",
   define: { "process.env.NODE_ENV": '"production"' },

@@ -1066,3 +1066,9 @@ table.people td { vertical-align: middle; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) {
   .invite-card, .invite-seal img { animation: none; }
 }
+
+/* invites that are spent, and moving between pages of a long list */
+.codes li.spent code, tr.spent .code-chip { border-color: var(--border); background: var(--surface-2); color: var(--dim); text-decoration: line-through; }
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.pager .muted { margin-right: auto; font: 400 13px/18px var(--mono); }
+.page .code-maker input:disabled { opacity: 0.45; }

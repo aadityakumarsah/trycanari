@@ -132,8 +132,13 @@ export interface Account {
 
 export interface Invite {
   code: string;
-  remaining: number;
+  available: boolean;
   invited_by: string | null;
+}
+
+export interface Page<T> {
+  items: T[];
+  total: number;
 }
 
 export interface Person {
@@ -147,22 +152,21 @@ export interface Person {
   is_owner: boolean;
   is_ambassador: boolean;
   can_hunt: boolean;
+  hunting_granted: boolean;
   referral_code: string | null;
   created_at: string;
 }
 
 export interface AdminCode {
   code: string;
-  max_uses: number;
-  used: number;
+  used_by: string | null;
   owner_email: string | null;
   created_at: string;
 }
 
 export interface ReferralCode {
   code: string;
-  max_uses: number;
-  used: number;
+  used: boolean;
   created_at: string;
 }
 

@@ -265,5 +265,22 @@ async def test_every_answer_carries_the_security_headers(club: Platform) -> None
     assert "strict-transport-security" not in private.headers
 
 
+async def test_cookies_are_marked_secure_wherever_the_site_is_served_over_https(
+    service_settings: Settings,
+) -> None:
+    for public_url, expected in (("https://example.com", True), (None, False)):
+        settings = service_settings.model_copy(update={"public_url": public_url})
+        assert settings.secure_cookies is expected
+        async with platform_on(settings) as platform:
+            sponsor = await platform.sponsor(f"secure-{expected}@example.com".lower())
+            key = sponsor.headers["Authorization"].removeprefix("Bearer ")
+            signed_in = await platform.client.post(
+                "/v1/session",
+                json={"api_key": key},
+                headers={"Origin": "http://test", "Sec-Fetch-Site": "same-origin"},
+            )
+            assert ("Secure" in signed_in.headers["set-cookie"]) is expected
+
+
 def test_helpers_are_importable() -> None:
     assert callable(attack)

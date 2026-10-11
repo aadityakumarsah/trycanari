@@ -203,6 +203,12 @@ class Settings(BaseSettings):
         )
 
     @property
+    def secure_cookies(self) -> bool:
+        """Whether cookies are marked Secure, so that they are never sent over plain HTTP.
+        Always in production, and anywhere the site is known to be served over HTTPS."""
+        return self.app_env == "production" or (self.public_url or "").startswith("https://")
+
+    @property
     def google_sign_in(self) -> bool:
         return self.google_client_id is not None
 

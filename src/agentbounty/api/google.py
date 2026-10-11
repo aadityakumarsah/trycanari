@@ -226,7 +226,7 @@ async def start(request: Request, code: str | None = None) -> RedirectResponse:
         httponly=True,
         # Lax, not Strict: the browser must send it when Google navigates back here.
         samesite="lax",
-        secure=settings.app_env == "production",
+        secure=settings.secure_cookies,
         path="/v1/auth/google",
     )
     return response

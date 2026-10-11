@@ -508,8 +508,8 @@ python -m agentbounty.attacker --api ${origin} \\
             Making an account and filling in your <Link to="/profile">profile</Link> is open to everyone, and so is
             listing an agent. Taking part in bounties is by invitation: you enter a referral code once, on the
             dashboard or on any bounty page, and from then on you can attack. Codes are handed out by the
-            platform and by <strong>ambassadors</strong>, and each one admits a fixed number of people. If you
-            arrive through an invite link, the code is applied for you as you join.
+            platform and by <strong>ambassadors</strong>, and each one is for one person. If you arrive through
+            an invite link, the code is applied for you as you join.
           </p>
           <h3>Attacking spends credits</h3>
           <p>
@@ -548,23 +548,18 @@ python -m agentbounty.attacker --api ${origin} \\
           <h3>Invite links</h3>
           <p>
             Every referral code has an invite link, <code>{origin}/invite/&lt;code&gt;</code>. Whoever opens it sees
-            who invited them and how many places are left. If they are signed in they accept with one click; if
-            not, they sign in or create an account and the code is applied for them. Either way the bounties are
-            open to them from then on.
+            who invited them. If they are signed in they accept with one click; if not, they sign in or create an
+            account and the code is applied for them. Either way the bounties are open to them from then on.
+          </p>
+          <p>
+            <strong>A code works once.</strong> When one person has used it, it is spent, and the link says so to
+            anyone who opens it afterwards. To invite five people, make five.
           </p>
           <h3>Ambassadors</h3>
           <p>
-            An ambassador makes referral codes from the <Link to="/dashboard">dashboard</Link>, up to 20 codes of up
-            to 25 places each, copies each one's invite link, and can see how many people it has brought in.
-          </p>
-          <h3>Admins and the owner</h3>
-          <p>
-            An admin runs the platform from the Admin page, in the menu under their picture. There they can search
-            everyone with an account and switch on <strong>Ambassador</strong>, <strong>Admin</strong> or{" "}
-            <strong>Can hunt</strong> for anyone, and make referral codes of any size, with a code of their own
-            choosing if they like. The owner is whoever is named in <code>ADMIN_EMAILS</code>: they become an admin
-            the moment they sign in with Google, and cannot be removed from the page. An admin cannot remove their
-            own access, so there is always someone who can.
+            An ambassador makes invites from the <Link to="/dashboard">dashboard</Link>, up to ten at a time, copies
+            their links, and sees which have been used. An ambassador can hold 25 unused invites at once; using
+            one up makes room for another.
           </p>
         </Section>
 
@@ -584,7 +579,7 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="POST" path="/v1/bounties/{id}/attempts" />, "Submit an attack. Returns the attempt ID and status token."],
               [<Endpoint method="GET" path="/v1/attempts/{id}" />, "State, verdict, one run's replies and the payout. Needs the status token."],
               [<Endpoint method="POST" path="/v1/sponsors" />, "Sign up as a sponsor. Returns the API key, once."],
-              [<Endpoint method="GET" path="/v1/invites/{code}" />, "What an invite link offers: who it is from and the places left."],
+              [<Endpoint method="GET" path="/v1/invites/{code}" />, "What an invite link offers: who it is from, and whether it is still unused."],
               [<Endpoint method="GET" path="/agent.md" />, "The hunter side of the platform as markdown."],
               [<Endpoint method="GET" path="/health" />, "Whether the service can reach its database."],
             ]}
@@ -605,7 +600,8 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="PATCH" path="/v1/account" />, "Change your profile: name, GitHub, company, role, location, website, bio."],
               [<Endpoint method="POST" path="/v1/account/referral" />, "Redeem a referral code, which lets you take part in bounties."],
               [<Endpoint method="GET" path="/v1/referral-codes" />, "The referral codes you have made, and their use."],
-              [<Endpoint method="POST" path="/v1/referral-codes" />, "Make a referral code. Ambassadors only."],
+              [<Endpoint method="POST" path="/v1/referral-codes" />, "Make single-use referral codes. Ambassadors only."],
+              [<Endpoint method="POST" path="/v1/account/api-key" />, "Make a new API key, shown once. The old one stops working."],
               [<Endpoint method="GET" path="/v1/sponsor/bounties" />, "Your bounties, with balances."],
               [<Endpoint method="GET" path="/v1/sponsor/bounties/{id}" />, "One bounty with its config, canaries and re-arm state."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/attempts" />, "How much the bounty is being attacked: totals and recent outcomes."],
@@ -659,10 +655,10 @@ python -m agentbounty.attacker --api ${origin} \\
           <h3>Sign in with Google</h3>
           <p>
             Where it is switched on, the <Link to="/login">sign-in page</Link> offers Continue with Google. The
-            first sign-in creates your sponsor account; later ones return to it. Only the address of a verified
-            Google email is kept. An account made this way has no API key, so it is used from the dashboard. A
-            Google account is never attached to an account that was created by email, even when the addresses
-            match, because signing up by email does not prove the address is yours.
+            first sign-in creates your account; later ones return to it. An account made this way has no API key
+            until you make one on your <Link to="/profile">profile</Link>. Signing up by email does not prove an
+            address is yours, and Google does: so if an account was made by email with your address, signing in
+            with Google makes it yours and retires the API key it had.
           </p>
         </Section>
 
@@ -762,7 +758,6 @@ uv run --env-file .env python -m agentbounty.workers.payment`}</Code>
               [<code>PAYOUT_MAX_ZATOSHI</code>, "Cap on a single payout. Required in production"],
               [<code>PAYOUT_DAILY_MAX_ZATOSHI</code>, "Cap on payouts in any 24 hours. Required in production"],
               [<code>FEE_RATE</code>, "The fee as a fraction of the reward. Default 0.1"],
-              [<code>ADMIN_EMAILS</code>, "The owners' Google addresses, separated by commas. They are always admins"],
               [<code>INVITE_ONLY</code>, "true to require a referral code to join and credits to attack"],
               [<code>STARTER_CREDITS</code>, "Credits a new account may spend in any 24 hours. Default 25"],
               [<code>PROVEN_CREDITS</code>, "The same, once an account has a verified break. Default 200"],

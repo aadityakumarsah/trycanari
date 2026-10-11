@@ -243,63 +243,73 @@ function Tier({ account }: { account: Account }) {
   );
 }
 
-/** An ambassador's referral codes: each admits a fixed number of new people. */
+/** An ambassador's referral codes. Each one lets one person in, once. */
 function Referrals() {
   const codes = useLoad((signal) => api<ReferralCode[]>("GET", "/v1/referral-codes", { signal }), "codes", "codes");
-  const [uses, setUses] = useState("5");
+  const [count, setCount] = useState("1");
   const making = useAction();
   const toast = useToast();
+  const list = codes.data ?? [];
+  const unused = list.filter((item) => !item.used).length;
 
   async function make(event: FormEvent) {
     event.preventDefault();
     await making.run(async () => {
-      const made = await api<ReferralCode>("POST", "/v1/referral-codes", { body: { max_uses: Number(uses) } });
+      const made = await api<ReferralCode[]>("POST", "/v1/referral-codes", { body: { count: Number(count) } });
+      const links = made.map((item) => inviteLink(item.code)).join("\n");
+      await navigator.clipboard.writeText(links).catch(() => undefined);
       await codes.reload();
-      toast(`Code ${made.code} created`);
+      toast(made.length === 1 ? "Invite link created and copied" : `${made.length} invite links created and copied`);
     });
   }
 
   return (
     <section className="panel">
-      <h2>Your referral codes</h2>
+      <h2>Your invites</h2>
       <p className="muted">
-        You are an ambassador. Each code lets a fixed number of people take part in bounties. Copy its invite
-        link and send it to hunters you trust: opening the link is all they need to do.
+        You are an ambassador. Each invite link lets <b>one</b> person take part in bounties, and stops working
+        once they have used it. You can hold up to 25 unused at a time.
       </p>
       <form className="inline-form" onSubmit={(event) => void make(event)}>
         <label>
-          People it admits
-          <select value={uses} onChange={(e) => setUses(e.target.value)}>
-            {[1, 3, 5, 10, 25].map((count) => (
-              <option key={count} value={count}>
-                {count}
+          How many
+          <select value={count} onChange={(e) => setCount(e.target.value)}>
+            {[1, 3, 5, 10].map((size) => (
+              <option key={size} value={size}>
+                {size}
               </option>
             ))}
           </select>
         </label>
         <button disabled={making.busy}>
-          <Icon name="plus" size={15} /> New code
+          <Icon name="plus" size={15} /> {making.busy ? "Creating…" : "Create invite links"}
         </button>
+        {list.length > 0 && (
+          <span className="muted count-note">
+            {unused} unused, {list.length - unused} used
+          </span>
+        )}
       </form>
       <ErrorNote>{making.error || codes.error}</ErrorNote>
-      {codes.data?.length === 0 && <p className="empty">You have not made a code yet.</p>}
-      {codes.data && codes.data.length > 0 && (
+      {codes.data?.length === 0 && <p className="empty">You have not made an invite yet.</p>}
+      {list.length > 0 && (
         <ul className="codes">
-          {codes.data.map((item) => (
-            <li key={item.code}>
+          {list.map((item) => (
+            <li key={item.code} className={item.used ? "spent" : undefined}>
               <code>{item.code}</code>
-              <span className="muted">
-                {item.used} of {item.max_uses} used
-              </span>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => {
-                  void navigator.clipboard.writeText(inviteLink(item.code)).then(() => toast("Invite link copied"));
-                }}
-              >
-                <Icon name="link" size={14} /> Copy invite link
-              </button>
+              <span className={item.used ? "badge" : "badge badge-live"}>{item.used ? "used" : "available"}</span>
+              <span className="muted" />
+              {!item.used && (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(inviteLink(item.code)).then(() => toast("Invite link copied"));
+                  }}
+                >
+                  <Icon name="link" size={14} /> Copy invite link
+                </button>
+              )}
             </li>
           ))}
         </ul>

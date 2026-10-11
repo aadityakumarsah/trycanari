@@ -53,7 +53,7 @@ export function InvitePage() {
   }
   if (!invite.data) return invite.error ? <ErrorNote>{invite.error}</ErrorNote> : <Skeleton block lines={3} />;
 
-  const { remaining, invited_by: from } = invite.data;
+  const { available, invited_by: from } = invite.data;
   const signedIn = session?.signed_in === true;
   const start = `/v1/auth/google/start?code=${encodeURIComponent(invite.data.code)}`;
 
@@ -70,11 +70,13 @@ export function InvitePage() {
       </p>
       <p className="invite-code">
         <code>{invite.data.code}</code>
-        <span>{remaining > 0 ? `${remaining} ${remaining === 1 ? "place" : "places"} left` : "No places left"}</span>
+        <span>{available ? "Good for one person" : "Already used"}</span>
       </p>
 
-      {remaining === 0 && !account?.can_hunt ? (
-        <p className="notice">This invite has been used up. Ask whoever sent it for a fresh one.</p>
+      {!available && !account?.can_hunt ? (
+        <p className="notice">
+          This invite has already been used. Each one works once: ask whoever sent it for a fresh one.
+        </p>
       ) : signedIn && account?.can_hunt ? (
         <>
           <p className="done">You already have access to the bounties.</p>
