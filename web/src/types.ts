@@ -91,6 +91,41 @@ export interface AttemptAccepted {
   status_token: string;
 }
 
+export interface Providers {
+  google: boolean;
+  invite_only: boolean;
+}
+
+export interface CostStep {
+  up_to_characters: number;
+  credits: number;
+}
+
+export interface Credits {
+  balance: number;
+  cap: number;
+  window_hours: number;
+  tier: string;
+  next_tier: string | null;
+  next_cap: number | null;
+  costs: CostStep[];
+}
+
+export interface Account {
+  email: string;
+  is_ambassador: boolean;
+  invite_only: boolean;
+  verified_breaks: number;
+  credits: Credits;
+}
+
+export interface ReferralCode {
+  code: string;
+  max_uses: number;
+  used: number;
+  created_at: string;
+}
+
 export interface Session {
   signed_in: boolean;
   email: string | null;

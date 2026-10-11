@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 
 import { NotFound } from "../App.tsx";
+import { accountChanged, costOf, useAccount, useProviders } from "../account.tsx";
 import { api } from "../api.ts";
 import { saveAttempt, savedPayoutAddress, savePayoutAddress } from "../attempts.ts";
 import { AttemptTracker } from "../components/AttemptStatus.tsx";
@@ -10,6 +11,7 @@ import { Code } from "../components/Code.tsx";
 import { Badge, ErrorNote, Skeleton, words } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
 import { formatZec } from "../money.ts";
+import { useSession } from "../session.tsx";
 import { useToast } from "../toast.tsx";
 import type { AttemptAccepted, BountyPublic, EntryPoint } from "../types.ts";
 import { AttemptRow, useSavedAttempts } from "./MyAttempts.tsx";
@@ -40,6 +42,11 @@ function AttemptForm({ bounty, onSubmitted }: { bounty: BountyPublic; onSubmitte
   const [keep, setKeep] = useState(() => savedPayoutAddress() !== "");
   const action = useAction();
   const slots = (["document", "user_message"] as const).filter((slot) => bounty.entry_points.includes(slot));
+  const account = useAccount().data;
+  const metered = account?.invite_only === true;
+  const size = slots.reduce((sum, slot) => sum + fills[slot].length, 0);
+  const cost = account ? costOf(size, account.credits.costs) : 0;
+  const short = metered && account !== null && cost > account.credits.balance;
 
   async function send() {
     await action.run(async () => {
@@ -48,6 +55,7 @@ function AttemptForm({ bounty, onSubmitted }: { bounty: BountyPublic; onSubmitte
       const body = { payout_address: address.trim(), fills: filled };
       const accepted = await api<AttemptAccepted>("POST", `/v1/bounties/${bounty.id}/attempts`, { body });
       savePayoutAddress(keep ? address.trim() : "");
+      accountChanged();
       onSubmitted(accepted);
     });
   }
@@ -101,9 +109,21 @@ function AttemptForm({ bounty, onSubmitted }: { bounty: BountyPublic; onSubmitte
           <input type="checkbox" checked={keep} onChange={(event) => setKeep(event.target.checked)} />
           Remember this address in this browser
         </label>
+        {metered && account && (
+          <p className={short ? "cost short" : "cost"}>
+            <Icon name="zap" size={14} />
+            <span>
+              This attack costs <b>{cost}</b> {cost === 1 ? "credit" : "credits"}. You have{" "}
+              <b>{account.credits.balance}</b> of {account.credits.cap}.
+              {short && ` Your allowance refills over ${account.credits.window_hours} hours.`}
+            </span>
+          </p>
+        )}
         <ErrorNote>{action.error}</ErrorNote>
         <div className="form-foot">
-          <button disabled={action.busy}>{action.busy ? "Submitting…" : "Submit attack"}</button>
+          <button disabled={action.busy || short}>
+            {action.busy ? "Submitting…" : metered ? `Submit attack · ${cost} ${cost === 1 ? "credit" : "credits"}` : "Submit attack"}
+          </button>
           <span className="muted">
             <kbd>⌘</kbd> <kbd>Enter</kbd> to submit
           </span>
@@ -213,6 +233,9 @@ export function BountyPage() {
     `bounty:${bountyId}`,
   );
   const history = useSavedAttempts(bountyId);
+  const providers = useProviders();
+  const { session } = useSession();
+  const location = useLocation();
   const [current, setCurrent] = useState<AttemptAccepted | null>(null);
   const toast = useToast();
 
@@ -222,6 +245,8 @@ export function BountyPage() {
     // Only on arrival: afterwards `current` follows what is submitted here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bountyId]);
+
+  const mustSignIn = providers?.invite_only === true && session?.signed_in === false;
 
   if (bounty.status === 404 || bounty.status === 422) return <NotFound message="That bounty does not exist." />;
   if (!bounty.data) {
@@ -253,7 +278,24 @@ export function BountyPage() {
 
       <div className="bounty-layout">
         <div className="bounty-main">
-          {data.accepting_attempts ? (
+          {data.accepting_attempts && mustSignIn ? (
+            <section className="panel gate">
+              <span className="gate-icon">
+                <Icon name="lock" size={20} />
+              </span>
+              <h2>Sign in to attack this agent</h2>
+              <p className="muted">
+                trycanari is invite-only. Every attack is replayed five times against a real model, so each one
+                spends credits from your account's daily allowance.
+              </p>
+              <div className="form-foot">
+                <Link className="button" to="/login" state={{ from: location.pathname }}>
+                  Sign in
+                </Link>
+                <Link to="/docs#invites">How invites and credits work →</Link>
+              </div>
+            </section>
+          ) : data.accepting_attempts ? (
             <AttemptForm
               bounty={data}
               onSubmitted={(accepted) => {
@@ -278,7 +320,15 @@ export function BountyPage() {
           )}
 
           {current && (
-            <AttemptTracker key={current.attempt_id} attempt={current} onSettled={() => void bounty.reload()} />
+            <AttemptTracker
+              key={current.attempt_id}
+              attempt={current}
+              onSettled={() => {
+                void bounty.reload();
+                // A verified break moves the account up a tier, so its meter changes too.
+                accountChanged();
+              }}
+            />
           )}
 
           {earlier.length > 0 && (

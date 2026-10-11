@@ -114,6 +114,7 @@ async def seed(
     reward_zatoshi: int = 1_000_000,
     refund_address: str = DEMO_REFUND_ADDRESS,
     wait: Callable[[], Awaitable[None]] | None = None,
+    referral_code: str | None = None,
     polls: int = 60,
 ) -> Seeded:
     """Create the demo bounty as a new sponsor would, and wait for it to go live.
@@ -123,7 +124,8 @@ async def seed(
     awaiting_deposit and the returned funding details say what to send.
     """
     email = f"demo-{secrets.token_hex(4)}@example.com"
-    api_key = (await _call(http, "POST", "/v1/sponsors", json={"email": email}))["api_key"]
+    joining = {"email": email, **({"referral_code": referral_code} if referral_code else {})}
+    api_key = (await _call(http, "POST", "/v1/sponsors", json=joining))["api_key"]
     auth = {"Authorization": f"Bearer {api_key}"}
     body = {"title": TITLE, "description": DESCRIPTION, "reward_zatoshi": reward_zatoshi}
     bounty_id = (await _call(http, "POST", "/v1/bounties", json=body, headers=auth))["id"]
@@ -156,6 +158,7 @@ def main() -> None:
     )
     parser.add_argument("--reward", default="0.01", help="reward in ZEC")
     parser.add_argument("--refund-address", default=DEMO_REFUND_ADDRESS)
+    parser.add_argument("--referral-code", help="needed when the platform is invite-only")
     args = parser.parse_args()
 
     async def run() -> Seeded:
@@ -166,6 +169,7 @@ def main() -> None:
                 reward_zatoshi=parse_zec(args.reward),
                 refund_address=args.refund_address,
                 wait=lambda: asyncio.sleep(1),
+                referral_code=args.referral_code,
             )
 
     try:

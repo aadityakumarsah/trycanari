@@ -42,6 +42,7 @@ export const CONTENTS: Group[] = [
       { id: "verification", title: "Replays and verdicts" },
       { id: "money", title: "Escrow, payouts and refunds" },
       { id: "rearm", title: "Patching and re-arming" },
+      { id: "invites", title: "Invites and credits" },
     ],
   },
   {
@@ -497,6 +498,61 @@ python -m agentbounty.attacker --api ${origin} \\
           <p>The paid attack is your regression test.</p>
         </Section>
 
+        <Section id="invites" title="Invites and credits">
+          <p>
+            Every attack is replayed five times against a real model, and the platform pays for that. So a
+            deployment can run <strong>invite-only</strong>, which does two things.
+          </p>
+          <h3>Joining needs a referral code</h3>
+          <p>
+            An account can only be created with a referral code. Codes are handed out by{" "}
+            <strong>ambassadors</strong>, and each one admits a fixed number of people. Enter yours on the{" "}
+            <Link to="/login">sign-in page</Link>, whether you then create an account with an email or continue
+            with Google. You only need it once.
+          </p>
+          <h3>Attacking spends credits</h3>
+          <p>
+            An attack must come from an account, and spends credits from that account's allowance for the last 24
+            hours.
+          </p>
+          <Table
+            head={["Size of the attack, all entry points together", "Cost"]}
+            rows={[
+              ["Up to 2,000 characters", "1 credit"],
+              ["Up to 8,000 characters", "2 credits"],
+              ["Anything longer", "4 credits"],
+            ]}
+          />
+          <Table
+            head={["Tier", "Allowance", "How you get it"]}
+            rows={[
+              ["Starter", "25 credits in any 24 hours", "Everyone starts here"],
+              ["Proven", "200 credits in any 24 hours", "Have one attack verified"],
+            ]}
+          />
+          <p>
+            No balance is stored. What you have left is your tier's allowance minus what your attempts of the last
+            24 hours cost, so credits come back by themselves as attempts age out. An attempt that is refused costs
+            nothing, and neither does one the platform failed to replay. An attack you cannot afford is answered
+            with status 402.
+          </p>
+          <h3>From a script or an agent</h3>
+          <p>
+            Send your account's API key with the attempt, and read what is left with{" "}
+            <Endpoint method="GET" path="/v1/account" />.
+          </p>
+          <Code>{`curl -X POST ${origin}/v1/bounties/<bounty_id>/attempts \\
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \\
+  -d '{"payout_address": "<shielded address>", "fills": [{"slot": "user_message", "content": "..."}]}'`}</Code>
+          <h3>For ambassadors</h3>
+          <p>
+            An ambassador creates codes from the <Link to="/dashboard">dashboard</Link>, up to 20 codes admitting up
+            to 25 people each, and can see how many people each has brought in. The operator makes the first code
+            and the first ambassador from the command line: <code>python -m agentbounty.admin code --uses 10</code>{" "}
+            and <code>python -m agentbounty.admin ambassador you@example.com</code>.
+          </p>
+        </Section>
+
         <Section id="api" title="API reference">
           <p>
             The base URL is <code>{origin}</code>. Requests and responses are JSON. The{" "}
@@ -529,6 +585,9 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="POST" path="/v1/bounties/{id}/pause" />, "Stop taking attempts. Refused while attempts are queued."],
               [<Endpoint method="POST" path="/v1/bounties/{id}/rearm" />, "Replay the paid attacks against a patched config."],
               [<Endpoint method="POST" path="/v1/bounties/{id}/close" />, "Stop for good and refund the unspent escrow."],
+              [<Endpoint method="GET" path="/v1/account" />, "Who you are, your tier and the credits you have left."],
+              [<Endpoint method="GET" path="/v1/referral-codes" />, "The referral codes you have made, and their use."],
+              [<Endpoint method="POST" path="/v1/referral-codes" />, "Make a referral code. Ambassadors only."],
               [<Endpoint method="GET" path="/v1/sponsor/bounties" />, "Your bounties, with balances."],
               [<Endpoint method="GET" path="/v1/sponsor/bounties/{id}" />, "One bounty with its config, canaries and re-arm state."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/attempts" />, "How much the bounty is being attacked: totals and recent outcomes."],
@@ -602,6 +661,7 @@ python -m agentbounty.attacker --api ${origin} \\
               [<code>404</code>, "No such bounty or attempt, or it is not yours. A wrong status token is also a 404."],
               [<code>409</code>, "Not allowed in the bounty's current state: editing a live config, attacking a paused bounty, activating a broken config."],
               [<code>422</code>, "The request is malformed: an undeclared slot, a transparent payout address, a secret that is too short."],
+              [<code>402</code>, "Not enough credits for this attack. Invite-only deployments."],
               [<code>429</code>, "A limit was reached. Wait and try again."],
               [<code>503</code>, "The service cannot reach its database."],
             ]}
@@ -684,6 +744,9 @@ uv run --env-file .env python -m agentbounty.workers.payment`}</Code>
               [<code>PAYOUT_MAX_ZATOSHI</code>, "Cap on a single payout. Required in production"],
               [<code>PAYOUT_DAILY_MAX_ZATOSHI</code>, "Cap on payouts in any 24 hours. Required in production"],
               [<code>FEE_RATE</code>, "The fee as a fraction of the reward. Default 0.1"],
+              [<code>INVITE_ONLY</code>, "true to require a referral code to join and credits to attack"],
+              [<code>STARTER_CREDITS</code>, "Credits a new account may spend in any 24 hours. Default 25"],
+              [<code>PROVEN_CREDITS</code>, "The same, once an account has a verified break. Default 200"],
               [<code>PUBLIC_URL</code>, "Where browsers reach the service, such as https://example.com"],
               [<code>GOOGLE_CLIENT_ID</code>, "An OAuth web client from the Google Cloud console. Turns on Google sign-in"],
               [

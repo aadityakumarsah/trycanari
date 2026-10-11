@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
+import { useAccount } from "./account.tsx";
 import { messageOf } from "./api.ts";
 import { Icon, Wordmark } from "./components/Brand.tsx";
 import { ErrorNote, Skeleton } from "./components/ui.tsx";
@@ -105,6 +106,7 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
   const [scrolled, setScrolled] = useState(false);
   const closeProduct = useCallback(() => setProduct(false), []);
   const running = useSavedAttempts().filter((attempt) => !attempt.outcome).length;
+  const account = useAccount().data;
   useDismiss(product, closeProduct, ".drop");
 
   // Any navigation closes whatever was open.
@@ -192,6 +194,18 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
         </a>
         {session?.signed_in ? (
           <>
+            {account?.invite_only && (
+              <Link
+                className={account.credits.balance === 0 ? "credits empty" : "credits"}
+                to="/dashboard"
+                onClick={onNavigate}
+                title={`${account.credits.balance} of ${account.credits.cap} credits left. ${account.credits.tier} tier.`}
+              >
+                <Icon name="zap" size={14} />
+                <b>{account.credits.balance}</b>
+                <span>/ {account.credits.cap}</span>
+              </Link>
+            )}
             <Link className="btn-nav mint" to="/dashboard" onClick={onNavigate}>
               Dashboard
             </Link>

@@ -715,3 +715,125 @@ main.frame { min-height: calc(100vh - var(--nav) - 150px); }
 @media (prefers-reduced-motion: reduce) {
   .pill, .pill::after, .pill .pill-live i::after { animation: none; }
 }
+
+/* ============ invites, credits and the dashboard home ============ */
+.eyebrow { margin: 0 0 4px; color: var(--dim); font: 500 10.500px/14px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid #6ee7b740; border-radius: 999px; color: var(--accent); font: 500 12px/18px var(--sans); }
+.chip.muted-chip { border-color: var(--border); background: var(--surface-2); color: var(--muted); }
+.page button.accent, .page .button.accent { border-color: var(--accent); background: var(--accent); color: #06130d; }
+.page button.accent:hover, .page .button.accent:hover { border-color: var(--accent-hover); background: var(--accent-hover); }
+.page .button.secondary { border-color: var(--border-strong); background: var(--black); color: var(--foreground); }
+.page .button.secondary:hover { border-color: var(--foreground); background: var(--black); }
+.page button.icon-button.round { width: 34px; height: 34px; border: 1px solid var(--border-strong); border-radius: 50%; color: var(--muted); }
+
+/* the credits meter in the navigation bar */
+.credits { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px; border: 1px solid #6ee7b740; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font: 500 12.500px/1 var(--mono); text-decoration: none; white-space: nowrap; transition: border-color 0.15s, background 0.15s; }
+.credits:hover { border-color: var(--accent); }
+.credits b { font-weight: 600; }
+.credits span { color: #6ee7b7a6; }
+.credits.empty { border-color: #fbbf2466; background: var(--warn-bg); color: var(--warn); }
+.credits.empty span { color: #fbbf24a6; }
+
+/* welcome */
+.welcome { display: flex; align-items: center; gap: 16px; }
+.welcome img { flex: none; image-rendering: pixelated; }
+.welcome > div { flex: 1; min-width: 0; }
+.page .welcome h1 { margin: 0; font-size: 28px; line-height: 36px; overflow-wrap: anywhere; }
+.page .welcome p { margin: 2px 0 0; }
+
+/* the quest card */
+.page section.quest { position: relative; margin-top: 28px; border: 1px solid #6ee7b755; border-radius: 16px; background: #0b1410; overflow: hidden; }
+.quest::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 4px; background: var(--accent); }
+.quest-top { display: flex; align-items: flex-start; gap: 18px; padding: 24px 24px 22px 28px; background: linear-gradient(180deg, #6ee7b714, transparent); }
+.quest-bottom { display: flex; align-items: center; gap: 18px; padding: 16px 24px 16px 28px; border-top: 1px solid #6ee7b72e; }
+.quest-icon { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 12px; background: #6ee7b71f; color: var(--accent); }
+.quest-icon.small { width: 36px; height: 36px; border-radius: 10px; }
+.quest-text { flex: 1; min-width: 0; }
+.quest .eyebrow { color: var(--accent); }
+.page .quest h2 { margin: 0 0 4px; padding: 0; border: 0; font-size: 20px; line-height: 28px; }
+.page .quest-text p { margin: 0 0 10px; }
+.page .quest-bottom .quest-text p { margin: 0; }
+.quest-amount { flex: none; text-align: right; }
+.quest-amount small { display: block; color: var(--dim); font: 500 10.500px/14px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.quest-amount b { color: var(--accent); font: 600 26px/32px var(--mono); }
+.quest-more { padding: 16px 24px 8px 28px; border-top: 1px solid #6ee7b72e; color: #d4d4d4; font-size: 14px; }
+.quest-more ul { margin: 0 0 12px; padding-left: 20px; }
+.quest-more li { margin-bottom: 4px; }
+
+/* the tier card */
+.page section.tier { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.8fr) minmax(0, 1fr); margin-top: 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.tier > div { padding: 22px; }
+.tier > div + div { border-left: 1px solid var(--border); }
+.tier-now, .tier-next { display: flex; align-items: flex-start; gap: 14px; }
+.tier-badge { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 50%; background: #6ee7b71f; color: var(--accent); }
+.tier-badge.next { background: var(--surface-2); color: var(--muted); }
+.tier b { display: block; font: 500 18px/26px var(--display); }
+.tier small { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12.500px; line-height: 18px; }
+.tier a { display: inline-block; margin-top: 6px; color: var(--muted); font-size: 12.500px; text-decoration: underline; }
+.tier a:hover { color: var(--foreground); }
+.page .tier-progress p { margin: 0 0 12px; color: #d4d4d4; font-size: 14px; line-height: 21px; }
+.tier-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.tier-bar .meter { flex: 1; height: 6px; margin: 0; border-radius: 3px; }
+.tier-count { flex: none; font: 500 13px/18px var(--mono); }
+
+/* list an agent */
+.page section.create { display: flex; align-items: center; gap: 28px; margin-top: 24px; padding: 22px 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.create-earn { flex: none; }
+.create-earn b { font: 500 22px/30px var(--display); }
+.create-text { flex: 1; min-width: 0; }
+.page .create h2 { margin: 0 0 2px; padding: 0; border: 0; font-size: 18px; }
+.page .create p { margin: 0; }
+.create-action { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: none; }
+.create-action a { color: var(--muted); font-size: 12.500px; text-decoration: underline; }
+.page-head.sub { margin-top: 40px; }
+.page .page-head.sub h2 { margin: 0; }
+
+/* referral codes */
+.inline-form { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
+.page .inline-form label { margin: 0; }
+.page .inline-form select { min-width: 110px; }
+.codes { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.codes li { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--black); }
+.codes code { font: 600 15px/22px var(--mono); letter-spacing: 0.06em; color: var(--accent); }
+.codes .muted { flex: 1; font-size: 13px; }
+.page .codes button { min-height: 32px; padding: 0 12px; font-size: 13px; }
+
+/* sign in: the referral code */
+.invite { max-width: 420px; margin: 20px 0 0; }
+.invite-note { padding: 12px 14px; border: 1px solid #6ee7b740; border-radius: 8px; background: var(--accent-bg); color: #d4d4d4; font-size: 14px; line-height: 21px; }
+.invite-note b { color: var(--accent); font-weight: 500; }
+.page .invite input { font-size: 16px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* bounty page: price and gate */
+.page .cost { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border: 1px solid #6ee7b733; border-radius: 6px; background: var(--accent-bg); color: #d4d4d4; font-size: 13.500px; line-height: 20px; }
+.page .cost svg { flex: none; margin-top: 3px; color: var(--accent); }
+.page .cost b { color: var(--foreground); }
+.page .cost.short { border-color: #fbbf2466; background: var(--warn-bg); color: var(--warn); }
+.page .cost.short svg, .page .cost.short b { color: var(--warn); }
+.gate { text-align: left; }
+.gate-icon { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 14px; border-radius: 12px; background: var(--accent-bg); color: var(--accent); }
+.gate a:not(.button) { color: var(--accent); font-size: 14px; text-decoration: none; }
+
+@media (max-width: 860px) {
+  .page section.tier { grid-template-columns: minmax(0, 1fr); }
+  .tier > div + div { border-left: 0; border-top: 1px solid var(--border); }
+  .quest-top { flex-wrap: wrap; }
+  .quest-top .button { width: 100%; }
+  .quest-bottom { flex-wrap: wrap; }
+  .page section.create { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .create-action { align-items: flex-start; }
+  .welcome { flex-wrap: wrap; }
+}
+@media (max-width: 720px) {
+  .credits span { display: none; }
+}
+@media (max-width: 720px) {
+  /* Signed in on a phone: the account menu already leads to the dashboard. */
+  .nav-right > .btn-nav.mint { display: none; }
+}
+@media (max-width: 1400px) {
+  /* With the credits meter in the bar there is no room for the label. */
+  .nav-icon span { display: none; }
+}
+.tier small { align-items: flex-start; }
+.tier small svg { flex: none; margin-top: 3px; }

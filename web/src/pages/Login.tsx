@@ -3,7 +3,8 @@ import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
 
 import { api } from "../api.ts";
 import { ErrorNote } from "../components/ui.tsx";
-import { useAction, useLoad } from "../hooks.ts";
+import { useProviders } from "../account.tsx";
+import { useAction } from "../hooks.ts";
 import { useSession } from "../session.tsx";
 
 interface Created {
@@ -19,6 +20,8 @@ export const GOOGLE_ERRORS: Record<string, string> = {
   google_unverified: "That Google account has no verified email address.",
   google_email_taken:
     "An account with that email already exists. Sign in with its API key instead.",
+  google_invite:
+    "trycanari is invite-only. Enter a valid referral code below, then continue with Google again.",
 };
 
 function GoogleMark() {
@@ -36,7 +39,9 @@ export function Login() {
   const { session, signIn } = useSession();
   const location = useLocation();
   const [params] = useSearchParams();
-  const providers = useLoad((signal) => api<{ google: boolean }>("GET", "/v1/auth/providers", { signal }), "");
+  const providers = useProviders();
+  const [code, setCode] = useState(() => params.get("code") ?? "");
+  const invited = providers?.invite_only === true;
   const refusal = GOOGLE_ERRORS[params.get("error") ?? ""];
   const [key, setKey] = useState("");
   const [email, setEmail] = useState("");
@@ -44,6 +49,7 @@ export function Login() {
   const signingIn = useAction();
   const signingUp = useAction();
 
+  const from = (location.state as { from?: string } | null)?.from;
   // A new sponsor is signed in straight away, but first sees their key: it is shown once.
   if (issued) {
     return (
@@ -55,15 +61,14 @@ export function Login() {
         </p>
         <pre className="secret">{issued}</pre>
         <p>
-          <Link className="button" to="/dashboard">
-            Continue to the dashboard
+          <Link className="button" to={from ?? "/dashboard"}>
+            {from ? "Continue where you left off" : "Continue to the dashboard"}
           </Link>
         </p>
       </>
     );
   }
   if (session?.signed_in) {
-    const from = (location.state as { from?: string } | null)?.from;
     return <Navigate to={from ?? "/dashboard"} replace />;
   }
 
@@ -75,7 +80,8 @@ export function Login() {
   async function submitEmail(event: FormEvent) {
     event.preventDefault();
     await signingUp.run(async () => {
-      const created = await api<Created>("POST", "/v1/sponsors", { body: { email: email.trim() } });
+      const body = { email: email.trim(), ...(invited ? { referral_code: code.trim() } : {}) };
+      const created = await api<Created>("POST", "/v1/sponsors", { body });
       setIssued(created.api_key);
       await signIn(created.api_key);
     });
@@ -83,12 +89,34 @@ export function Login() {
 
   return (
     <>
-      <h1>Sponsor sign in</h1>
+      <h1>Sign in</h1>
       {refusal && <p className="error">{refusal}</p>}
-      {providers.data?.google && (
+      {invited && (
+        <div className="invite">
+          <p className="invite-note">
+            <b>trycanari is invite-only.</b> New here? You need a referral code from an ambassador. Already have an
+            account? Just sign in.
+          </p>
+          <label>
+            Referral code
+            <input
+              className="code"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="XXXX-XXXX"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+            />
+          </label>
+        </div>
+      )}
+      {providers?.google && (
         <div className="sso">
           {/* A plain link: the server sends the browser on to Google. */}
-          <a className="button google" href="/v1/auth/google/start">
+          <a
+            className="button google"
+            href={`/v1/auth/google/start${code.trim() ? `?code=${encodeURIComponent(code.trim())}` : ""}`}
+          >
             <GoogleMark />
             Continue with Google
           </a>
@@ -123,7 +151,8 @@ export function Login() {
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
             </label>
             <ErrorNote>{signingUp.error}</ErrorNote>
-            <button disabled={signingUp.busy}>Create an account</button>
+            <button disabled={signingUp.busy || (invited && !code.trim())}>Create an account</button>
+            {invited && !code.trim() && <small>Enter your referral code above first.</small>}
           </form>
           <p className="muted">You get an API key, shown once. It signs you in here and authenticates scripts.</p>
         </section>

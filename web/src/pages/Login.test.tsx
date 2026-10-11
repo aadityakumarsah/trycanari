@@ -2,19 +2,21 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
+import { forgetLoaded } from "../hooks.ts";
 import { SessionProvider } from "../session.tsx";
 import { GOOGLE_ERRORS, Login } from "./Login.tsx";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
   cleanup();
+  forgetLoaded();
   globalThis.fetch = realFetch;
 });
 
 /** The page on a server that does, or does not, offer Google sign-in. */
-function page(google: boolean, path = "/login") {
+function page(google: boolean, path = "/login", invite_only = false) {
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    const body = String(input).endsWith("/v1/auth/providers") ? { google } : { signed_in: false, email: null };
+    const body = String(input).endsWith("/v1/auth/providers") ? { google, invite_only } : { signed_in: false, email: null };
     return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
   }) as unknown as typeof fetch;
   return render(
@@ -48,5 +50,14 @@ describe("Login", () => {
       cleanup();
     }
     expect(page(false, "/login?error=<script>").container.querySelector(".error")).toBeNull();
+  });
+
+  test("asks for a referral code when the platform is invite-only, and carries it to Google", async () => {
+    const view = page(true, "/login?code=ABCD-2345", true);
+    const field = (await waitFor(() => view.getByLabelText("Referral code"))) as HTMLInputElement;
+    expect(field.value).toBe("ABCD-2345");
+    const google = view.getByText("Continue with Google").closest("a");
+    expect(google?.getAttribute("href")).toBe("/v1/auth/google/start?code=ABCD-2345");
+    expect(GOOGLE_ERRORS.google_invite).toContain("invite-only");
   });
 });
