@@ -12,3 +12,4 @@ src/agentbounty/static/app/
 web/node_modules/
 web/.pages/
 .wrangler/
+render.env

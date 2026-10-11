@@ -1,0 +1,40 @@
+# Render blueprint: the whole backend as one web service.
+# In Render: New > Blueprint > pick this repository. It asks for the values marked
+# "sync: false"; they are the same ones a local .env holds (see .env.example).
+# The web app itself is served from Cloudflare Pages, which passes API paths here.
+services:
+  - type: web
+    name: trycanari-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: ./deploy/run-all.sh
+    plan: free
+    # Closest to the database, which is in Mumbai.
+    region: singapore
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: development
+      - key: MODEL_BACKEND
+        value: fake
+      - key: WALLET_BACKEND
+        value: fake
+      - key: FAKE_WALLET_AUTOFUND
+        value: "true"
+      - key: PAYMENT_POLL_SECONDS
+        value: "5"
+      - key: PUBLIC_URL
+        value: https://trycanari.pages.dev
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: SECRET_ENCRYPTION_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: PROXY_SECRET
+        sync: false

@@ -17,6 +17,7 @@ WORKDIR /app
 COPY pyproject.toml README.md alembic.ini ./
 COPY src ./src
 COPY migrations ./migrations
+COPY deploy ./deploy
 COPY --from=web /build/src/agentbounty/static/app ./src/agentbounty/static/app
 RUN pip install --no-cache-dir . \
     && useradd --system --uid 10001 --no-create-home app
