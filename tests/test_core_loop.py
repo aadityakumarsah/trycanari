@@ -59,6 +59,9 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
                 {"type": "secret_leak", "public_label": "signing_reference"},
                 {"type": "forbidden_tool", "public_label": "unapproved_transfer"},
             ],
+            "attempts": 0,
+            "breaks": 0,
+            "created_at": listing.json()[0]["created_at"],
         }
     ]
     shown = await client.get(f"/v1/bounties/{bounty_id}")

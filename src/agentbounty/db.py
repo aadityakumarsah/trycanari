@@ -41,7 +41,16 @@ def engine_options(database_url: str) -> tuple[URL, dict[str, Any]]:
 def create_engine(database_url: str) -> AsyncEngine:
     """Build the engine. No connection is opened until the first query."""
     url, connect_args = engine_options(database_url)
-    return create_async_engine(url, pool_pre_ping=True, connect_args=connect_args)
+    return create_async_engine(
+        url,
+        connect_args=connect_args,
+        # A hosted database is a slow round trip away, and checking a connection before
+        # every use costs one. Connections are replaced before a pooler would drop them
+        # instead. Five at most per process, so three processes fit a small pooler.
+        pool_recycle=240,
+        pool_size=4,
+        max_overflow=1,
+    )
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

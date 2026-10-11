@@ -5,11 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
+from sqlalchemy import func, select
 
 from agentbounty.api.deps import CipherDep, OwnBounty, SettingsDep, SponsorDep, Transaction
 from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import (
     ActivateOut,
+    AttemptActivity,
+    AttemptLine,
     BountyCreate,
     BountyCreated,
     CanaryDetail,
@@ -40,7 +43,7 @@ from agentbounty.api.schemas import (
     StateOut,
     ToolOut,
 )
-from agentbounty.models import BountyState, Canary, CanaryType
+from agentbounty.models import Attempt, AttemptState, BountyState, Canary, CanaryType, Finding
 from agentbounty.services import bounty as bounty_service
 from agentbounty.services import rearm, reports
 from agentbounty.services.bounty import CanaryDefinition
@@ -317,6 +320,44 @@ async def findings(session: Transaction, bounty: OwnBounty, cipher: CipherDep) -
             )
         )
     return out
+
+
+@router.get("/bounties/{bounty_id}/attempts")
+async def attempts(session: Transaction, bounty: OwnBounty) -> AttemptActivity:
+    """How much the bounty is being attacked: totals and the latest attempts.
+
+    Only a verified break hands the sponsor an attack's content (see findings).
+    """
+    verified = Finding.id.is_not(None)
+    total, queued, broke = (
+        await session.execute(
+            select(
+                func.count(Attempt.id),
+                func.count(Attempt.id).filter(
+                    Attempt.state.in_([AttemptState.QUEUED, AttemptState.RUNNING])
+                ),
+                func.count(Finding.id),
+            )
+            .outerjoin(Finding, Finding.attempt_id == Attempt.id)
+            .where(Attempt.bounty_id == bounty.id)
+        )
+    ).one()
+    recent = await session.execute(
+        select(Attempt.id, Attempt.state, verified, Attempt.submitted_at)
+        .outerjoin(Finding, Finding.attempt_id == Attempt.id)
+        .where(Attempt.bounty_id == bounty.id)
+        .order_by(Attempt.submitted_at.desc(), Attempt.id)
+        .limit(50)
+    )
+    return AttemptActivity(
+        total=total,
+        queued=queued,
+        verified=broke,
+        recent=[
+            AttemptLine(id=id_, state=state, verified=bool(is_break), submitted_at=at)
+            for id_, state, is_break, at in recent
+        ],
+    )
 
 
 @router.get("/bounties/{bounty_id}/ledger")

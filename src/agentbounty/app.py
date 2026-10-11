@@ -50,6 +50,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.rate_limiter = RateLimiter(settings.rate_limit_per_minute)
     # Tests put a transport here to stand in for Google. None means the real network.
     app.state.google_transport = None
+    # Public answers kept for a few seconds (see api/public.py).
+    app.state.public_cache = {}
 
     @app.exception_handler(ServiceError)
     async def service_error(_: Request, exc: ServiceError) -> JSONResponse:

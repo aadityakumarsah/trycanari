@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     # no proxy is believed.
     proxy_secret: SecretStr | None = None
 
+    # How long the public listing, a bounty's public page and the activity feed may be
+    # served from memory. They are the same for everyone, so a few seconds saves most of
+    # the database work a busy page would cause. 0 switches the cache off.
+    public_cache_seconds: float = Field(default=5.0, ge=0)
+
     worker_poll_seconds: float = Field(default=2.0, gt=0)
     # A running attempt older than this is taken to belong to a dead worker and is retried.
     attempt_timeout_seconds: float = Field(default=900.0, gt=0)

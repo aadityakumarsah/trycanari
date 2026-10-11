@@ -271,6 +271,48 @@ class BountyPublic(BaseModel):
     reward_zatoshi: int
     entry_points: list[EntryPoint]
     canaries: list[CanaryPublic]
+    # How many attacks hunters have submitted, and how many were verified breaks.
+    attempts: int = 0
+    breaks: int = 0
+    created_at: datetime
+
+
+class StatsOut(BaseModel):
+    live_bounties: int
+    reward_pool_zatoshi: int
+    attempts: int
+    verified_breaks: int
+    paid_zatoshi: int
+
+
+class BreakOut(BaseModel):
+    """A verified break, as the public sees it: that it happened, never how."""
+
+    bounty_id: uuid.UUID
+    bounty_title: str
+    canary: CanaryPublic
+    reward_zatoshi: int
+    tripped_runs: int
+    verified_at: datetime
+
+
+class ActivityOut(BaseModel):
+    stats: StatsOut
+    recent_breaks: list[BreakOut]
+
+
+class AttemptLine(BaseModel):
+    id: uuid.UUID
+    state: AttemptState
+    verified: bool
+    submitted_at: datetime
+
+
+class AttemptActivity(BaseModel):
+    total: int
+    queued: int
+    verified: int
+    recent: list[AttemptLine]
 
 
 class AttemptIn(Body):

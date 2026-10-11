@@ -143,6 +143,8 @@ def service_settings(database_url: str) -> Settings:
         model_backend="fake",
         # High enough that only the tests about the limit ever reach it.
         rate_limit_per_minute=100_000,
+        # Tests change something and look at once.
+        public_cache_seconds=0,
     )
 
 

@@ -6,10 +6,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
-from sqlalchemy import select
+from sqlalchemy import and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentbounty.api.public import public_view
+from agentbounty.api.public import cached, public_views
 from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import BountyPublic
 from agentbounty.db import get_transaction
@@ -96,11 +96,7 @@ Schemas for every endpoint: {base_url}openapi.json
 async def agent_guide(
     request: Request, session: Annotated[AsyncSession, Depends(get_transaction)]
 ) -> PlainTextResponse:
-    live = await session.scalars(
-        select(Bounty)
-        .where(Bounty.state == BountyState.LIVE, Bounty.close_requested_at.is_(None))
-        .order_by(Bounty.created_at, Bounty.id)
-    )
-    bounties = [await public_view(session, bounty) for bounty in live]
+    live = and_(Bounty.state == BountyState.LIVE, Bounty.close_requested_at.is_(None))
+    bounties = await cached(request, "bounties", lambda: public_views(session, live))
     text = guide(str(request.base_url), bounties, request.app.state.settings)
     return PlainTextResponse(text, media_type="text/markdown; charset=utf-8")
