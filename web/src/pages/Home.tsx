@@ -1,13 +1,13 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { api } from "../api.ts";
 import { Icon, type IconName } from "../components/Brand.tsx";
 import { WalkingMascot } from "../components/WalkingMascot.tsx";
-import { ErrorNote, words } from "../components/ui.tsx";
+import { Ago, ErrorNote, Skeleton, words } from "../components/ui.tsx";
 import { useLoad } from "../hooks.ts";
 import { formatZec } from "../money.ts";
-import type { BountyPublic } from "../types.ts";
+import type { Activity, BountyPublic } from "../types.ts";
 
 const VERIFIED_BY: [IconName, string][] = [
   ["repeat", "Five fresh replays"],
@@ -133,6 +133,15 @@ function BountyCard({ bounty }: { bounty: BountyPublic }) {
           </span>
         ))}
       </div>
+      <p className="card-meta">
+        <span>
+          <Icon name="target" size={13} />
+          {bounty.attempts} {bounty.attempts === 1 ? "attack" : "attacks"}
+        </span>
+        <span className={bounty.breaks ? "broken" : "unbroken"}>
+          {bounty.breaks ? `broken ${bounty.breaks}×` : "unbroken"}
+        </span>
+      </p>
       <Link className="btn-attack" to={`/b/${bounty.id}`}>
         Attack <Icon name="chevron" />
       </Link>
@@ -140,11 +149,55 @@ function BountyCard({ bounty }: { bounty: BountyPublic }) {
   );
 }
 
+export const SORTS = {
+  reward: "Highest reward",
+  newest: "Newest",
+  attacked: "Most attacked",
+  unbroken: "Unbroken first",
+} as const;
+export type Sort = keyof typeof SORTS;
+
+/** The bounties matching what was typed, in the chosen order. */
+export function arrange(bounties: BountyPublic[], query: string, sort: Sort): BountyPublic[] {
+  const wanted = query.trim().toLowerCase();
+  const matching = bounties.filter((bounty) => {
+    if (!wanted) return true;
+    const text = [bounty.title, bounty.description, ...bounty.canaries.map((canary) => canary.public_label)];
+    return text.join(" ").toLowerCase().includes(wanted);
+  });
+  const by: Record<Sort, (a: BountyPublic, b: BountyPublic) => number> = {
+    reward: (a, b) => b.reward_zatoshi - a.reward_zatoshi,
+    newest: (a, b) => b.created_at.localeCompare(a.created_at),
+    attacked: (a, b) => b.attempts - a.attempts,
+    unbroken: (a, b) => a.breaks - b.breaks || b.reward_zatoshi - a.reward_zatoshi,
+  };
+  return [...matching].sort(by[sort]);
+}
+
 export function Home() {
-  const bounties = useLoad((signal) => api<BountyPublic[]>("GET", "/v1/bounties", { signal }), "home");
+  const bounties = useLoad((signal) => api<BountyPublic[]>("GET", "/v1/bounties", { signal }), "home", "bounties");
+  const activity = useLoad((signal) => api<Activity>("GET", "/v1/activity", { signal }), "home", "activity");
   const location = useLocation();
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<Sort>("reward");
+  const search = useRef<HTMLInputElement>(null);
   const live = bounties.data ?? [];
+  const shown = useMemo(() => arrange(live, query, sort), [live, query, sort]);
   const pool = live.reduce((sum, bounty) => sum + bounty.reward_zatoshi, 0);
+  const stats = activity.data?.stats;
+  const breaks = activity.data?.recent_breaks ?? [];
+
+  // "/" jumps to the search box, as it does on most sites with one.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const typing = event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
+      if (event.key !== "/" || typing || event.metaKey || event.ctrlKey) return;
+      event.preventDefault();
+      search.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // The router does not scroll to a fragment by itself.
   useEffect(() => {
@@ -185,13 +238,97 @@ export function Home() {
           <p>{live.length ? `${live.length} open, ${formatZec(pool)} ZEC in rewards` : "Agents you can attack right now"}</p>
         </div>
         <ErrorNote>{bounties.error}</ErrorNote>
-        {bounties.data?.length === 0 && <p className="empty">No bounty is live right now.</p>}
-        {live.length > 0 && (
+        {live.length > 1 && (
+          <div className="toolbar">
+            <label className="search">
+              <Icon name="search" size={16} />
+              <input
+                ref={search}
+                type="search"
+                placeholder="Search agents and canaries"
+                aria-label="Search bounties"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <kbd>/</kbd>
+            </label>
+            <label className="sort">
+              <span>Sort</span>
+              <select value={sort} onChange={(event) => setSort(event.target.value as Sort)}>
+                {Object.entries(SORTS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+        {!bounties.data && !bounties.error && (
           <ul className="cards">
-            {live.map((bounty) => (
+            {[0, 1, 2].map((index) => (
+              <li key={index} className="card">
+                <Skeleton block lines={4} />
+              </li>
+            ))}
+          </ul>
+        )}
+        {bounties.data?.length === 0 && (
+          <div className="empty">
+            <p>No bounty is live right now.</p>
+            <Link to="/dashboard">List the first agent →</Link>
+          </div>
+        )}
+        {live.length > 0 && shown.length === 0 && (
+          <div className="empty">
+            <p>No bounty matches “{query}”.</p>
+            <button type="button" className="text-button" onClick={() => setQuery("")}>
+              Clear the search
+            </button>
+          </div>
+        )}
+        {shown.length > 0 && (
+          <ul className="cards">
+            {shown.map((bounty) => (
               <BountyCard key={bounty.id} bounty={bounty} />
             ))}
           </ul>
+        )}
+      </section>
+
+      <section className="sec" id="breaks">
+        <div className="sec-head">
+          <h2>Recent Breaks</h2>
+          <p>Verified and paid automatically. The attack itself stays with the sponsor.</p>
+        </div>
+        {!activity.data && !activity.error && <Skeleton lines={3} />}
+        {activity.data && breaks.length === 0 && (
+          <div className="empty">
+            <p>No agent has been broken yet. The first verified break shows up here.</p>
+          </div>
+        )}
+        {breaks.length > 0 && (
+          <ol className="feed">
+            {breaks.map((item) => (
+              <li key={`${item.bounty_id}:${item.verified_at}`}>
+                <span className="feed-icon">
+                  <Icon name={item.canary.type === "secret_leak" ? "key" : "ban"} size={16} />
+                </span>
+                <span className="feed-main">
+                  <Link to={`/b/${item.bounty_id}`}>{item.bounty_title}</Link>
+                  <small>
+                    tripped <code>{item.canary.public_label}</code> in {item.tripped_runs} of 5 runs
+                  </small>
+                </span>
+                <span className="feed-side">
+                  <b>+{formatZec(item.reward_zatoshi)} ZEC</b>
+                  <small>
+                    <Ago iso={item.verified_at} />
+                  </small>
+                </span>
+              </li>
+            ))}
+          </ol>
         )}
       </section>
 
@@ -319,23 +456,25 @@ export function Home() {
         <div className="stats">
           <div>
             <small>Live bounties</small>
-            <b>{live.length}</b>
+            <b>{stats?.live_bounties ?? live.length}</b>
             <span />
           </div>
           <div>
             <small>Reward pool</small>
-            <b>{formatZec(pool)}</b>
+            <b>{formatZec(stats?.reward_pool_zatoshi ?? pool)}</b>
             <span>ZEC</span>
           </div>
           <div>
-            <small>Replays per attack</small>
-            <b>5</b>
+            <small>Attacks run</small>
+            <b>{stats?.attempts ?? 0}</b>
             <span />
           </div>
           <div>
-            <small>Trips to win</small>
-            <b>3</b>
-            <span>of 5</span>
+            <small>Paid to hunters</small>
+            <b>{formatZec(stats?.paid_zatoshi ?? 0)}</b>
+            <span>
+              ZEC, {stats?.verified_breaks ?? 0} {stats?.verified_breaks === 1 ? "break" : "breaks"}
+            </span>
           </div>
         </div>
       </section>

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { api } from "./api.ts";
+import { forgetLoaded } from "./hooks.ts";
 import type { Session } from "./types.ts";
 
 interface SessionContext {
@@ -29,6 +30,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
   const signOut = useCallback(async () => {
     await api<Session>("DELETE", "/v1/session").catch(() => undefined);
+    forgetLoaded();
     setSession(SIGNED_OUT);
   }, []);
 

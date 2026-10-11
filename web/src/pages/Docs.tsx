@@ -509,6 +509,7 @@ python -m agentbounty.attacker --api ${origin} \\
             rows={[
               [<Endpoint method="GET" path="/v1/bounties" />, "Bounties that are live now."],
               [<Endpoint method="GET" path="/v1/bounties/{id}" />, "One bounty: entry points, canary labels, reward, state."],
+              [<Endpoint method="GET" path="/v1/activity" />, "Platform totals and the latest verified breaks. Never the attack itself."],
               [<Endpoint method="POST" path="/v1/bounties/{id}/attempts" />, "Submit an attack. Returns the attempt ID and status token."],
               [<Endpoint method="GET" path="/v1/attempts/{id}" />, "State, verdict, one run's replies and the payout. Needs the status token."],
               [<Endpoint method="POST" path="/v1/sponsors" />, "Sign up as a sponsor. Returns the API key, once."],
@@ -530,6 +531,7 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="POST" path="/v1/bounties/{id}/close" />, "Stop for good and refund the unspent escrow."],
               [<Endpoint method="GET" path="/v1/sponsor/bounties" />, "Your bounties, with balances."],
               [<Endpoint method="GET" path="/v1/sponsor/bounties/{id}" />, "One bounty with its config, canaries and re-arm state."],
+              [<Endpoint method="GET" path="/v1/bounties/{id}/attempts" />, "How much the bounty is being attacked: totals and recent outcomes."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/findings" />, "Verified breaks: the attack, transcripts and evidence."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/ledger" />, "Ledger entries and the balance."],
             ]}

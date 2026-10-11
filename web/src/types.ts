@@ -19,6 +19,45 @@ export interface BountyPublic {
   reward_zatoshi: number;
   entry_points: EntryPoint[];
   canaries: CanaryPublic[];
+  attempts: number;
+  breaks: number;
+  created_at: string;
+}
+
+export interface Stats {
+  live_bounties: number;
+  reward_pool_zatoshi: number;
+  attempts: number;
+  verified_breaks: number;
+  paid_zatoshi: number;
+}
+
+export interface Break {
+  bounty_id: string;
+  bounty_title: string;
+  canary: CanaryPublic;
+  reward_zatoshi: number;
+  tripped_runs: number;
+  verified_at: string;
+}
+
+export interface Activity {
+  stats: Stats;
+  recent_breaks: Break[];
+}
+
+export interface AttemptLine {
+  id: string;
+  state: "queued" | "running" | "done" | "error";
+  verified: boolean;
+  submitted_at: string;
+}
+
+export interface AttemptActivity {
+  total: number;
+  queued: number;
+  verified: number;
+  recent: AttemptLine[];
 }
 
 export interface ToolCall {

@@ -3,13 +3,14 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-r
 
 import { messageOf } from "./api.ts";
 import { Icon, Wordmark } from "./components/Brand.tsx";
-import { ErrorNote } from "./components/ui.tsx";
+import { ErrorNote, Skeleton } from "./components/ui.tsx";
 import { BountyPage } from "./pages/BountyPage.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
 import { Docs } from "./pages/Docs.tsx";
 import { DashboardBounty } from "./pages/DashboardBounty.tsx";
 import { Home } from "./pages/Home.tsx";
 import { Login } from "./pages/Login.tsx";
+import { MyAttempts, useSavedAttempts } from "./pages/MyAttempts.tsx";
 import { useSession } from "./session.tsx";
 
 type Mode = "human" | "agent";
@@ -103,6 +104,7 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
   const [product, setProduct] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const closeProduct = useCallback(() => setProduct(false), []);
+  const running = useSavedAttempts().filter((attempt) => !attempt.outcome).length;
   useDismiss(product, closeProduct, ".drop");
 
   // Any navigation closes whatever was open.
@@ -178,9 +180,10 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
         <Link className={link("/docs")} to="/docs" onClick={onNavigate}>
           Docs
         </Link>
-        <a className="nav-link" href="/agent.md">
-          agent.md
-        </a>
+        <Link className={link("/attempts")} to="/attempts" onClick={onNavigate}>
+          My attempts
+          {running > 0 && <span className="nav-count">{running}</span>}
+        </Link>
       </nav>
       <div className="nav-right">
         <a className="nav-icon" href={REPOSITORY} target="_blank" rel="noreferrer" aria-label="trycanari on GitHub">
@@ -298,13 +301,13 @@ function AgentView() {
 function Private({ children }: { children: ReactNode }) {
   const { session } = useSession();
   const location = useLocation();
-  if (session === null) return <p className="muted">Loading…</p>;
+  if (session === null) return <Skeleton block lines={3} />;
   if (!session.signed_in) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   return children;
 }
 
-function Page({ children }: { children: ReactNode }) {
-  return <div className="page">{children}</div>;
+function Page({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
+  return <div className={wide ? "page wide" : "page"}>{children}</div>;
 }
 
 export function NotFound({ message = "That page does not exist." }: { message?: string }) {
@@ -352,8 +355,16 @@ export function App() {
             <Route
               path="/b/:bountyId"
               element={
-                <Page>
+                <Page wide>
                   <BountyPage />
+                </Page>
+              }
+            />
+            <Route
+              path="/attempts"
+              element={
+                <Page>
+                  <MyAttempts />
                 </Page>
               }
             />
@@ -378,7 +389,7 @@ export function App() {
             <Route
               path="/dashboard/b/:bountyId"
               element={
-                <Page>
+                <Page wide>
                   <Private>
                     <DashboardBounty />
                   </Private>

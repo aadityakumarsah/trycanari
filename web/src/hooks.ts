@@ -11,17 +11,36 @@ export interface Loaded<T> {
   reload: () => Promise<void>;
 }
 
+// What pages loaded last time, so coming back to one shows it at once while it refreshes.
+const remembered = new Map<string, unknown>();
+
+/** Forget everything remembered: what one sponsor loaded must not greet the next. */
+export function forgetLoaded(): void {
+  remembered.clear();
+}
+
+interface LoadState<T> {
+  data: T | null;
+  error: string;
+  status: number | null;
+  loading: boolean;
+}
+
+function starting<T>(remember: string | undefined): LoadState<T> {
+  const known = remember === undefined ? undefined : (remembered.get(remember) as T | undefined);
+  return { data: known ?? null, error: "", status: null, loading: known === undefined };
+}
+
 /**
  * Loads something when the component mounts and whenever `key` changes.
  * A reload keeps showing the data it already has, so the page does not flicker.
+ * With `remember`, the last answer is shown immediately on the next visit and
+ * replaced when the fresh one arrives.
  */
-export function useLoad<T>(load: (signal: AbortSignal) => Promise<T>, key: string): Loaded<T> {
-  const [state, setState] = useState<{ data: T | null; error: string; status: number | null; loading: boolean }>({
-    data: null,
-    error: "",
-    status: null,
-    loading: true,
-  });
+export function useLoad<T>(load: (signal: AbortSignal) => Promise<T>, key: string, remember?: string): Loaded<T> {
+  const [state, setState] = useState<LoadState<T>>(() => starting<T>(remember));
+  const rememberAs = useRef(remember);
+  rememberAs.current = remember;
   const latest = useRef(load);
   latest.current = load;
   const controller = useRef<AbortController | null>(null);
@@ -32,7 +51,9 @@ export function useLoad<T>(load: (signal: AbortSignal) => Promise<T>, key: strin
     controller.current = mine;
     try {
       const data = await latest.current(mine.signal);
-      if (!mine.signal.aborted) setState({ data, error: "", status: null, loading: false });
+      if (mine.signal.aborted) return;
+      if (rememberAs.current !== undefined) remembered.set(rememberAs.current, data);
+      setState({ data, error: "", status: null, loading: false });
     } catch (error) {
       if (mine.signal.aborted) return;
       const status = error instanceof ApiError ? error.status : null;
@@ -41,7 +62,7 @@ export function useLoad<T>(load: (signal: AbortSignal) => Promise<T>, key: strin
   }, []);
 
   useEffect(() => {
-    setState({ data: null, error: "", status: null, loading: true });
+    setState(starting<T>(rememberAs.current));
     void run();
     return () => controller.current?.abort();
   }, [key, run]);

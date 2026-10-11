@@ -4,10 +4,10 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { NotFound } from "../App.tsx";
 import { api } from "../api.ts";
 import { Transcript } from "../components/Transcript.tsx";
-import { Badge, Copyable, ErrorNote, when, words } from "../components/ui.tsx";
+import { Ago, Badge, Copyable, ErrorNote, Skeleton, when, words } from "../components/ui.tsx";
 import { useAction, useInterval, useLoad } from "../hooks.ts";
 import { formatZec } from "../money.ts";
-import type { EntryPoint, Finding, Ledger, SponsorBountyDetail } from "../types.ts";
+import type { AttemptActivity, EntryPoint, Finding, Ledger, SponsorBountyDetail } from "../types.ts";
 
 interface Everything {
   bounty: SponsorBountyDetail;
@@ -504,7 +504,79 @@ export function isMoving(bounty: SponsorBountyDetail): boolean {
   return bounty.state === "awaiting_deposit" || bounty.state === "live" || bounty.closing || checking;
 }
 
-export const TABS = ["overview", "agent", "canaries", "funding", "findings", "ledger"] as const;
+/** How hard the bounty is being attacked. The attacks themselves are shown only for breaks. */
+function ActivityTab({ bountyId, watching }: { bountyId: string; watching: boolean }) {
+  const activity = useLoad(
+    (signal) => api<AttemptActivity>("GET", `/v1/bounties/${bountyId}/attempts`, { signal }),
+    bountyId,
+    `sponsor:activity:${bountyId}`,
+  );
+  useInterval(() => void activity.reload(), 5000, watching);
+  if (!activity.data) return activity.error ? <ErrorNote>{activity.error}</ErrorNote> : <Skeleton lines={4} />;
+  const { total, queued, verified, recent } = activity.data;
+  const held = total - queued - verified;
+  return (
+    <section>
+      <h2>Activity</h2>
+      <dl className="facts">
+        <div>
+          <dt>Attacks</dt>
+          <dd>{total}</dd>
+        </div>
+        <div>
+          <dt>Agent held</dt>
+          <dd>{held}</dd>
+        </div>
+        <div>
+          <dt>Verified breaks</dt>
+          <dd>{verified}</dd>
+        </div>
+        <div>
+          <dt>In the queue</dt>
+          <dd>{queued}</dd>
+        </div>
+      </dl>
+      {recent.length === 0 ? (
+        <p className="empty">No one has attacked this agent yet. Attempts appear here as they arrive.</p>
+      ) : (
+        <div className="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Attempt</th>
+                <th>Outcome</th>
+                <th>Submitted</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recent.map((line) => (
+                <tr key={line.id}>
+                  <td>
+                    <code>{line.id.slice(0, 8)}</code>
+                  </td>
+                  <td>
+                    <Badge
+                      state={line.verified ? "verified" : line.state === "done" ? "not_verified" : line.state}
+                    />
+                  </td>
+                  <td>
+                    <Ago iso={line.submitted_at} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="muted small">
+        You see that an attack happened and how it was judged. Its content is handed to you only when it is a
+        verified break, under Findings.
+      </p>
+    </section>
+  );
+}
+
+export const TABS = ["overview", "agent", "canaries", "funding", "activity", "findings", "ledger"] as const;
 export type Tab = (typeof TABS)[number];
 
 /** The tab a ?tab= value names. Anything unknown is the overview. */
@@ -524,7 +596,7 @@ export function DashboardBounty() {
       api<Ledger>("GET", `${base}/ledger`, { signal }),
     ]);
     return { bounty, findings, ledger };
-  }, bountyId);
+  }, bountyId, `sponsor:bounty:${bountyId}`);
   const [done, setDone] = useState("");
 
   // A deposit confirming, an attack landing or a re-arm check finishing all happen
@@ -532,7 +604,7 @@ export function DashboardBounty() {
   useInterval(() => void page.reload(), 3000, page.data !== null && isMoving(page.data.bounty));
 
   if (page.status === 404 || page.status === 422) return <NotFound message="That bounty does not exist." />;
-  if (!page.data) return page.error ? <ErrorNote>{page.error}</ErrorNote> : <p className="muted">Loading…</p>;
+  if (!page.data) return page.error ? <ErrorNote>{page.error}</ErrorNote> : <Skeleton block lines={6} />;
   const { bounty, findings, ledger } = page.data;
 
   const DONE: Record<string, string> = {
@@ -627,6 +699,7 @@ export function DashboardBounty() {
         {tab === "agent" && <Config bounty={bounty} act={act} />}
         {tab === "canaries" && <CanarySection bounty={bounty} act={act} />}
         {tab === "funding" && <Funding bounty={bounty} act={act} />}
+        {tab === "activity" && <ActivityTab bountyId={bounty.id} watching={isMoving(bounty)} />}
         {tab === "findings" && <Findings findings={findings} />}
         {tab === "ledger" && <LedgerTable ledger={ledger} />}
       </div>

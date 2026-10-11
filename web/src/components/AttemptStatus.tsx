@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, messageOf } from "../api.ts";
+import { settleAttempt } from "../attempts.ts";
 import { useInterval } from "../hooks.ts";
 import { formatZec } from "../money.ts";
 import type { AttemptAccepted, AttemptStatus } from "../types.ts";
@@ -28,9 +29,14 @@ const EXPLAIN: Record<string, string> = {
 export function AttemptResult({ status }: { status: AttemptStatus }) {
   if (status.state === "queued" || status.state === "running") {
     return (
-      <p>
-        <Badge state={status.state} /> {WAITING[status.state]}
-      </p>
+      <div className="replaying">
+        <p>
+          <Badge state={status.state} /> {WAITING[status.state]}
+        </p>
+        <div className="progress" role="progressbar" aria-label="Replaying the attack">
+          <i />
+        </div>
+      </div>
     );
   }
   if (status.state === "error" || status.verdict === null) {
@@ -48,6 +54,13 @@ export function AttemptResult({ status }: { status: AttemptStatus }) {
         {status.total_runs ? `Tripped in ${status.tripped_runs} of ${status.total_runs} runs. ` : ""}
         {status.canary ? `Canary: ${status.canary.public_label}.` : ""}
       </p>
+      {status.total_runs ? (
+        <p className="run-dots" role="img" aria-label={`${status.tripped_runs} of ${status.total_runs} runs tripped`}>
+          {Array.from({ length: status.total_runs }, (_, index) => (
+            <i key={index} className={index < (status.tripped_runs ?? 0) ? "on" : undefined} />
+          ))}
+        </p>
+      ) : null}
       {EXPLAIN[status.verdict] && <p className="muted">{EXPLAIN[status.verdict]}</p>}
       {status.verdict === "verified" &&
         (payout?.txid ? (
@@ -92,14 +105,18 @@ export function AttemptTracker({ attempt, onSettled }: { attempt: AttemptAccepte
   const notify = useRef(onSettled);
   notify.current = onSettled;
   useEffect(() => {
-    if (settled) notify.current?.();
+    if (!settled || !status) return;
+    settleAttempt(attempt.attempt_id, status.state === "error" ? "error" : (status.verdict ?? "error"));
+    notify.current?.();
+    // `status` is read once, at the moment the attempt settles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settled]);
 
   return (
     <section className="status" aria-live="polite">
       <h2>Your attempt</h2>
       <ErrorNote>{error}</ErrorNote>
-      {status ? <AttemptResult status={status} /> : !error && <p className="muted">Submitting…</p>}
+      {status ? <AttemptResult status={status} /> : !error && <p className="muted">Fetching the result…</p>}
     </section>
   );
 }

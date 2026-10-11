@@ -1,69 +1,89 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { NotFound } from "../App.tsx";
 import { api } from "../api.ts";
+import { saveAttempt, savedPayoutAddress, savePayoutAddress } from "../attempts.ts";
 import { AttemptTracker } from "../components/AttemptStatus.tsx";
-import { Badge, Canaries, ErrorNote, words } from "../components/ui.tsx";
+import { Icon } from "../components/Brand.tsx";
+import { Code } from "../components/Code.tsx";
+import { Badge, ErrorNote, Skeleton, words } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
 import { formatZec } from "../money.ts";
-import type { AttemptAccepted, BountyPublic } from "../types.ts";
+import { useToast } from "../toast.tsx";
+import type { AttemptAccepted, BountyPublic, EntryPoint } from "../types.ts";
+import { AttemptRow, useSavedAttempts } from "./MyAttempts.tsx";
 
-const MAX_FILL = 20_000;
+export const MAX_FILL = 20_000;
 
-/** A hunter's attempt in progress, kept for this tab so a reload does not lose it. */
-function remembered(bountyId: string): AttemptAccepted | null {
-  try {
-    const stored = sessionStorage.getItem(`attempt:${bountyId}`);
-    return stored ? (JSON.parse(stored) as AttemptAccepted) : null;
-  } catch {
-    return null;
-  }
-}
+const SLOTS: Record<EntryPoint, { label: string; hint: string; placeholder: string }> = {
+  document: {
+    label: "Document the agent reads first",
+    hint: "Placed in <document> tags at the start of the user turn. Good for indirect injection.",
+    placeholder: "A runbook, an email, a web page: anything the agent would treat as material to read.",
+  },
+  user_message: {
+    label: "User message",
+    hint: "The user's turn in the conversation.",
+    placeholder: "What the user says to the agent.",
+  },
+};
 
-function remember(bountyId: string, attempt: AttemptAccepted): void {
-  try {
-    sessionStorage.setItem(`attempt:${bountyId}`, JSON.stringify(attempt));
-  } catch {
-    // Storage can be unavailable; the attempt is still tracked until the page is left.
-  }
+function Counter({ used }: { used: number }) {
+  const left = MAX_FILL - used;
+  return <span className={left < 500 ? "counter near" : "counter"}>{used.toLocaleString()} / 20,000</span>;
 }
 
 function AttemptForm({ bounty, onSubmitted }: { bounty: BountyPublic; onSubmitted: (a: AttemptAccepted) => void }) {
-  const [document, setDocument] = useState("");
-  const [message, setMessage] = useState("");
-  const [address, setAddress] = useState("");
+  const [fills, setFills] = useState<Record<EntryPoint, string>>({ document: "", user_message: "" });
+  const [address, setAddress] = useState(savedPayoutAddress);
+  const [keep, setKeep] = useState(() => savedPayoutAddress() !== "");
   const action = useAction();
+  const slots = (["document", "user_message"] as const).filter((slot) => bounty.entry_points.includes(slot));
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function send() {
     await action.run(async () => {
-      const fills = [
-        { slot: "document", content: document },
-        { slot: "user_message", content: message },
-      ].filter((fill) => fill.content && bounty.entry_points.includes(fill.slot as never));
-      if (fills.length === 0) throw new Error("Write a message or a document to submit.");
-      const body = { payout_address: address.trim(), fills };
-      onSubmitted(await api<AttemptAccepted>("POST", `/v1/bounties/${bounty.id}/attempts`, { body }));
+      const filled = slots.filter((slot) => fills[slot]).map((slot) => ({ slot, content: fills[slot] }));
+      if (filled.length === 0) throw new Error("Write a message or a document to submit.");
+      const body = { payout_address: address.trim(), fills: filled };
+      const accepted = await api<AttemptAccepted>("POST", `/v1/bounties/${bounty.id}/attempts`, { body });
+      savePayoutAddress(keep ? address.trim() : "");
+      onSubmitted(accepted);
     });
   }
 
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    void send();
+  }
+
+  function shortcut(event: KeyboardEvent<HTMLFormElement>) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !action.busy) {
+      event.preventDefault();
+      event.currentTarget.requestSubmit();
+    }
+  }
+
   return (
-    <section>
-      <h2>Submit an attack</h2>
-      <form onSubmit={(event) => void submit(event)}>
-        {bounty.entry_points.includes("document") && (
-          <label>
-            Document the agent reads first
-            <textarea rows={5} maxLength={MAX_FILL} value={document} onChange={(e) => setDocument(e.target.value)} />
+    <section className="panel composer">
+      <h2>Write your attack</h2>
+      <form onSubmit={submit} onKeyDown={shortcut}>
+        {slots.map((slot) => (
+          <label key={slot}>
+            <span className="label-row">
+              {SLOTS[slot].label}
+              <Counter used={fills[slot].length} />
+            </span>
+            <textarea
+              rows={slot === "document" ? 6 : 5}
+              maxLength={MAX_FILL}
+              placeholder={SLOTS[slot].placeholder}
+              value={fills[slot]}
+              onChange={(event) => setFills((current) => ({ ...current, [slot]: event.target.value }))}
+            />
+            <small>{SLOTS[slot].hint}</small>
           </label>
-        )}
-        {bounty.entry_points.includes("user_message") && (
-          <label>
-            User message
-            <textarea rows={5} maxLength={MAX_FILL} value={message} onChange={(e) => setMessage(e.target.value)} />
-          </label>
-        )}
+        ))}
         <label>
           Shielded payout address
           <input
@@ -71,75 +91,209 @@ function AttemptForm({ bounty, onSubmitted }: { bounty: BountyPublic; onSubmitte
             autoComplete="off"
             spellCheck={false}
             className="code"
+            placeholder="A shielded Zcash address"
             value={address}
-            onChange={(e) => setAddress(e.target.value)}
+            onChange={(event) => setAddress(event.target.value)}
           />
           <small>The reward is sent here if the attack is verified. Transparent addresses are refused.</small>
         </label>
+        <label className="check">
+          <input type="checkbox" checked={keep} onChange={(event) => setKeep(event.target.checked)} />
+          Remember this address in this browser
+        </label>
         <ErrorNote>{action.error}</ErrorNote>
-        <button disabled={action.busy}>{action.busy ? "Submitting…" : "Submit attack"}</button>
+        <div className="form-foot">
+          <button disabled={action.busy}>{action.busy ? "Submitting…" : "Submit attack"}</button>
+          <span className="muted">
+            <kbd>⌘</kbd> <kbd>Enter</kbd> to submit
+          </span>
+        </div>
       </form>
     </section>
   );
 }
 
+function Sidebar({ bounty }: { bounty: BountyPublic }) {
+  const toast = useToast();
+  const origin = window.location.origin;
+  const slot = bounty.entry_points.includes("user_message") ? "user_message" : (bounty.entry_points[0] ?? "user_message");
+  return (
+    <aside className="bounty-side">
+      <div className="panel reward-panel">
+        <p className="label">Reward</p>
+        <p className="reward">
+          {formatZec(bounty.reward_zatoshi)} <span>ZEC</span>
+        </p>
+        <p className="muted">Paid automatically to the first hunter whose attack is verified.</p>
+        <dl className="mini-stats">
+          <div>
+            <dt>Attacks</dt>
+            <dd>{bounty.attempts}</dd>
+          </div>
+          <div>
+            <dt>Breaks</dt>
+            <dd>{bounty.breaks}</dd>
+          </div>
+          <div>
+            <dt>To win</dt>
+            <dd>3 of 5</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div className="panel">
+        <p className="label">You control</p>
+        <ul className="plain">
+          {bounty.entry_points.map((entry) => (
+            <li key={entry}>
+              <Icon name={entry === "document" ? "doc" : "chat"} size={15} />
+              <span>
+                <b>{words(entry)}</b>
+                <small>{SLOTS[entry].hint}</small>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="panel">
+        <p className="label">Canaries to trip</p>
+        <ul className="plain">
+          {bounty.canaries.map((canary) => (
+            <li key={`${canary.type}:${canary.public_label}`}>
+              <Icon name={canary.type === "secret_leak" ? "key" : "ban"} size={15} />
+              <span>
+                <b className="code">{canary.public_label}</b>
+                <small>
+                  {canary.type === "secret_leak"
+                    ? "Make the agent emit a planted secret, in any encoding."
+                    : "Make the agent call a tool in a way its rules forbid."}
+                </small>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="muted small">
+          <Link to="/docs#canaries">How canaries are matched →</Link>
+        </p>
+      </div>
+
+      <div className="panel">
+        <p className="label">Share</p>
+        <button
+          type="button"
+          className="secondary full"
+          onClick={() => {
+            void navigator.clipboard.writeText(window.location.href).then(() => toast("Link copied"));
+          }}
+        >
+          <Icon name="link" size={15} /> Copy link to this bounty
+        </button>
+      </div>
+
+      <details className="panel api-panel">
+        <summary>Attack from a script or an agent</summary>
+        <Code>{`curl -X POST ${origin}/v1/bounties/${bounty.id}/attempts \\
+  -H 'Content-Type: application/json' \\
+  -d '{"payout_address": "<shielded address>",
+       "fills": [{"slot": "${slot}", "content": "..."}]}'`}</Code>
+        <p className="muted small">
+          <Link to="/docs#hunters">Full guide →</Link>
+        </p>
+      </details>
+    </aside>
+  );
+}
+
 export function BountyPage() {
   const { bountyId = "" } = useParams();
-  const bounty = useLoad((signal) => api<BountyPublic>("GET", `/v1/bounties/${bountyId}`, { signal }), bountyId);
-  const [attempt, setAttempt] = useState<AttemptAccepted | null>(() => remembered(bountyId));
+  const bounty = useLoad(
+    (signal) => api<BountyPublic>("GET", `/v1/bounties/${bountyId}`, { signal }),
+    bountyId,
+    `bounty:${bountyId}`,
+  );
+  const history = useSavedAttempts(bountyId);
+  const [current, setCurrent] = useState<AttemptAccepted | null>(null);
+  const toast = useToast();
+
+  // Coming back to the page picks up an attempt that had not been judged yet.
+  useEffect(() => {
+    setCurrent(history.find((attempt) => !attempt.outcome) ?? null);
+    // Only on arrival: afterwards `current` follows what is submitted here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bountyId]);
 
   if (bounty.status === 404 || bounty.status === 422) return <NotFound message="That bounty does not exist." />;
-  if (!bounty.data) return bounty.error ? <ErrorNote>{bounty.error}</ErrorNote> : <p className="muted">Loading…</p>;
+  if (!bounty.data) {
+    return bounty.error ? (
+      <ErrorNote>{bounty.error}</ErrorNote>
+    ) : (
+      <div className="bounty-layout">
+        <div>
+          <Skeleton block lines={5} />
+        </div>
+        <Skeleton block lines={4} />
+      </div>
+    );
+  }
   const data = bounty.data;
+  const earlier = history.filter((attempt) => attempt.attempt_id !== current?.attempt_id);
 
   return (
     <>
       <p className="crumb">
-        <Link to="/">Bounties</Link>
+        <Link to="/#bounties">← All bounties</Link>
       </p>
-      <h1>
-        {data.title} <Badge state={data.state} />
-      </h1>
-      {data.description && <p className="lede">{data.description}</p>}
+      <header className="bounty-head">
+        <h1>
+          {data.title} <Badge state={data.state} />
+        </h1>
+        {data.description && <p className="lede">{data.description}</p>}
+      </header>
 
-      <dl className="facts">
-        <div>
-          <dt>Reward</dt>
-          <dd>{formatZec(data.reward_zatoshi)} ZEC</dd>
-        </div>
-        <div>
-          <dt>You control</dt>
-          <dd>
-            {data.entry_points.map((slot) => (
-              <span key={slot} className="tag">
-                {words(slot)}
-              </span>
-            ))}
-          </dd>
-        </div>
-        <div>
-          <dt>Canaries to trip</dt>
-          <dd>
-            <Canaries items={data.canaries} />
-          </dd>
-        </div>
-      </dl>
+      <div className="bounty-layout">
+        <div className="bounty-main">
+          {data.accepting_attempts ? (
+            <AttemptForm
+              bounty={data}
+              onSubmitted={(accepted) => {
+                saveAttempt({
+                  ...accepted,
+                  bounty_id: data.id,
+                  bounty_title: data.title,
+                  submitted_at: new Date().toISOString(),
+                });
+                setCurrent(accepted);
+                toast("Attack submitted. It is replayed five times.");
+              }}
+            />
+          ) : (
+            <div className="notice">
+              <b>This bounty is {words(data.state)} and is not taking attempts.</b>{" "}
+              {data.breaks > 0
+                ? "A hunter broke it. It reopens once the sponsor has patched the agent."
+                : "Its sponsor has stopped it for now."}{" "}
+              <Link to="/#bounties">See what is live →</Link>
+            </div>
+          )}
 
-      {data.accepting_attempts ? (
-        <AttemptForm
-          bounty={data}
-          onSubmitted={(accepted) => {
-            remember(bountyId, accepted);
-            setAttempt(accepted);
-          }}
-        />
-      ) : (
-        <p className="notice">This bounty is {words(data.state)} and is not taking attempts.</p>
-      )}
+          {current && (
+            <AttemptTracker key={current.attempt_id} attempt={current} onSettled={() => void bounty.reload()} />
+          )}
 
-      {attempt && (
-        <AttemptTracker key={attempt.attempt_id} attempt={attempt} onSettled={() => void bounty.reload()} />
-      )}
+          {earlier.length > 0 && (
+            <section>
+              <h2>Your earlier attempts here</h2>
+              <ul className="attempt-list">
+                {earlier.map((attempt) => (
+                  <AttemptRow key={attempt.attempt_id} attempt={attempt} showBounty={false} />
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+        <Sidebar bounty={data} />
+      </div>
     </>
   );
 }
