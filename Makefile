@@ -3,7 +3,7 @@
 ENV := $(if $(wildcard .env),--env-file .env,)
 API_PORT ?= 8000
 
-.PHONY: up down migrate seed e2e test lint typecheck fmt web-install web-build web-dev web-test web-typecheck check
+.PHONY: up down migrate seed e2e test lint typecheck fmt web-install web-build web-dev web-test web-typecheck web-deploy check
 
 up:
 	docker compose up --build --detach --wait
@@ -50,6 +50,10 @@ web-build: web-install
 # Rebuilds the app on every save. The API serves the build, so reload its page.
 web-dev: web-install
 	cd web && bun run dev
+
+# Publish the app to Cloudflare Pages. The API runs elsewhere (see the README).
+web-deploy: web-install
+	cd web && bun run deploy
 
 web-test: web-install
 	cd web && bun test

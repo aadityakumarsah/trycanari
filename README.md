@@ -88,6 +88,23 @@ Then `make migrate`. What to know:
 - **The tests refuse to run against a remote server.** They use `TEST_DATABASE_URL` when
   it is set, and stop if the server they are given is not local.
 
+## Hosting the web app on Cloudflare Pages
+
+`make web-deploy` builds the app and publishes it to the Pages project `trycanari`
+(https://trycanari.pages.dev). Pages serves only the static app. A small worker
+(`web/cloudflare/_worker.js`) passes `/v1`, `/health`, `/agent.md`, `/api-docs` and
+`/openapi.json` to the API, so the browser still sees a single origin.
+
+The API, the replay worker and the payment process are Python and run elsewhere.
+Tell the site where, then publish again:
+
+```
+cd web && bunx wrangler@3 pages secret put API_ORIGIN --project-name trycanari
+```
+
+Until that is set, API paths answer 503. Set `PUBLIC_URL` on the API to the site's
+address so that Google sign-in returns there.
+
 ## Sign in with Google
 
 Optional. Sponsors can always sign in with an API key; setting these adds a Continue

@@ -6,7 +6,8 @@
     "dev": "bun run dev.ts",
     "build": "bun run build.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "deploy": "bun run deploy.ts"
   },
   "dependencies": {
     "react": "^19.1.0",
