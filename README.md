@@ -64,6 +64,7 @@ to start, naming the variable, if a required one is missing or invalid.
 |---|---|---|
 | `APP_ENV` | app | `development`, `test` or `production` |
 | `DATABASE_URL` | app | `postgresql+asyncpg://user:password@host:port/database` |
+| `MODEL_API_BASE`, `MODEL_API_KEY` | app | OpenAI-compatible chat completions endpoint and its key, for real replays. Not needed with the fake model |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Compose | Credentials and database for the `db` service |
 | `DB_PORT`, `API_PORT` | Compose | Host ports for `db` and `api`, bound to 127.0.0.1 |
 
@@ -75,7 +76,7 @@ src/agentbounty/
   settings.py    Environment-driven settings
   db.py          Async engine, session factory, get_session dependency
   api/           HTTP routes
-  services/      bounty, judge, harness, payment
+  services/      bounty, judge, harness, model, ledger, payment
   workers/       Background processes
   models/        Database models and enum types
   templates/     Jinja2 templates

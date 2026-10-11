@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ASYNC_DRIVER_PREFIX = "postgresql+asyncpg://"
@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"]
     # Holds the database password, so it is kept out of repr() and logs.
     database_url: str = Field(repr=False)
+
+    # The model API used for real replays, in the OpenAI chat completions format.
+    # Both are unset when the deterministic FakeModel is used instead.
+    model_api_base: str | None = None
+    model_api_key: SecretStr | None = None
 
     @field_validator("database_url")
     @classmethod
