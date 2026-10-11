@@ -11,6 +11,7 @@ from agentbounty.api.deps import CipherDep, OwnBounty, SettingsDep, SponsorDep, 
 from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import (
     AccountOut,
+    AccountUpdate,
     ActivateOut,
     AttemptActivity,
     AttemptLine,
@@ -83,6 +84,8 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
     allowed = await credits.allowance(session, sponsor, settings)
     return AccountOut(
         email=sponsor.email,
+        name=sponsor.name,
+        picture_url=sponsor.picture_url,
         is_ambassador=sponsor.is_ambassador,
         invite_only=settings.invite_only,
         verified_breaks=allowed.breaks,
@@ -96,6 +99,19 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
             costs=[CostStep(up_to_characters=size, credits=cost) for size, cost in credits.COSTS],
         ),
     )
+
+
+@router.patch("/account")
+async def update_account(
+    body: AccountUpdate, session: Transaction, sponsor: SponsorDep, settings: SettingsDep
+) -> AccountOut:
+    """Change the name the account is shown under."""
+    name = " ".join(body.name.split())
+    if not name:
+        raise ServiceError(422, "a name cannot be blank")
+    sponsor.name = name
+    await session.flush()
+    return await account(session, sponsor, settings)
 
 
 def _code_out(code: ReferralCode, used: int) -> ReferralCodeOut:

@@ -20,6 +20,43 @@ export function Canaries({ items }: { items: CanaryPublic[] }) {
   );
 }
 
+/** The first word of someone's name, for greeting them. */
+export function firstName(name: string | null | undefined): string {
+  return name?.trim().split(/\s+/)[0] ?? "";
+}
+
+/** A person's picture, or their initial on a coloured disc when there is none. */
+export function Avatar({ name, picture, size = 28 }: { name: string | null; picture: string | null; size?: number }) {
+  const [broken, setBroken] = useState(false);
+  const cls = size > 40 ? "avatar large" : "avatar";
+  if (picture && !broken) {
+    return (
+      <img
+        className={cls}
+        src={picture}
+        alt=""
+        width={size}
+        height={size}
+        referrerPolicy="no-referrer"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return (
+    <span className={cls} aria-hidden="true">
+      {name?.trim() ? name.trim().slice(0, 1).toUpperCase() : <PersonGlyph />}
+    </span>
+  );
+}
+
+function PersonGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="60%" height="60%" fill="none" stroke="currentColor" strokeWidth={2.200} strokeLinecap="round" aria-hidden="true">
+      <path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM4.500 20c1.200-3.500 4-5 7.500-5s6.300 1.500 7.500 5" />
+    </svg>
+  );
+}
+
 export function ErrorNote({ children }: { children: ReactNode }) {
   return children ? (
     <p className="error" role="alert">

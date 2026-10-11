@@ -21,8 +21,9 @@ _RESERVED = ("v1/", "v1", "health", "api-docs", "openapi.json", "app/")
 
 SECURITY_HEADERS = {
     # Script and style only from this origin, and none inline: transcripts are attacker-written.
-    "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'; base-uri 'none';"
-    " form-action 'self'",
+    # Images may also come from Google, for the profile picture of someone who signed in with it.
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' https://*.googleusercontent.com;"
+    " frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",
     # The shell is tiny and names hashed assets, so it must never be served stale.

@@ -127,7 +127,7 @@ async def test_signing_in_with_google_creates_a_sponsor_and_a_session(
     query = await leave_for_google(client, stand_in)
     assert query["client_id"] == CLIENT_ID
     assert query["redirect_uri"] == "http://test/v1/auth/google/callback"
-    assert (query["response_type"], query["scope"]) == ("code", "openid email")
+    assert (query["response_type"], query["scope"]) == ("code", "openid email profile")
     assert query["code_challenge_method"] == "S256"
     assert CLIENT_SECRET not in str(query)
 

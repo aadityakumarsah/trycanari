@@ -307,3 +307,52 @@ async def test_google_sign_in_needs_the_code_only_for_someone_new(
 
 def test_unused_helper_is_importable() -> None:
     assert callable(leave_for_google)
+
+
+async def test_an_account_has_a_name_and_a_picture(service_settings: Settings) -> None:
+    settings = service_settings.model_copy(
+        update={
+            "google_client_id": CLIENT_ID,
+            "google_client_secret": SecretStr(CLIENT_SECRET),
+            "public_url": "http://test",
+        }
+    )
+    async with platform_on(settings) as platform:
+        stand_in = Google()
+        platform.app.state.google_transport = httpx.MockTransport(stand_in.handle)
+        picture = "https://lh3.googleusercontent.com/a/abc=s96-c"
+        stand_in.claims = {"name": "  Ada Lovelace ", "picture": picture}
+        client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=platform.app), base_url="http://test"
+        )
+
+        async def sign_in() -> dict[str, Any]:
+            query = await leave_for_google(client, stand_in)
+            await come_back(client, code="one-time", state=query["state"])
+            account: dict[str, Any] = (await client.get("/v1/account")).json()
+            return account
+
+        account = await sign_in()
+        assert (account["name"], account["picture_url"]) == ("Ada Lovelace", picture)
+
+        # A picture from anywhere but Google is not kept: the page would not load it.
+        stand_in.claims = {"name": "Ada L.", "picture": "https://evil.example/x.png"}
+        account = await sign_in()
+        assert account["picture_url"] is None
+        # ...and Google's name does not replace one already on the account.
+        assert account["name"] == "Ada Lovelace"
+
+        same_origin = {"Origin": "http://test", "Sec-Fetch-Site": "same-origin"}
+        renamed = await client.patch(
+            "/v1/account", json={"name": "  Countess   Ada "}, headers=same_origin
+        )
+        assert renamed.json()["name"] == "Countess Ada"
+        blank = await client.patch("/v1/account", json={"name": "   "}, headers=same_origin)
+        assert blank.status_code == 422
+        assert (await sign_in())["name"] == "Countess Ada"
+
+    # An account made with an email starts with neither.
+    async with platform_on(service_settings) as platform:
+        sponsor = await platform.sponsor()
+        account = await sponsor.call("GET", "/v1/account")
+        assert (account["name"], account["picture_url"]) == (None, None)

@@ -40,8 +40,16 @@ if _host not in LOCAL_HOSTS:
 
 @pytest.fixture(autouse=True)
 def _no_sign_in_provider_from_the_developers_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A developer's own Google credentials must not switch sign-in on inside a test."""
-    for name in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "PUBLIC_URL", "PROXY_SECRET"):
+    """What a developer has switched on for themselves must not be on inside a test."""
+    for name in (
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "PUBLIC_URL",
+        "PROXY_SECRET",
+        "INVITE_ONLY",
+        "STARTER_CREDITS",
+        "PROVEN_CREDITS",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 

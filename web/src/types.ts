@@ -113,6 +113,8 @@ export interface Credits {
 
 export interface Account {
   email: string;
+  name: string | null;
+  picture_url: string | null;
   is_ambassador: boolean;
   invite_only: boolean;
   verified_breaks: number;

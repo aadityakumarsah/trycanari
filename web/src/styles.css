@@ -837,3 +837,28 @@ main.frame { min-height: calc(100vh - var(--nav) - 150px); }
 }
 .tier small { align-items: flex-start; }
 .tier small svg { flex: none; margin-top: 3px; }
+
+/* --- who is signed in: a picture, not an address --- */
+.avatar { flex: none; width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: var(--accent); color: #04130c; font: 700 12.500px/1 var(--sans); }
+img.avatar { display: block; background: var(--surface-2); }
+.avatar.large { width: 56px; height: 56px; font-size: 22px; }
+.user-menu .avatar.large { width: 44px; height: 44px; font-size: 17px; }
+.user-chip { gap: 8px; padding: 0 9px 0 3px; }
+.user-card { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--border); }
+.user-card p { display: flex; flex-direction: column; min-width: 0; margin: 0; }
+.user-card b { color: var(--foreground); font: 500 14px/20px var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-card small { color: var(--muted); font-size: 12.500px; line-height: 18px; overflow-wrap: anywhere; }
+.name-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.page .name-form input { width: 240px; max-width: 100%; }
+.page .name-form button { min-height: 36px; }
+.page .name-form .error { flex-basis: 100%; margin: 0; }
+
+/* The sidebar's panels must never grow wider than the sidebar: a long line of code scrolls. */
+.bounty-side { grid-template-columns: minmax(0, 1fr); }
+.bounty-side > * { min-width: 0; }
+.api-panel .code-block, .api-panel pre { max-width: 100%; }
+.api-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.user-menu { min-width: 264px; }
+.user-card .avatar, .welcome .avatar, .user-chip .avatar { display: grid; place-items: center; }
+.user-card img.avatar, .welcome img.avatar, .user-chip img.avatar { display: block; }
+.user-card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }

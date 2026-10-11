@@ -19,6 +19,7 @@ import json
 import logging
 import secrets
 import time
+from dataclasses import dataclass
 from typing import Annotated, Any
 from urllib.parse import urlencode, urlsplit
 
@@ -93,8 +94,27 @@ def _read_state(cipher: Cipher, cookie: str | None) -> dict[str, Any]:
         raise SignInError("google_state", "no usable state cookie") from None
 
 
-def read_id_token(token: object, *, client_id: str, nonce: str) -> tuple[str, str]:
-    """The Google account identifier and verified email an ID token vouches for.
+@dataclass(frozen=True)
+class GoogleIdentity:
+    subject: str
+    email: str
+    name: str | None
+    picture_url: str | None
+
+
+def _picture(value: object) -> str | None:
+    """A profile picture's address, if it is one of Google's. Anything else is dropped,
+    because the page will only load images from there."""
+    if not isinstance(value, str) or len(value) > 1_000:
+        return None
+    parts = urlsplit(value)
+    host = parts.hostname or ""
+    return value if parts.scheme == "https" and host.endswith(".googleusercontent.com") else None
+
+
+def read_id_token(token: object, *, client_id: str, nonce: str) -> GoogleIdentity:
+    """The Google account an ID token vouches for: its identifier and verified email,
+    with the person's name and picture when Google gives them.
 
     The token is taken straight from Google's token endpoint over TLS, which is
     what authenticates it: OpenID Connect allows the signature check to be
@@ -121,7 +141,13 @@ def read_id_token(token: object, *, client_id: str, nonce: str) -> tuple[str, st
         raise SignInError("google_failed", "the ID token names no account")
     if not isinstance(email, str) or not email or claims.get("email_verified") is not True:
         raise SignInError("google_unverified", "the account has no verified email")
-    return subject, email.strip().lower()
+    name = claims.get("name")
+    return GoogleIdentity(
+        subject=subject,
+        email=email.strip().lower(),
+        name=name.strip()[:120] if isinstance(name, str) and name.strip() else None,
+        picture_url=_picture(claims.get("picture")),
+    )
 
 
 async def exchange_code(
@@ -174,7 +200,7 @@ async def start(request: Request, code: str | None = None) -> RedirectResponse:
         "client_id": settings.google_client_id,
         "redirect_uri": redirect_uri(settings),
         "response_type": "code",
-        "scope": "openid email",
+        "scope": "openid email profile",
         "state": state,
         "nonce": nonce,
         "code_challenge": _challenge(verifier),
@@ -228,7 +254,7 @@ async def callback(
         token = await exchange_code(
             settings, code, expected["verifier"], request.app.state.google_transport
         )
-        subject, email = read_id_token(
+        who = read_id_token(
             token, client_id=settings.google_client_id or "", nonce=expected["nonce"]
         )
 
@@ -242,9 +268,14 @@ async def callback(
                 raise SignInError("google_invite", refused.message) from None
 
         try:
-            sponsor = await bounty_service.sponsor_for_google(session, subject, email, admit)
+            sponsor = await bounty_service.sponsor_for_google(
+                session, who.subject, who.email, admit
+            )
         except ServiceError:
             raise SignInError("google_email_taken", "the email belongs to a key account") from None
+        # Kept in step with Google on every sign-in. A name the person chose here stays.
+        sponsor.name = sponsor.name or who.name
+        sponsor.picture_url = who.picture_url
     except SignInError as failure:
         logger.warning("google sign-in refused: %s", failure)
         response = RedirectResponse(f"{home}/login?error={failure.code}", 303)

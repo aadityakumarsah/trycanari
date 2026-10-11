@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { useAccount } from "../account.tsx";
+import { accountChanged, useAccount } from "../account.tsx";
 import { api } from "../api.ts";
 import { Icon } from "../components/Brand.tsx";
-import { Badge, ErrorNote, Skeleton } from "../components/ui.tsx";
+import { Avatar, Badge, ErrorNote, firstName, Skeleton } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
 import { formatZec, parseZec } from "../money.ts";
 import { useToast } from "../toast.tsx";
@@ -88,13 +88,54 @@ function NewBounty({ onCancel }: { onCancel?: () => void }) {
 }
 
 function Welcome({ account }: { account: Account }) {
-  const name = account.email.split("@")[0] ?? account.email;
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(account.name ?? "");
+  const saving = useAction();
+  const toast = useToast();
+  const called = firstName(account.name);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    const done = await saving.run(async () => {
+      await api<Account>("PATCH", "/v1/account", { body: { name: name.trim() } });
+      accountChanged();
+    });
+    if (done) {
+      setEditing(false);
+      toast("Name saved");
+    }
+  }
+
   return (
     <header className="welcome">
-      <img src="/app/brand/mascot.png" alt="" width={52} height={52} />
+      <Avatar name={account.name} picture={account.picture_url} size={56} />
       <div>
-        <h1>Welcome back, {name}</h1>
-        <p className="muted">Break agents, get paid. List your own, and pay only for proof.</p>
+        <h1>{called ? `Welcome back, ${called}` : "Welcome back"}</h1>
+        {editing ? (
+          <form className="name-form" onSubmit={(event) => void save(event)}>
+            <input
+              autoFocus
+              required
+              maxLength={60}
+              aria-label="Your name"
+              placeholder="Your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <button disabled={saving.busy}>Save</button>
+            <button type="button" className="secondary" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+            <ErrorNote>{saving.error}</ErrorNote>
+          </form>
+        ) : (
+          <p className="muted">
+            Break agents, get paid. List your own, and pay only for proof.{" "}
+            <button type="button" className="text-button" onClick={() => setEditing(true)}>
+              {account.name ? "Change name" : "Add your name"}
+            </button>
+          </p>
+        )}
       </div>
       <Link className="button secondary" to="/docs">
         Read the docs

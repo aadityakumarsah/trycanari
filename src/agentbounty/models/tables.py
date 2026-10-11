@@ -55,6 +55,9 @@ class Sponsor(Base):
     api_key_hash: Mapped[str | None] = mapped_column(Text, unique=True)
     # Google's identifier for the account, for a sponsor who signs in with Google.
     google_sub: Mapped[str | None] = mapped_column(Text, unique=True)
+    # What to call them and the picture to show, when known. Google supplies both.
+    name: Mapped[str | None] = mapped_column(Text)
+    picture_url: Mapped[str | None] = mapped_column(Text)
     # May hand out referral codes.
     is_ambassador: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # The referral code the account joined with.

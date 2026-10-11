@@ -46,8 +46,14 @@ class CreditsOut(BaseModel):
     costs: list[CostStep]
 
 
+class AccountUpdate(Body):
+    name: str = Field(min_length=1, max_length=60)
+
+
 class AccountOut(BaseModel):
     email: str
+    name: str | None
+    picture_url: str | None
     is_ambassador: bool
     # Whether attacks need an account and credits on this deployment.
     invite_only: bool

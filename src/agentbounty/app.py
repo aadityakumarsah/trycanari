@@ -5,11 +5,15 @@ Run with:  uvicorn agentbounty.app:create_app --factory
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agentbounty.api import agent_guide, google, health, public, session, spa, sponsor
 from agentbounty.api.ratelimit import RateLimiter
@@ -20,6 +24,27 @@ from agentbounty.services.errors import ServiceError
 from agentbounty.services.wallet import escrow_address
 from agentbounty.settings import Settings, load_settings
 
+logger = logging.getLogger(__name__)
+
+
+async def warm_pool(engine: AsyncEngine, connections: int = 3) -> None:
+    """Open a few database connections before the first visitor arrives.
+
+    Connecting to a hosted database takes a second or two, and a page asks for
+    several things at once, so without this the first page after a start waits
+    on several connections being made.
+    """
+
+    async def connect() -> None:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+
+    try:
+        await asyncio.gather(*(connect() for _ in range(connections)))
+    except Exception:
+        # The database being down must not stop the app starting: /health reports it.
+        logger.warning("could not warm the database pool", exc_info=True)
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
@@ -29,6 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        await warm_pool(engine)
         yield
         await engine.dispose()
 

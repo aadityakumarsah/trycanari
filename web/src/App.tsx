@@ -4,7 +4,7 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-r
 import { useAccount } from "./account.tsx";
 import { messageOf } from "./api.ts";
 import { Icon, Wordmark } from "./components/Brand.tsx";
-import { ErrorNote, Skeleton } from "./components/ui.tsx";
+import { Avatar, ErrorNote, firstName, Skeleton } from "./components/ui.tsx";
 import { BountyPage } from "./pages/BountyPage.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
 import { Docs } from "./pages/Docs.tsx";
@@ -45,12 +45,13 @@ function useDismiss(open: boolean, close: () => void, inside: string): void {
 
 /** The signed-in sponsor: who they are, with the way to the dashboard and out. */
 function Account({ email, onNavigate }: { email: string; onNavigate: () => void }) {
+  const profile = useAccount().data;
   const { signOut } = useSession();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, ".user");
-  const name = email.split("@")[0] ?? email;
+  const name = profile?.name ?? null;
 
   return (
     <div className="user">
@@ -60,17 +61,22 @@ function Account({ email, onNavigate }: { email: string; onNavigate: () => void 
         aria-expanded={open}
         aria-haspopup="menu"
         aria-controls="account-menu"
+        aria-label={name ? `Account: ${name}` : "Your account"}
         onClick={() => setOpen((shown) => !shown)}
       >
-        <span className="avatar" aria-hidden="true">
-          {name.slice(0, 1).toUpperCase()}
-        </span>
-        <span className="user-name">{name}</span>
+        <Avatar name={name} picture={profile?.picture_url ?? null} />
+        {name && <span className="user-name">{firstName(name)}</span>}
         <Icon name="down" size={14} />
       </button>
       {open && (
         <div id="account-menu" className="drop-menu user-menu" role="menu">
-          <p className="user-email">{email}</p>
+          <div className="user-card">
+            <Avatar name={name} picture={profile?.picture_url ?? null} size={44} />
+            <p>
+              {name && <b>{name}</b>}
+              <small>{email}</small>
+            </p>
+          </div>
           <Link
             role="menuitem"
             to="/dashboard"
