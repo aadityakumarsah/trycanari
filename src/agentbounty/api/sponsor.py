@@ -86,6 +86,7 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
         email=sponsor.email,
         name=sponsor.name,
         picture_url=sponsor.picture_url,
+        google_linked=sponsor.google_sub is not None,
         is_ambassador=sponsor.is_ambassador,
         invite_only=settings.invite_only,
         verified_breaks=allowed.breaks,

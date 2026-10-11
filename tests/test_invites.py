@@ -334,6 +334,7 @@ async def test_an_account_has_a_name_and_a_picture(service_settings: Settings) -
 
         account = await sign_in()
         assert (account["name"], account["picture_url"]) == ("Ada Lovelace", picture)
+        assert account["google_linked"] is True
 
         # A picture from anywhere but Google is not kept: the page would not load it.
         stand_in.claims = {"name": "Ada L.", "picture": "https://evil.example/x.png"}
@@ -356,3 +357,4 @@ async def test_an_account_has_a_name_and_a_picture(service_settings: Settings) -
         sponsor = await platform.sponsor()
         account = await sponsor.call("GET", "/v1/account")
         assert (account["name"], account["picture_url"]) == (None, None)
+        assert account["google_linked"] is False

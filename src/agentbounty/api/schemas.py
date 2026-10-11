@@ -54,6 +54,8 @@ class AccountOut(BaseModel):
     email: str
     name: str | None
     picture_url: str | None
+    # Whether the account signs in with Google, which is where a picture comes from.
+    google_linked: bool
     is_ambassador: bool
     # Whether attacks need an account and credits on this deployment.
     invite_only: bool

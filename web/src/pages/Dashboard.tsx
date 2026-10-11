@@ -134,6 +134,12 @@ function Welcome({ account }: { account: Account }) {
             <button type="button" className="text-button" onClick={() => setEditing(true)}>
               {account.name ? "Change name" : "Add your name"}
             </button>
+            {account.google_linked && !account.picture_url && (
+              // One trip through Google fetches the name and photo for an account made before they were kept.
+              <a className="text-button" href="/v1/auth/google/start">
+                Use my Google photo
+              </a>
+            )}
           </p>
         )}
       </div>

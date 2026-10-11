@@ -115,6 +115,7 @@ export interface Account {
   email: string;
   name: string | null;
   picture_url: string | null;
+  google_linked: boolean;
   is_ambassador: boolean;
   invite_only: boolean;
   verified_breaks: number;

@@ -40,7 +40,8 @@ async def warm_pool(engine: AsyncEngine, connections: int = 3) -> None:
             await connection.execute(text("SELECT 1"))
 
     try:
-        await asyncio.gather(*(connect() for _ in range(connections)))
+        async with asyncio.timeout(20):
+            await asyncio.gather(*(connect() for _ in range(connections)))
     except Exception:
         # The database being down must not stop the app starting: /health reports it.
         logger.warning("could not warm the database pool", exc_info=True)
@@ -54,8 +55,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        await warm_pool(engine)
+        # In the background: the app must not wait on the database to start answering.
+        warming = asyncio.create_task(warm_pool(engine))
         yield
+        warming.cancel()
         await engine.dispose()
 
     app = FastAPI(
