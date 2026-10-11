@@ -396,3 +396,20 @@ img.mascot { image-rendering: auto; }
 }
 .drop-menu span { color: inherit; font-size: inherit; }
 .drop-menu strong { color: var(--foreground); }
+
+/* --- the mascot that walks along the call-to-action buttons --- */
+.cta { --perch: 84px; }
+.final .cta { --perch: 124px; }
+.walker { position: absolute; left: 0; top: var(--perch); z-index: 1; display: block; width: 66px; height: 56px; transform: translate(0, -100%); cursor: pointer; will-change: transform; }
+.walker-facing { display: block; transform-origin: 50% 50%; transition: transform 0.12s; }
+.mascot-body { display: block; transform-origin: 50% 100%; user-select: none; -webkit-user-drag: none; }
+.mascot-body.walking { animation: mascot-step 0.36s steps(2, jump-none) infinite; }
+.mascot-body.dashing { animation: mascot-dash 0.2s steps(2, jump-none) infinite; }
+.mascot-body.hopping { animation: mascot-hop 0.62s cubic-bezier(0.3, 0.7, 0.4, 1); }
+.mascot-body.wiggling { animation: mascot-wiggle 0.3s ease-in-out 3; }
+.mascot-body.spinning { animation: mascot-spin 0.7s ease-in-out; transform-origin: 50% 60%; }
+@keyframes mascot-step { from { transform: translateY(0) rotate(-2deg); } to { transform: translateY(-3px) rotate(2deg); } }
+@keyframes mascot-dash { from { transform: translateY(0) rotate(6deg) scaleY(0.960); } to { transform: translateY(-4px) rotate(9deg); } }
+@keyframes mascot-hop { 0% { transform: translateY(0) scale(1.060, 0.900); } 35% { transform: translateY(-26px) scale(0.960, 1.060); } 60% { transform: translateY(-30px); } 88% { transform: translateY(0) scale(1.080, 0.880); } 100% { transform: translateY(0); } }
+@keyframes mascot-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-9deg); } 75% { transform: rotate(9deg); } }
+@keyframes mascot-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }

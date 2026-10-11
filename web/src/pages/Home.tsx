@@ -2,7 +2,8 @@ import { useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { api } from "../api.ts";
-import { Icon, Mascot, type IconName } from "../components/Brand.tsx";
+import { Icon, type IconName } from "../components/Brand.tsx";
+import { WalkingMascot } from "../components/WalkingMascot.tsx";
 import { ErrorNote, words } from "../components/ui.tsx";
 import { useLoad } from "../hooks.ts";
 import { formatZec } from "../money.ts";
@@ -167,7 +168,7 @@ export function Home() {
           five sandboxed replays and the payout is sent automatically.
         </p>
         <div className="cta">
-          <Mascot />
+          <WalkingMascot />
           <Link className="btn-hero wide" to="/#bounties">
             Start Hunting Today
           </Link>
@@ -310,7 +311,7 @@ export function Home() {
           Start Breaking <span className="mint">Real Agents</span>
         </h2>
         <div className="cta">
-          <Mascot />
+          <WalkingMascot />
           <Link className="btn-hero wide" to="/#bounties">
             Start Hunting Now
           </Link>

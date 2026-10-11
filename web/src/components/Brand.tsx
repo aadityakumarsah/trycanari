@@ -15,11 +15,6 @@ export function Wordmark({ height = 30 }: { height?: number }) {
   );
 }
 
-/** The mascot alone, standing on the call-to-action button. */
-export function Mascot() {
-  return <img className="mascot" src="/app/brand/mascot.png" alt="" width={66} height={56} />;
-}
-
 const ICONS = {
   ban: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM5.6 5.6l12.8 12.8",
   box: "M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10",
