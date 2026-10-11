@@ -35,6 +35,37 @@ export function useProviders(): Providers | null {
   return useLoad((signal) => api<Providers>("GET", "/v1/auth/providers", { signal }), "", "providers").data;
 }
 
+const PENDING = "trycanari.referral";
+
+/** Keep a referral code that came in a link until its owner is somewhere they can use it. */
+export function rememberReferral(code: string): void {
+  try {
+    sessionStorage.setItem(PENDING, code);
+  } catch {
+    // It can always be typed in.
+  }
+}
+
+export function rememberedReferral(): string {
+  try {
+    return sessionStorage.getItem(PENDING) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** GitHub serves a public picture for every username. */
+export function pictureOf(account: Pick<Account, "picture_url" | "github">): string | null {
+  return account.picture_url ?? (account.github ? `https://github.com/${account.github}.png?size=160` : null);
+}
+
+/** How much of a profile is filled in, as the fields that are and the fields that count. */
+export const PROFILE_FIELDS = ["name", "github", "company", "role", "location", "website", "bio"] as const;
+export function completeness(account: Account): { done: number; total: number; percent: number } {
+  const done = PROFILE_FIELDS.filter((field) => Boolean(account[field])).length;
+  return { done, total: PROFILE_FIELDS.length, percent: Math.round((done / PROFILE_FIELDS.length) * 100) };
+}
+
 /** Credits an attack of this many characters costs. */
 export function costOf(characters: number, steps: CostStep[]): number {
   const last = steps[steps.length - 1];

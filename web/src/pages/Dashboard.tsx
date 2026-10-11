@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { accountChanged, useAccount } from "../account.tsx";
+import { completeness, pictureOf, useAccount } from "../account.tsx";
 import { api } from "../api.ts";
 import { Icon } from "../components/Brand.tsx";
+import { ReferralGate } from "../components/ReferralGate.tsx";
 import { Avatar, Badge, ErrorNote, firstName, Skeleton } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
 import { formatZec, parseZec } from "../money.ts";
@@ -88,63 +89,17 @@ function NewBounty({ onCancel }: { onCancel?: () => void }) {
 }
 
 function Welcome({ account }: { account: Account }) {
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(account.name ?? "");
-  const saving = useAction();
-  const toast = useToast();
   const called = firstName(account.name);
-
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    const done = await saving.run(async () => {
-      await api<Account>("PATCH", "/v1/account", { body: { name: name.trim() } });
-      accountChanged();
-    });
-    if (done) {
-      setEditing(false);
-      toast("Name saved");
-    }
-  }
-
+  const profile = completeness(account);
   return (
     <header className="welcome">
-      <Avatar name={account.name} picture={account.picture_url} size={56} />
+      <Avatar name={account.name} picture={pictureOf(account)} size={56} />
       <div>
         <h1>{called ? `Welcome back, ${called}` : "Welcome back"}</h1>
-        {editing ? (
-          <form className="name-form" onSubmit={(event) => void save(event)}>
-            <input
-              autoFocus
-              required
-              maxLength={60}
-              aria-label="Your name"
-              placeholder="Your name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <button disabled={saving.busy}>Save</button>
-            <button type="button" className="secondary" onClick={() => setEditing(false)}>
-              Cancel
-            </button>
-            <ErrorNote>{saving.error}</ErrorNote>
-          </form>
-        ) : (
-          <p className="muted">
-            Break agents, get paid. List your own, and pay only for proof.{" "}
-            <button type="button" className="text-button" onClick={() => setEditing(true)}>
-              {account.name ? "Change name" : "Add your name"}
-            </button>
-            {account.google_linked && !account.picture_url && (
-              // One trip through Google fetches the name and photo for an account made before they were kept.
-              <a className="text-button" href="/v1/auth/google/start">
-                Use my Google photo
-              </a>
-            )}
-          </p>
-        )}
+        <p className="muted">Break agents, get paid. List your own, and pay only for proof.</p>
       </div>
-      <Link className="button secondary" to="/docs">
-        Read the docs
+      <Link className="button secondary" to="/profile">
+        {profile.percent === 100 ? "Your profile" : `Complete your profile · ${profile.percent}%`}
       </Link>
     </header>
   );
@@ -369,7 +324,8 @@ export function Dashboard() {
   return (
     <>
       {account && <Welcome account={account} />}
-      {account?.invite_only && (
+      {account?.invite_only && !account.can_hunt && <ReferralGate compact />}
+      {account?.invite_only && account.can_hunt && (
         <>
           <Quest account={account} />
           <Tier account={account} />

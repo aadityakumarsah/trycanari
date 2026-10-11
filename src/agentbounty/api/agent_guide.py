@@ -32,7 +32,8 @@ def guide(base_url: str, bounties: list[BountyPublic], settings: Settings) -> st
         for b in bounties
     ]
     access = (
-        "This platform is invite-only: submitting an attempt needs an account's API key, sent as"
+        "This platform is invite-only: submitting an attempt needs the API key of an account"
+        " that has redeemed a referral code, sent as"
         " `Authorization: Bearer <api_key>`, and spends credits from that account's allowance"
         f" ({settings.starter_credits} credits in any 24 hours to begin with,"
         f" {settings.proven_credits} after a verified break; an attempt costs 1 to 4 by size)."

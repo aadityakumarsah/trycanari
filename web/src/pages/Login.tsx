@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
 
 import { api } from "../api.ts";
 import { ErrorNote } from "../components/ui.tsx";
-import { useProviders } from "../account.tsx";
+import { rememberReferral, useProviders } from "../account.tsx";
 import { useAction } from "../hooks.ts";
 import { useSession } from "../session.tsx";
 
@@ -20,8 +20,6 @@ export const GOOGLE_ERRORS: Record<string, string> = {
   google_unverified: "That Google account has no verified email address.",
   google_email_taken:
     "An account with that email already exists. Sign in with its API key instead.",
-  google_invite:
-    "trycanari is invite-only. Enter a valid referral code below, then continue with Google again.",
 };
 
 function GoogleMark() {
@@ -40,8 +38,11 @@ export function Login() {
   const location = useLocation();
   const [params] = useSearchParams();
   const providers = useProviders();
-  const [code, setCode] = useState(() => params.get("code") ?? "");
-  const invited = providers?.invite_only === true;
+  // Someone who arrived through an invite link: the code is redeemed for them as they join.
+  const code = (params.get("code") ?? "").trim();
+  useEffect(() => {
+    if (code) rememberReferral(code);
+  }, [code]);
   const refusal = GOOGLE_ERRORS[params.get("error") ?? ""];
   const [key, setKey] = useState("");
   const [email, setEmail] = useState("");
@@ -80,7 +81,7 @@ export function Login() {
   async function submitEmail(event: FormEvent) {
     event.preventDefault();
     await signingUp.run(async () => {
-      const body = { email: email.trim(), ...(invited ? { referral_code: code.trim() } : {}) };
+      const body = { email: email.trim(), ...(code ? { referral_code: code } : {}) };
       const created = await api<Created>("POST", "/v1/sponsors", { body });
       setIssued(created.api_key);
       await signIn(created.api_key);
@@ -91,31 +92,12 @@ export function Login() {
     <>
       <h1>Sign in</h1>
       {refusal && <p className="error">{refusal}</p>}
-      {invited && (
-        <div className="invite">
-          <p className="invite-note">
-            <b>trycanari is invite-only.</b> New here? You need a referral code from an ambassador. Already have an
-            account? Just sign in.
-          </p>
-          <label>
-            Referral code
-            <input
-              className="code"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="XXXX-XXXX"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-            />
-          </label>
-        </div>
-      )}
       {providers?.google && (
         <div className="sso">
           {/* A plain link: the server sends the browser on to Google. */}
           <a
             className="button google"
-            href={`/v1/auth/google/start${code.trim() ? `?code=${encodeURIComponent(code.trim())}` : ""}`}
+            href={`/v1/auth/google/start${code ? `?code=${encodeURIComponent(code)}` : ""}`}
           >
             <GoogleMark />
             Continue with Google
@@ -151,8 +133,7 @@ export function Login() {
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
             </label>
             <ErrorNote>{signingUp.error}</ErrorNote>
-            <button disabled={signingUp.busy || (invited && !code.trim())}>Create an account</button>
-            {invited && !code.trim() && <small>Enter your referral code above first.</small>}
+            <button disabled={signingUp.busy}>Create an account</button>
           </form>
           <p className="muted">You get an API key, shown once. It signs you in here and authenticates scripts.</p>
         </section>

@@ -501,19 +501,20 @@ python -m agentbounty.attacker --api ${origin} \\
         <Section id="invites" title="Invites and credits">
           <p>
             Every attack is replayed five times against a real model, and the platform pays for that. So a
-            deployment can run <strong>invite-only</strong>, which does two things.
+            deployment can run <strong>invite-only</strong>, which limits who can attack and how much.
           </p>
-          <h3>Joining needs a referral code</h3>
+          <h3>Anyone can join; hunting needs a referral code</h3>
           <p>
-            An account can only be created with a referral code. Codes are handed out by{" "}
-            <strong>ambassadors</strong>, and each one admits a fixed number of people. Enter yours on the{" "}
-            <Link to="/login">sign-in page</Link>, whether you then create an account with an email or continue
-            with Google. You only need it once.
+            Making an account and filling in your <Link to="/profile">profile</Link> is open to everyone, and so is
+            listing an agent. Taking part in bounties is by invitation: you enter a referral code once, on the
+            dashboard or on any bounty page, and from then on you can attack. Codes are handed out by the
+            platform and by <strong>ambassadors</strong>, and each one admits a fixed number of people. If you
+            arrive through an invite link, the code is applied for you as you join.
           </p>
           <h3>Attacking spends credits</h3>
           <p>
-            An attack must come from an account, and spends credits from that account's allowance for the last 24
-            hours.
+            An attack must come from an account that has redeemed a referral code, and spends credits from that
+            account's allowance for the last 24 hours.
           </p>
           <Table
             head={["Size of the attack, all entry points together", "Cost"]}
@@ -586,6 +587,8 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="POST" path="/v1/bounties/{id}/rearm" />, "Replay the paid attacks against a patched config."],
               [<Endpoint method="POST" path="/v1/bounties/{id}/close" />, "Stop for good and refund the unspent escrow."],
               [<Endpoint method="GET" path="/v1/account" />, "Who you are, your tier and the credits you have left."],
+              [<Endpoint method="PATCH" path="/v1/account" />, "Change your profile: name, GitHub, company, role, location, website, bio."],
+              [<Endpoint method="POST" path="/v1/account/referral" />, "Redeem a referral code, which lets you take part in bounties."],
               [<Endpoint method="GET" path="/v1/referral-codes" />, "The referral codes you have made, and their use."],
               [<Endpoint method="POST" path="/v1/referral-codes" />, "Make a referral code. Ambassadors only."],
               [<Endpoint method="GET" path="/v1/sponsor/bounties" />, "Your bounties, with balances."],
@@ -657,11 +660,11 @@ python -m agentbounty.attacker --api ${origin} \\
             head={["Status", "Meaning"]}
             rows={[
               [<code>401</code>, "No credentials, or an API key that is not recognised."],
-              [<code>403</code>, "A cookie-authenticated request that did not come from this site."],
               [<code>404</code>, "No such bounty or attempt, or it is not yours. A wrong status token is also a 404."],
               [<code>409</code>, "Not allowed in the bounty's current state: editing a live config, attacking a paused bounty, activating a broken config."],
               [<code>422</code>, "The request is malformed: an undeclared slot, a transparent payout address, a secret that is too short."],
               [<code>402</code>, "Not enough credits for this attack. Invite-only deployments."],
+              [<code>403</code>, "A cookie request from another site; or attacking before redeeming a referral code."],
               [<code>429</code>, "A limit was reached. Wait and try again."],
               [<code>503</code>, "The service cannot reach its database."],
             ]}

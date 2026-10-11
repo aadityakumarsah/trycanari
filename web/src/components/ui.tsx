@@ -28,7 +28,9 @@ export function firstName(name: string | null | undefined): string {
 /** A person's picture, or their initial on a coloured disc when there is none. */
 export function Avatar({ name, picture, size = 28 }: { name: string | null; picture: string | null; size?: number }) {
   const [broken, setBroken] = useState(false);
-  const cls = size > 40 ? "avatar large" : "avatar";
+  // A new picture gets its own chance to load.
+  useEffect(() => setBroken(false), [picture]);
+  const cls = size >= 90 ? "avatar xl" : size > 40 ? "avatar large" : "avatar";
   if (picture && !broken) {
     return (
       <img

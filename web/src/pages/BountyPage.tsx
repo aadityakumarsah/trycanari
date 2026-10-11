@@ -6,6 +6,7 @@ import { accountChanged, costOf, useAccount, useProviders } from "../account.tsx
 import { api } from "../api.ts";
 import { saveAttempt, savedPayoutAddress, savePayoutAddress } from "../attempts.ts";
 import { AttemptTracker } from "../components/AttemptStatus.tsx";
+import { ReferralGate } from "../components/ReferralGate.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { Code } from "../components/Code.tsx";
 import { Badge, ErrorNote, Skeleton, words } from "../components/ui.tsx";
@@ -234,6 +235,7 @@ export function BountyPage() {
   );
   const history = useSavedAttempts(bountyId);
   const providers = useProviders();
+  const account = useAccount();
   const { session } = useSession();
   const location = useLocation();
   const [current, setCurrent] = useState<AttemptAccepted | null>(null);
@@ -247,6 +249,7 @@ export function BountyPage() {
   }, [bountyId]);
 
   const mustSignIn = providers?.invite_only === true && session?.signed_in === false;
+  const needsCode = account.data?.can_hunt === false;
 
   if (bounty.status === 404 || bounty.status === 422) return <NotFound message="That bounty does not exist." />;
   if (!bounty.data) {
@@ -285,8 +288,8 @@ export function BountyPage() {
               </span>
               <h2>Sign in to attack this agent</h2>
               <p className="muted">
-                trycanari is invite-only. Every attack is replayed five times against a real model, so each one
-                spends credits from your account's daily allowance.
+                Anyone can make an account. Taking part in bounties needs a referral code, which you enter once
+                after signing in.
               </p>
               <div className="form-foot">
                 <Link className="button" to="/login" state={{ from: location.pathname }}>
@@ -295,6 +298,8 @@ export function BountyPage() {
                 <Link to="/docs#invites">How invites and credits work →</Link>
               </div>
             </section>
+          ) : data.accepting_attempts && needsCode ? (
+            <ReferralGate />
           ) : data.accepting_attempts ? (
             <AttemptForm
               bounty={data}

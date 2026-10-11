@@ -10,7 +10,7 @@ const API_PATHS = new Set(["/v1", "/health", "/agent.md", "/api-docs", "/openapi
 
 // The same headers the API puts on the page (see src/agentbounty/api/spa.py).
 const PAGE_HEADERS = {
-  "Content-Security-Policy": "default-src 'self'; img-src 'self' https://*.googleusercontent.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  "Content-Security-Policy": "default-src 'self'; img-src 'self' https://*.googleusercontent.com https://github.com https://avatars.githubusercontent.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "same-origin",
   "Cache-Control": "no-cache",

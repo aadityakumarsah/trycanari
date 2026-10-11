@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import { useAccount } from "./account.tsx";
+import { pictureOf, useAccount } from "./account.tsx";
 import { messageOf } from "./api.ts";
 import { Icon, Wordmark } from "./components/Brand.tsx";
 import { Avatar, ErrorNote, firstName, Skeleton } from "./components/ui.tsx";
@@ -12,6 +12,7 @@ import { DashboardBounty } from "./pages/DashboardBounty.tsx";
 import { Home } from "./pages/Home.tsx";
 import { Login } from "./pages/Login.tsx";
 import { MyAttempts, useSavedAttempts } from "./pages/MyAttempts.tsx";
+import { Profile } from "./pages/Profile.tsx";
 import { useSession } from "./session.tsx";
 import { dismissSplash } from "./splash.ts";
 
@@ -65,14 +66,14 @@ function Account({ email, onNavigate }: { email: string; onNavigate: () => void 
         aria-label={name ? `Account: ${name}` : "Your account"}
         onClick={() => setOpen((shown) => !shown)}
       >
-        <Avatar name={name} picture={profile?.picture_url ?? null} />
+        <Avatar name={name} picture={profile ? pictureOf(profile) : null} />
         {name && <span className="user-name">{firstName(name)}</span>}
         <Icon name="down" size={14} />
       </button>
       {open && (
         <div id="account-menu" className="drop-menu user-menu" role="menu">
           <div className="user-card">
-            <Avatar name={name} picture={profile?.picture_url ?? null} size={44} />
+            <Avatar name={name} picture={profile ? pictureOf(profile) : null} size={44} />
             <p>
               {name && <b>{name}</b>}
               <small>{email}</small>
@@ -87,6 +88,16 @@ function Account({ email, onNavigate }: { email: string; onNavigate: () => void 
             }}
           >
             <Icon name="grid" /> Dashboard
+          </Link>
+          <Link
+            role="menuitem"
+            to="/profile"
+            onClick={() => {
+              onNavigate();
+              close();
+            }}
+          >
+            <Icon name="user" /> Profile
           </Link>
           <button
             type="button"
@@ -115,7 +126,7 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
   const running = useSavedAttempts().filter((attempt) => !attempt.outcome).length;
   const account = useAccount().data;
   // The credits meter belongs where credits are spent or managed, not on the landing page.
-  const metered = /^\/(b|dashboard|attempts)(\/|$)/.test(location.pathname);
+  const metered = /^\/(b|dashboard|attempts|profile)(\/|$)/.test(location.pathname);
   useDismiss(product, closeProduct, ".drop");
 
   // Any navigation closes whatever was open.
@@ -402,6 +413,16 @@ export function App() {
               element={
                 <Page>
                   <Login />
+                </Page>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <Page wide>
+                  <Private>
+                    <Profile />
+                  </Private>
                 </Page>
               }
             />

@@ -52,12 +52,12 @@ describe("Login", () => {
     expect(page(false, "/login?error=<script>").container.querySelector(".error")).toBeNull();
   });
 
-  test("asks for a referral code when the platform is invite-only, and carries it to Google", async () => {
+  test("needs no referral code to join, and carries one from an invite link to Google", async () => {
     const view = page(true, "/login?code=ABCD-2345", true);
-    const field = (await waitFor(() => view.getByLabelText("Referral code"))) as HTMLInputElement;
-    expect(field.value).toBe("ABCD-2345");
-    const google = view.getByText("Continue with Google").closest("a");
+    const google = (await waitFor(() => view.getByText("Continue with Google"))).closest("a");
     expect(google?.getAttribute("href")).toBe("/v1/auth/google/start?code=ABCD-2345");
-    expect(GOOGLE_ERRORS.google_invite).toContain("invite-only");
+    expect(view.queryByLabelText("Referral code")).toBeNull();
+    expect(view.getByText("Create an account").hasAttribute("disabled")).toBe(false);
+    expect(sessionStorage.getItem("trycanari.referral")).toBe("ABCD-2345");
   });
 });

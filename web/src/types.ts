@@ -116,6 +116,13 @@ export interface Account {
   name: string | null;
   picture_url: string | null;
   google_linked: boolean;
+  github: string | null;
+  company: string | null;
+  role: string | null;
+  location: string | null;
+  website: string | null;
+  bio: string | null;
+  can_hunt: boolean;
   is_ambassador: boolean;
   invite_only: boolean;
   verified_breaks: number;
