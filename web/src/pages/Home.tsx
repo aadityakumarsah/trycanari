@@ -172,9 +172,9 @@ export function Home() {
           <Link className="btn-hero wide" to="/#bounties">
             Start Hunting Today
           </Link>
-          <a className="btn-hero outline" href="/docs">
+          <Link className="btn-hero outline" to="/docs">
             Read Docs
-          </a>
+          </Link>
         </div>
       </section>
       <Strip />
@@ -290,7 +290,7 @@ export function Home() {
           <h2>Frequently Asked Questions</h2>
           <p>Questions? We've got answers</p>
           <p className="more">
-            or check out the <a href="/docs">API reference →</a>
+            or check out the <Link to="/docs">docs →</Link>
           </p>
         </div>
         <div className="faq">

@@ -6,6 +6,7 @@ import { Icon, Wordmark } from "./components/Brand.tsx";
 import { ErrorNote } from "./components/ui.tsx";
 import { BountyPage } from "./pages/BountyPage.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
+import { Docs } from "./pages/Docs.tsx";
 import { DashboardBounty } from "./pages/DashboardBounty.tsx";
 import { Home } from "./pages/Home.tsx";
 import { Login } from "./pages/Login.tsx";
@@ -159,13 +160,13 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
                   <small>The whole platform as one markdown file</small>
                 </span>
               </a>
-              <a href="/docs">
+              <Link to="/docs#api" onClick={onNavigate}>
                 <Icon name="box" size={18} />
                 <span>
                   <strong>API reference</strong>
-                  <small>Every endpoint, with schemas</small>
+                  <small>Every endpoint, with examples</small>
                 </span>
-              </a>
+              </Link>
             </div>
           )}
         </div>
@@ -174,9 +175,9 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
             {label}
           </Link>
         ))}
-        <a className="nav-link" href="/docs">
+        <Link className={link("/docs")} to="/docs" onClick={onNavigate}>
           Docs
-        </a>
+        </Link>
         <a className="nav-link" href="/agent.md">
           agent.md
         </a>
@@ -230,7 +231,10 @@ function Footer({ onNavigate }: { onNavigate: () => void }) {
             {label}
           </Link>
         ))}
-        <a href="/docs">API reference</a>
+        <Link to="/docs" onClick={onNavigate}>
+          Docs
+        </Link>
+        <a href="/api-docs">API explorer</a>
         <a href="/agent.md">agent.md</a>
         <a href={REPOSITORY} target="_blank" rel="noreferrer">
           GitHub
@@ -344,6 +348,7 @@ export function App() {
         ) : (
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/docs" element={<Docs />} />
             <Route
               path="/b/:bountyId"
               element={

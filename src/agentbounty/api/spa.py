@@ -17,7 +17,7 @@ PACKAGE = Path(__file__).resolve().parent.parent
 APP = PACKAGE / "static" / "app"
 
 # Paths the browser router never owns. A miss under these is a real 404.
-_RESERVED = ("v1/", "v1", "health", "docs", "redoc", "openapi.json", "app/")
+_RESERVED = ("v1/", "v1", "health", "api-docs", "openapi.json", "app/")
 
 SECURITY_HEADERS = {
     # Script and style only from this origin, and none inline: transcripts are attacker-written.
@@ -31,7 +31,7 @@ SECURITY_HEADERS = {
 
 NOT_BUILT = (
     "The web app has not been built. Run `make web-build` (it needs Bun), or use the"
-    " JSON API directly: see /docs.\n"
+    " JSON API directly: see /api-docs.\n"
 )
 
 

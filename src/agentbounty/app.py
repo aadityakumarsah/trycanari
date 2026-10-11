@@ -32,7 +32,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
         await engine.dispose()
 
-    app = FastAPI(title="AgentBounty", lifespan=lifespan)
+    app = FastAPI(
+        title="trycanari API",
+        description="Bug bounties for AI agents. The guide is at /docs; this is the reference.",
+        lifespan=lifespan,
+        # /docs belongs to the web app's documentation; the interactive reference lives here.
+        docs_url="/api-docs",
+        redoc_url=None,
+    )
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)

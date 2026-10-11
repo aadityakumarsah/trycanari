@@ -29,7 +29,7 @@ const server = Bun.serve({
     "/v1/*": proxy,
     "/health": proxy,
     "/agent.md": proxy,
-    "/docs": proxy,
+    "/api-docs": proxy,
     "/openapi.json": proxy,
     // In a build these are copied next to the bundle; here they are served from public/.
     "/app/fonts/*": fromPublic,

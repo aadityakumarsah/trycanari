@@ -164,7 +164,15 @@ async def test_every_page_route_gets_the_app_shell(
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
-        for path in ("/", "/login", "/dashboard", "/b/1234", "/dashboard/b/1234", "/anything/else"):
+        for path in (
+            "/",
+            "/login",
+            "/docs",
+            "/dashboard",
+            "/b/1234",
+            "/dashboard/b/1234",
+            "/anything/else",
+        ):
             page = await client.get(path)
             assert page.status_code == 200, path
             assert '<div id="root">' in page.text
@@ -181,11 +189,16 @@ async def test_every_page_route_gets_the_app_shell(
         assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
 
         # The API is untouched: unknown API paths and missing assets are real 404s, in JSON.
-        for missing in ("/v1/nope", "/v1", "/app/missing.js", "/docs/x"):
+        for missing in ("/v1/nope", "/v1", "/app/missing.js", "/api-docs/x"):
             assert (await client.get(missing)).status_code == 404, missing
         assert (await client.get("/health")).json() == {"status": "ok"}
         assert (await client.get("/v1/bounties")).json() == []
         assert (await client.post("/login")).status_code == 405
+        # The interactive API reference moved aside to make room for the guide at /docs.
+        reference = await client.get("/api-docs")
+        assert reference.status_code == 200
+        assert "swagger" in reference.text.lower()
+        assert (await client.get("/openapi.json")).json()["info"]["title"] == "trycanari API"
     await app.state.engine.dispose()
 
 
