@@ -114,6 +114,8 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
   const closeProduct = useCallback(() => setProduct(false), []);
   const running = useSavedAttempts().filter((attempt) => !attempt.outcome).length;
   const account = useAccount().data;
+  // The credits meter belongs where credits are spent or managed, not on the landing page.
+  const metered = /^\/(b|dashboard|attempts)(\/|$)/.test(location.pathname);
   useDismiss(product, closeProduct, ".drop");
 
   // Any navigation closes whatever was open.
@@ -201,7 +203,7 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
         </a>
         {session?.signed_in ? (
           <>
-            {account?.invite_only && (
+            {account?.invite_only && metered && (
               <Link
                 className={account.credits.balance === 0 ? "credits empty" : "credits"}
                 to="/dashboard"
