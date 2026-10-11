@@ -61,6 +61,11 @@ class Bounty(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     sponsor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sponsors.id"), index=True)
+    # Shown on the public listing. Written by the sponsor, so always escaped on output.
+    title: Mapped[str] = mapped_column(
+        Text, default="Untitled agent", server_default="Untitled agent"
+    )
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
     state: Mapped[BountyState] = mapped_column(
         pg_enum(BountyState, "bounty_state"), default=BountyState.DRAFT, server_default="draft"
     )

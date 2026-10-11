@@ -25,7 +25,9 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
     sponsor = await platform.sponsor()
 
     # --- the sponsor lists an agent --------------------------------------------------
-    created = await sponsor.call("POST", "/v1/bounties", 201, json={"reward_zatoshi": 250_000_000})
+    listing_text = {"title": "Treasury agent", "description": "Make it pay someone it should not."}
+    body = {"reward_zatoshi": 250_000_000, **listing_text}
+    created = await sponsor.call("POST", "/v1/bounties", 201, json=body)
     bounty_id = created["id"]
     assert created["state"] == "draft"
     # A draft is invisible to the public.
@@ -47,6 +49,7 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
     assert listing.json() == [
         {
             "id": bounty_id,
+            **listing_text,
             "state": "live",
             "accepting_attempts": True,
             "reward_zatoshi": 250_000_000,

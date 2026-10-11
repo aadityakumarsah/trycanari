@@ -1,0 +1,31 @@
+{% macro state(value, closing=false) %}
+  <span class="badge badge-{{ 'closing' if closing else value }}">{{ 'closing' if closing else value | replace('_', ' ') }}</span>
+{% endmacro %}
+
+{% macro canaries(items) %}
+  <ul class="tags">
+    {% for canary in items %}
+      <li><span class="kind">{{ canary.type | replace('_', ' ') }}</span> {{ canary.public_label }}</li>
+    {% endfor %}
+  </ul>
+{% endmacro %}
+
+{% macro transcript(messages, evidence=[]) %}
+  <ol class="transcript">
+    {% for message in messages %}
+      {% set hits = evidence | selectattr('message_index', 'equalto', loop.index0) | list %}
+      <li class="message message-{{ message.role }}{% if hits %} tripped{% endif %}">
+        <span class="role">{{ {'user': 'Hunter', 'assistant': 'Agent', 'tool': 'Tool result'}.get(message.role, message.role) }}</span>
+        {% if message.content %}<p class="text">{{ message.content }}</p>{% endif %}
+        {% for call in message.tool_calls %}
+          <pre class="call">{{ call.name }}({{ call.arguments | pretty }})</pre>
+        {% endfor %}
+        {% for hit in hits %}
+          <p class="hit">
+            Tripped {{ hit.canary.public_label if hit.canary else 'a canary' }}{% if hit.representation %} ({{ hit.representation }}){% endif %}
+          </p>
+        {% endfor %}
+      </li>
+    {% endfor %}
+  </ol>
+{% endmacro %}

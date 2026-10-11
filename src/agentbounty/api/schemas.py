@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
@@ -36,6 +37,9 @@ class SponsorCreated(BaseModel):
 
 class BountyCreate(Body):
     reward_zatoshi: StrictInt = Field(gt=0, le=MAX_ZATOSHI)
+    # Both are public.
+    title: str = Field(default="Untitled agent", min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2_000)
 
 
 class BountyCreated(BaseModel):
@@ -124,26 +128,139 @@ class CloseOut(BaseModel):
     closing: bool
 
 
-# --- public -----------------------------------------------------------------------------
-
-
 class CanaryPublic(BaseModel):
     type: CanaryType
     public_label: str
 
 
+class FillIn(Body):
+    slot: EntryPoint
+    content: str = Field(min_length=1, max_length=MAX_SLOT_CHARACTERS)
+
+
+class ToolCallOut(BaseModel):
+    name: str
+    arguments: dict[str, Any]
+
+
+class PayoutOut(BaseModel):
+    state: PayoutState
+    amount_zatoshi: int
+    txid: str | None
+
+
+class StateOut(BaseModel):
+    state: BountyState
+
+
+class SponsorBounty(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: str
+    state: BountyState
+    # Close has been requested and is waiting for attempts in flight.
+    closing: bool
+    reward_zatoshi: int
+    balance_zatoshi: int
+    # Reward plus fee: what the escrow must hold for the bounty to go live.
+    required_zatoshi: int
+
+
+class ToolOut(BaseModel):
+    name: str
+    description: str
+    parameters: dict[str, Any]
+    result: str
+
+
+class ConfigDetail(BaseModel):
+    version: int
+    config_hash: str
+    # Whether this version is the one pinned live, or a newer one not yet activated.
+    live: bool
+    system_prompt: str
+    model: str
+    tools: list[ToolOut]
+    params: dict[str, Any]
+    entry_points: list[EntryPoint]
+
+
+class CanaryDetail(BaseModel):
+    id: uuid.UUID
+    type: CanaryType
+    public_label: str
+    secret: str | None
+    rule: dict[str, Any] | None
+
+
+class SponsorBountyDetail(SponsorBounty):
+    # Where and how to deposit: the escrow address, with the code as the memo.
+    escrow_address: str
+    deposit_code: str
+    confirmations_required: int
+    refund_address: str | None
+    config: ConfigDetail | None
+    canaries: list[CanaryDetail]
+
+
+class MessageOut(BaseModel):
+    role: str
+    content: str
+    tool_calls: list[ToolCallOut]
+
+
+class EvidenceOut(BaseModel):
+    canary: CanaryPublic | None
+    # Index into the run's transcript of the message that tripped the canary.
+    message_index: int
+    location: str
+    representation: str | None
+    matched_text: str
+
+
+class RunOut(BaseModel):
+    run_index: int
+    transcript: list[MessageOut]
+    evidence: list[EvidenceOut]
+
+
+class FindingOut(BaseModel):
+    id: uuid.UUID
+    state: str
+    canary: CanaryPublic
+    tripped_runs: int
+    config_hash: str
+    verified_at: datetime
+    # The attack as submitted. Replaying it is the regression test for a patch.
+    attack: list[FillIn]
+    payout: PayoutOut | None
+    runs: list[RunOut]
+
+
+class LedgerEntryOut(BaseModel):
+    kind: str
+    amount_zatoshi: int
+    txid: str | None
+    created_at: datetime
+
+
+class LedgerOut(BaseModel):
+    balance_zatoshi: int
+    entries: list[LedgerEntryOut]
+
+
+# --- public -----------------------------------------------------------------------------
+
+
 class BountyPublic(BaseModel):
     id: uuid.UUID
+    title: str
+    description: str
     state: BountyState
     accepting_attempts: bool
     reward_zatoshi: int
     entry_points: list[EntryPoint]
     canaries: list[CanaryPublic]
-
-
-class FillIn(Body):
-    slot: EntryPoint
-    content: str = Field(min_length=1, max_length=MAX_SLOT_CHARACTERS)
 
 
 class AttemptIn(Body):
@@ -157,20 +274,9 @@ class AttemptAccepted(BaseModel):
     status_token: str
 
 
-class ToolCallOut(BaseModel):
-    name: str
-    arguments: dict[str, Any]
-
-
 class ReplyOut(BaseModel):
     text: str
     tool_calls: list[ToolCallOut]
-
-
-class PayoutOut(BaseModel):
-    state: PayoutState
-    amount_zatoshi: int
-    txid: str | None
 
 
 class AttemptStatusOut(BaseModel):

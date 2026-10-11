@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false}'>
+  <title>{% block title %}Bounties{% endblock %} · AgentBounty</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">AgentBounty</a>
+    <nav>
+      <a href="/">Bounties</a>
+      {% if signed_in %}
+        <a href="/dashboard">Dashboard</a>
+        <form method="post" action="/logout"><button class="link">Sign out</button></form>
+      {% else %}
+        <a href="/login">Sponsor sign in</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

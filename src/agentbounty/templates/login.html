@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Sponsor sign in{% endblock %}
+{% block content %}
+  <h1>Sponsor sign in</h1>
+  <div class="columns">
+    <section>
+      <h2>I have an API key</h2>
+      {% if error %}<p class="error">{{ error }}</p>{% endif %}
+      <form method="post" action="/login">
+        <label>API key
+          <input name="key" type="password" required autocomplete="off">
+        </label>
+        <button>Sign in</button>
+      </form>
+    </section>
+    <section>
+      <h2>I am new here</h2>
+      {% if signup_error %}<p class="error">{{ signup_error }}</p>{% endif %}
+      <form method="post" action="/signup">
+        <label>Email
+          <input name="email" type="email" required value="{{ email or '' }}">
+        </label>
+        <button>Create an account</button>
+      </form>
+      <p class="muted">You get an API key, shown once. It signs you in here and authenticates scripts.</p>
+    </section>
+  </div>
+{% endblock %}

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Request
 
 from agentbounty.api.deps import CipherDep, OwnBounty, SettingsDep, SponsorDep, Transaction
@@ -9,20 +11,36 @@ from agentbounty.api.schemas import (
     ActivateOut,
     BountyCreate,
     BountyCreated,
+    CanaryDetail,
     CanaryIn,
     CanaryOut,
+    CanaryPublic,
     CloseIn,
     CloseOut,
+    ConfigDetail,
     ConfigIn,
     ConfigOut,
+    EvidenceOut,
+    FillIn,
+    FindingOut,
     FundIn,
     FundOut,
+    LedgerEntryOut,
+    LedgerOut,
+    MessageOut,
+    PayoutOut,
+    RunOut,
     SecretCanaryIn,
+    SponsorBounty,
+    SponsorBountyDetail,
     SponsorCreate,
     SponsorCreated,
+    StateOut,
+    ToolOut,
 )
-from agentbounty.models import BountyState, CanaryType
+from agentbounty.models import BountyState, Canary, CanaryType
 from agentbounty.services import bounty as bounty_service
+from agentbounty.services import reports
 from agentbounty.services.bounty import CanaryDefinition
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import MockTool, TargetConfig
@@ -42,7 +60,7 @@ async def create_bounty(
     body: BountyCreate, session: Transaction, sponsor: SponsorDep, settings: SettingsDep
 ) -> BountyCreated:
     bounty = await bounty_service.create_bounty(
-        session, sponsor, body.reward_zatoshi, settings.fee_rate
+        session, sponsor, body.reward_zatoshi, settings.fee_rate, body.title, body.description
     )
     return BountyCreated(id=bounty.id, state=bounty.state)
 
@@ -142,3 +160,153 @@ async def close(
     """
     await bounty_service.request_close(session, bounty, body.refund_address, settings.zcash_network)
     return CloseOut(state=bounty.state, closing=bounty.state is not BountyState.CLOSED)
+
+
+@router.post("/bounties/{bounty_id}/pause")
+async def pause(session: Transaction, bounty: OwnBounty) -> StateOut:
+    """Stop taking attempts. Resume with `activate`."""
+    await bounty_service.pause(session, bounty)
+    return StateOut(state=bounty.state)
+
+
+def _summary(summary: reports.BountySummary) -> dict[str, Any]:
+    bounty = summary.bounty
+    return {
+        "id": bounty.id,
+        "title": bounty.title,
+        "description": bounty.description,
+        "state": bounty.state,
+        "closing": bounty.close_requested_at is not None and bounty.state is not BountyState.CLOSED,
+        "reward_zatoshi": bounty.reward_zatoshi,
+        "balance_zatoshi": summary.balance_zatoshi,
+        "required_zatoshi": summary.required_zatoshi,
+    }
+
+
+@router.get("/sponsor/bounties")
+async def my_bounties(session: Transaction, sponsor: SponsorDep) -> list[SponsorBounty]:
+    return [
+        SponsorBounty(**_summary(summary))
+        for summary in await reports.sponsor_bounties(session, sponsor)
+    ]
+
+
+@router.get("/sponsor/bounties/{bounty_id}")
+async def my_bounty(
+    request: Request,
+    session: Transaction,
+    bounty: OwnBounty,
+    cipher: CipherDep,
+    settings: SettingsDep,
+) -> SponsorBountyDetail:
+    """Everything about one bounty, including the decrypted config and canaries, for its owner."""
+    detail = await reports.bounty_detail(session, cipher, bounty)
+    target = detail.target
+    config = None
+    if target is not None and detail.config_version is not None and detail.config_hash is not None:
+        config = ConfigDetail(
+            version=detail.config_version,
+            config_hash=detail.config_hash,
+            live=detail.config_is_live,
+            system_prompt=target.config.system_prompt,
+            model=target.config.model,
+            tools=[
+                ToolOut(
+                    name=tool.name,
+                    description=tool.description,
+                    parameters=dict(tool.parameters),
+                    result=tool.result,
+                )
+                for tool in target.config.tools
+            ],
+            params=dict(target.config.params),
+            entry_points=sorted(target.config.entry_points),
+        )
+    return SponsorBountyDetail(
+        **_summary(detail.summary),
+        deposit_code=bounty.deposit_code,
+        escrow_address=request.app.state.escrow_address,
+        confirmations_required=settings.deposit_confirmations,
+        refund_address=detail.refund_address,
+        config=config,
+        canaries=[
+            CanaryDetail(
+                id=canary.id,
+                type=canary.definition.type,
+                public_label=canary.definition.public_label,
+                secret=canary.definition.secret,
+                rule=None
+                if canary.definition.rule is None
+                else bounty_service.rule_to_json(canary.definition.rule),
+            )
+            for canary in (target.canaries if target else ())
+        ],
+    )
+
+
+@router.get("/bounties/{bounty_id}/findings")
+async def findings(session: Transaction, bounty: OwnBounty) -> list[FindingOut]:
+    """Every verified break of the bounty, with the attack, all transcripts and the evidence."""
+
+    def public(canary: Canary | None) -> CanaryPublic | None:
+        if canary is None:
+            return None
+        return CanaryPublic(type=canary.type, public_label=canary.public_label)
+
+    out = []
+    for report in await reports.findings_report(session, bounty):
+        payout = report.payout
+        out.append(
+            FindingOut(
+                id=report.finding.id,
+                state=report.finding.state.value,
+                canary=CanaryPublic(
+                    type=report.canary.type, public_label=report.canary.public_label
+                ),
+                tripped_runs=report.finding.tripped_runs,
+                config_hash=report.finding.config_hash,
+                verified_at=report.finding.verified_at,
+                attack=[FillIn(**fill) for fill in report.attack],
+                payout=None
+                if payout is None
+                else PayoutOut(
+                    state=payout.state, amount_zatoshi=payout.amount_zatoshi, txid=payout.txid
+                ),
+                runs=[
+                    RunOut(
+                        run_index=run.run_index,
+                        transcript=[MessageOut(**message) for message in run.transcript],
+                        evidence=[
+                            EvidenceOut(
+                                canary=public(item.canary),
+                                message_index=item.message_index,
+                                location=item.location,
+                                representation=item.representation,
+                                matched_text=item.matched_text,
+                            )
+                            for item in run.evidence
+                        ],
+                    )
+                    for run in report.runs
+                ],
+            )
+        )
+    return out
+
+
+@router.get("/bounties/{bounty_id}/ledger")
+async def ledger(session: Transaction, bounty: OwnBounty) -> LedgerOut:
+    """Deposits, payouts, fees and refunds, oldest first, and the balance they sum to."""
+    lines, balance = await reports.ledger_report(session, bounty)
+    return LedgerOut(
+        balance_zatoshi=balance,
+        entries=[
+            LedgerEntryOut(
+                kind=line.kind,
+                amount_zatoshi=line.amount_zatoshi,
+                txid=line.txid,
+                created_at=line.created_at,
+            )
+            for line in lines
+        ],
+    )

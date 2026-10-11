@@ -21,6 +21,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentbounty.models import (
+    Attempt,
+    AttemptState,
     Bounty,
     BountyState,
     Canary,
@@ -326,10 +328,17 @@ async def add_canary(
 
 
 async def create_bounty(
-    session: AsyncSession, sponsor: Sponsor, reward_zatoshi: int, fee_rate: Decimal
+    session: AsyncSession,
+    sponsor: Sponsor,
+    reward_zatoshi: int,
+    fee_rate: Decimal,
+    title: str = "Untitled agent",
+    description: str = "",
 ) -> Bounty:
     bounty = Bounty(
         sponsor_id=sponsor.id,
+        title=title,
+        description=description,
         reward_zatoshi=reward_zatoshi,
         fee_rate=fee_rate,
         deposit_code="dep-" + secrets.token_hex(8),
@@ -432,6 +441,28 @@ async def fund(
     await go_live_if_funded(session, bounty)
     await session.flush()
     return max(0, required_balance(bounty) - await bounty_balance(session, bounty.id))
+
+
+async def pause(session: AsyncSession, bounty: Bounty) -> None:
+    """Stop taking attempts until the sponsor resumes.
+
+    Refused while attempts are queued or running: pausing makes them not
+    count, so allowing it would let a sponsor dodge an attack already submitted.
+    """
+    if bounty.state is not BountyState.LIVE or bounty.close_requested_at is not None:
+        raise ServiceError(409, "only a live bounty can be paused")
+    in_flight = await session.scalar(
+        select(Attempt.id)
+        .where(
+            Attempt.bounty_id == bounty.id,
+            Attempt.state.in_((AttemptState.QUEUED, AttemptState.RUNNING)),
+        )
+        .limit(1)
+    )
+    if in_flight:
+        raise ServiceError(409, "attempts are still being judged; pause once the queue is empty")
+    bounty.state = BountyState.PAUSED
+    await session.flush()
 
 
 async def request_close(

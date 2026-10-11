@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+  <h1>Your bounties</h1>
+  {% if bounties %}
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Agent</th><th>State</th><th class="num">Reward (ZEC)</th><th class="num">Escrow (ZEC)</th></tr></thead>
+        <tbody>
+          {% for bounty in bounties %}
+            <tr>
+              <td><a href="/dashboard/b/{{ bounty.id }}">{{ bounty.title }}</a></td>
+              <td>{{ ui.state(bounty.state, bounty.closing) }}</td>
+              <td class="num">{{ bounty.reward_zatoshi | zec }}</td>
+              <td class="num">{{ bounty.balance_zatoshi | zec }} of {{ bounty.required_zatoshi | zec }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">You have no bounties yet.</p>
+  {% endif %}
+
+  <section>
+    <h2>New bounty</h2>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <form method="post" action="/dashboard/bounties">
+      <label>Title <input name="title" required maxlength="120" value="{{ draft.title if draft else '' }}"></label>
+      <label>Public description
+        <textarea name="description" rows="3" maxlength="2000">{{ draft.description if draft else '' }}</textarea>
+        <small>Hunters see this: what the agent does and what you want them to try.</small>
+      </label>
+      <label>Reward in ZEC <input name="reward" required inputmode="decimal" value="{{ draft.reward if draft else '' }}"></label>
+      <button>Create draft</button>
+    </form>
+  </section>
+{% endblock %}

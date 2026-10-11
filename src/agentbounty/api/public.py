@@ -36,6 +36,8 @@ async def _public(session: AsyncSession, bounty: Bounty) -> BountyPublic:
     canaries = await canary_rows(session, config.id) if config else []
     return BountyPublic(
         id=bounty.id,
+        title=bounty.title,
+        description=bounty.description,
         state=bounty.state,
         accepting_attempts=bounty.state is BountyState.LIVE and bounty.close_requested_at is None,
         reward_zatoshi=bounty.reward_zatoshi,
