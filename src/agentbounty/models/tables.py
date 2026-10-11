@@ -58,9 +58,16 @@ class Sponsor(Base):
     # What to call them and the picture to show, when known. Google supplies both.
     name: Mapped[str | None] = mapped_column(Text)
     picture_url: Mapped[str | None] = mapped_column(Text)
+    # What they say about themselves. All of it is theirs to give or leave out.
+    github: Mapped[str | None] = mapped_column(Text)
+    company: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[str | None] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(Text)
+    website: Mapped[str | None] = mapped_column(Text)
+    bio: Mapped[str | None] = mapped_column(Text)
     # May hand out referral codes.
     is_ambassador: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
-    # The referral code the account joined with.
+    # The referral code the account has redeemed, which is what lets it take part in bounties.
     referral_code: Mapped[str | None] = mapped_column(Text, index=True)
     created_at: Mapped[datetime] = created_now()
 

@@ -40,6 +40,7 @@ from agentbounty.api.schemas import (
     RearmOut,
     ReferralCodeCreate,
     ReferralCodeOut,
+    ReferralRedeem,
     RunOut,
     SecretCanaryIn,
     SponsorBounty,
@@ -72,8 +73,10 @@ router = APIRouter(prefix="/v1", tags=["sponsor"])
 async def create_sponsor(
     body: SponsorCreate, session: Transaction, settings: SettingsDep
 ) -> SponsorCreated:
-    """Create an account. In invite-only mode this needs a referral code with a use left."""
-    code = await credits.redeem(session, body.referral_code) if settings.invite_only else None
+    """Create an account. Anyone may. A referral code given here is redeemed straight away;
+    without one the account can do everything but attack, on an invite-only platform."""
+    given = body.referral_code and body.referral_code.strip()
+    code = await credits.redeem(session, given) if settings.invite_only and given else None
     sponsor, api_key = await bounty_service.create_sponsor(session, body.email, code)
     return SponsorCreated(sponsor_id=sponsor.id, api_key=api_key)
 
@@ -87,6 +90,13 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
         name=sponsor.name,
         picture_url=sponsor.picture_url,
         google_linked=sponsor.google_sub is not None,
+        github=sponsor.github,
+        company=sponsor.company,
+        role=sponsor.role,
+        location=sponsor.location,
+        website=sponsor.website,
+        bio=sponsor.bio,
+        can_hunt=not settings.invite_only or sponsor.referral_code is not None,
         is_ambassador=sponsor.is_ambassador,
         invite_only=settings.invite_only,
         verified_breaks=allowed.breaks,
@@ -106,12 +116,22 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
 async def update_account(
     body: AccountUpdate, session: Transaction, sponsor: SponsorDep, settings: SettingsDep
 ) -> AccountOut:
-    """Change the name the account is shown under."""
-    name = " ".join(body.name.split())
-    if not name:
-        raise ServiceError(422, "a name cannot be blank")
-    sponsor.name = name
+    """Change the profile. Only the fields that are sent change; an empty one is cleared."""
+    for field in body.model_fields_set:
+        value = getattr(body, field)
+        if field == "name" and not value:
+            raise ServiceError(422, "a name cannot be blank")
+        setattr(sponsor, field, value or None)
     await session.flush()
+    return await account(session, sponsor, settings)
+
+
+@router.post("/account/referral")
+async def redeem_referral(
+    body: ReferralRedeem, session: Transaction, sponsor: SponsorDep, settings: SettingsDep
+) -> AccountOut:
+    """Redeem a referral code, which lets the account take part in bounties."""
+    await credits.redeem_for(session, sponsor, body.code)
     return await account(session, sponsor, settings)
 
 

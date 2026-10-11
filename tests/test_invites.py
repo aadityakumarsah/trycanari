@@ -72,29 +72,41 @@ def test_what_an_attack_costs_grows_with_its_size() -> None:
     assert cost(1_500, 1_500) == 2
 
 
-async def test_joining_needs_a_referral_code_with_a_use_left(club: Platform) -> None:
+async def test_anyone_may_join_but_a_referral_code_is_what_lets_them_hunt(club: Platform) -> None:
     assert (await club.client.get("/v1/auth/providers")).json()["invite_only"] is True
-    refused = await join(club, "a@example.com", None)
-    assert (refused.status_code, refused.json()["detail"]) == (
-        403,
-        "a referral code is needed to join",
-    )
-    wrong = await join(club, "a@example.com", "NOPE-NOPE")
-    assert (wrong.status_code, wrong.json()["detail"]) == (403, "that referral code is not valid")
+    # No code: an account all the same. It just cannot take part in bounties yet.
+    joined = await join(club, "a@example.com", None)
+    assert joined.status_code == 201
+    a = {"Authorization": f"Bearer {joined.json()['api_key']}"}
+    assert (await club.client.get("/v1/account", headers=a)).json()["can_hunt"] is False
 
+    async def redeem(headers: dict[str, str], code: str) -> httpx.Response:
+        return await club.client.post("/v1/account/referral", json={"code": code}, headers=headers)
+
+    wrong = await redeem(a, "NOPE-NOPE")
+    assert (wrong.status_code, wrong.json()["detail"]) == (403, "that referral code is not valid")
     code = await operator_code(club, uses=2)
     # Typed in lower case with spaces around it, it is still the same code.
-    assert (await join(club, "a@example.com", f"  {code.lower()} ")).status_code == 201
-    assert (await join(club, "b@example.com", code)).status_code == 201
-    spent = await join(club, "c@example.com", code)
+    redeemed = await redeem(a, f"  {code.lower()} ")
+    assert (redeemed.status_code, redeemed.json()["can_hunt"]) == (200, True)
+    again = await redeem(a, code)
+    assert (again.status_code, again.json()["detail"]) == (
+        409,
+        "you have already redeemed a referral code",
+    )
+
+    # A code given at sign-up is redeemed there and then, and a code runs out.
+    b = await member(club, "b@example.com", code)
+    assert (await club.client.get("/v1/account", headers=b)).json()["can_hunt"] is True
+    late = await join(club, "c@example.com", None)
+    c = {"Authorization": f"Bearer {late.json()['api_key']}"}
+    spent = await redeem(c, code)
     assert (spent.status_code, spent.json()["detail"]) == (
         403,
         "that referral code has been used up",
     )
-    # A sign-up that fails for another reason does not use the code up.
-    other = await operator_code(club, uses=1)
-    assert (await join(club, "a@example.com", other)).status_code == 409
-    assert (await join(club, "d@example.com", other)).status_code == 201
+    assert (await join(club, "d@example.com", "NOPE-NOPE")).status_code == 403
+    assert (await club.client.post("/v1/account/referral", json={"code": code})).status_code == 401
 
 
 async def test_without_invite_only_nothing_changes(platform: Platform) -> None:
@@ -126,6 +138,16 @@ async def test_an_attack_needs_an_account_and_spends_its_credits(club: Platform)
         401,
         "sign in to attack: this platform is invite-only",
     )
+    # An account is not enough: it has to have redeemed a referral code.
+    uninvited = await join(club, "uninvited@example.com", None)
+    outsider = {"Authorization": f"Bearer {uninvited.json()['api_key']}"}
+    refused = await attack(club, bounty_id, outsider)
+    assert (refused.status_code, refused.json()["detail"]) == (
+        403,
+        "enter a referral code to take part in bounties",
+    )
+    await club.client.post("/v1/account/referral", json={"code": code}, headers=outsider)
+    assert (await attack(club, bounty_id, outsider)).status_code == 202
 
     account = (await club.client.get("/v1/account", headers=hunter)).json()
     assert account["credits"] == {
@@ -255,7 +277,7 @@ async def test_only_ambassadors_make_referral_codes(club: Platform) -> None:
     assert [(item["code"], item["used"]) for item in listed] == [(theirs["code"], 1)]
 
 
-async def test_google_sign_in_needs_the_code_only_for_someone_new(
+async def test_google_sign_in_lets_anyone_join_and_redeems_a_code_they_arrived_with(
     service_settings: Settings,
 ) -> None:
     settings = service_settings.model_copy(
@@ -271,12 +293,10 @@ async def test_google_sign_in_needs_the_code_only_for_someone_new(
         platform.app.state.google_transport = httpx.MockTransport(stand_in.handle)
         code = await operator_code(platform, uses=1)
 
-        def browser() -> httpx.AsyncClient:
-            return httpx.AsyncClient(
+        async def sign_in(referral: str | None) -> dict[str, Any]:
+            client = httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=platform.app), base_url="http://test"
             )
-
-        async def sign_in(client: httpx.AsyncClient, referral: str | None) -> str:
             sent = await client.get(
                 "/v1/auth/google/start", params={"code": referral} if referral else {}
             )
@@ -288,21 +308,73 @@ async def test_google_sign_in_needs_the_code_only_for_someone_new(
             # The referral code never travels to Google.
             assert code not in sent.headers["location"]
             returned = await come_back(client, code="one-time", state=query["state"][0])
-            location: str = returned.headers["location"]
-            return location
+            assert returned.headers["location"] == "http://test/dashboard"
+            account: dict[str, Any] = (await client.get("/v1/account")).json()
+            return account
 
-        # New, and no code: refused, and no account is made.
-        assert await sign_in(browser(), None) == "http://test/login?error=google_invite"
-        assert await sign_in(browser(), "WRONG") == "http://test/login?error=google_invite"
-        # New, with a code: in.
-        assert await sign_in(browser(), code) == "http://test/dashboard"
-        # Back again later, with no code at all: still in, and the code was used once.
-        assert await sign_in(browser(), None) == "http://test/dashboard"
+        # New, no code: in, with a profile, but not hunting yet.
+        assert (await sign_in(None))["can_hunt"] is False
+        # Someone else arrives with a code that does not exist: in all the same.
+        stand_in.account = {"sub": "two", "email": "two@example.com", "email_verified": True}
+        assert (await sign_in("WRONG"))["can_hunt"] is False
+        # A third arrives through an invite link: in, and hunting.
+        stand_in.account = {"sub": "three", "email": "three@example.com", "email_verified": True}
+        assert (await sign_in(code))["can_hunt"] is True
         async with platform.sessions() as session:
             assert await credits.uses_of(session, code) == 1
-        # The code is spent, so the next stranger is refused.
-        stand_in.account = {"sub": "another", "email": "b@example.com", "email_verified": True}
-        assert await sign_in(browser(), code) == "http://test/login?error=google_invite"
+
+
+async def test_a_profile_is_filled_in_a_field_at_a_time(platform: Platform) -> None:
+    sponsor = await platform.sponsor()
+    empty = await sponsor.call("GET", "/v1/account")
+    fields = ("name", "github", "company", "role", "location", "website", "bio")
+    assert [empty[field] for field in fields] == [None] * 7
+    # Off an invite-only platform everyone can hunt.
+    assert empty["can_hunt"] is True
+
+    saved = await sponsor.call(
+        "PATCH",
+        "/v1/account",
+        json={
+            "name": "  Ada   Lovelace ",
+            "github": "https://github.com/ada-lovelace/",
+            "company": "Analytical Engines",
+            "website": "https://example.com/ada",
+            "bio": "  First programmer.\nStill debugging.  ",
+        },
+    )
+    assert [saved[field] for field in fields] == [
+        "Ada Lovelace",
+        "ada-lovelace",
+        "Analytical Engines",
+        None,
+        None,
+        "https://example.com/ada",
+        "First programmer.\nStill debugging.",
+    ]
+    # Only what is sent changes, and an empty string clears a field.
+    changed = await sponsor.call(
+        "PATCH", "/v1/account", json={"github": "@ada", "company": "", "role": "Engineer"}
+    )
+    assert (changed["name"], changed["github"], changed["company"], changed["role"]) == (
+        "Ada Lovelace",
+        "ada",
+        None,
+        "Engineer",
+    )
+
+    for bad in (
+        {"github": "not a username"},
+        {"github": "-leading"},
+        {"github": "a" * 40},
+        {"website": "example.com"},
+        {"website": "javascript:alert(1)"},
+        {"name": ""},
+        {"bio": "x" * 401},
+        {"unknown": "field"},
+    ):
+        await sponsor.call("PATCH", "/v1/account", 422, json=bad)
+    assert (await sponsor.call("GET", "/v1/account"))["github"] == "ada"
 
 
 def test_unused_helper_is_importable() -> None:

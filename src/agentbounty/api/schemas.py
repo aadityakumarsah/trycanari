@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictInt, field_validator
 
 from agentbounty.models import AttemptState, BountyState, CanaryType, PayoutState, RearmState
 from agentbounty.services.harness import MAX_SLOT_CHARACTERS, EntryPoint
@@ -46,8 +46,52 @@ class CreditsOut(BaseModel):
     costs: list[CostStep]
 
 
+def _tidy(value: object) -> object:
+    """Whitespace runs become one space, and the ends are trimmed."""
+    return " ".join(value.split()) if isinstance(value, str) else value
+
+
+def _github(value: object) -> object:
+    """A GitHub username, from whatever form it was pasted in: a profile URL or an @handle."""
+    if not isinstance(value, str):
+        return value
+    name = value.strip().removesuffix("/")
+    for prefix in ("https://", "http://", "www.", "github.com/", "@"):
+        name = name.removeprefix(prefix)
+    return name
+
+
+Line = Annotated[str, BeforeValidator(_tidy)]
+
+
 class AccountUpdate(Body):
-    name: str = Field(min_length=1, max_length=60)
+    """Every field is optional: only what is sent is changed. An empty string clears it."""
+
+    name: Annotated[Line, Field(max_length=60)] | None = None
+    github: (
+        Annotated[
+            str,
+            BeforeValidator(_github),
+            Field(max_length=39, pattern=r"^$|^[A-Za-z0-9](?:-?[A-Za-z0-9])*$"),
+        ]
+        | None
+    ) = None
+    company: Annotated[Line, Field(max_length=80)] | None = None
+    role: Annotated[Line, Field(max_length=80)] | None = None
+    location: Annotated[Line, Field(max_length=80)] | None = None
+    website: (
+        Annotated[str, Field(max_length=200, pattern=r"^$|^https?://[^\s/]+\.[^\s]+$")] | None
+    ) = None
+    bio: Annotated[str, Field(max_length=400)] | None = None
+
+    @field_validator("website", "bio", mode="before")
+    @classmethod
+    def _trimmed(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class ReferralRedeem(Body):
+    code: str = Field(min_length=1, max_length=40)
 
 
 class AccountOut(BaseModel):
@@ -56,6 +100,15 @@ class AccountOut(BaseModel):
     picture_url: str | None
     # Whether the account signs in with Google, which is where a picture comes from.
     google_linked: bool
+    github: str | None
+    company: str | None
+    role: str | None
+    location: str | None
+    website: str | None
+    bio: str | None
+    # Whether the account may attack: always, unless the platform is invite-only and it
+    # has not redeemed a referral code yet.
+    can_hunt: bool
     is_ambassador: bool
     # Whether attacks need an account and credits on this deployment.
     invite_only: bool

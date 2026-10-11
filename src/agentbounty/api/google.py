@@ -55,7 +55,7 @@ Transaction = Annotated[AsyncSession, Depends(get_transaction)]
 
 class Providers(BaseModel):
     google: bool
-    # Whether joining needs a referral code.
+    # Whether attacking needs an account that has redeemed a referral code.
     invite_only: bool
 
 
@@ -184,7 +184,7 @@ async def providers(request: Request) -> Providers:
 
 @router.get("/google/start", dependencies=[Depends(limit_by_client)], include_in_schema=False)
 async def start(request: Request, code: str | None = None) -> RedirectResponse:
-    """Send the browser to Google. `code` is a referral code, for someone joining."""
+    """Send the browser to Google. `code` is a referral code someone arrived with."""
     settings = _settings(request)
     public = urlsplit(settings.public_url or "")
     referral = (code or "")[:40]
@@ -259,13 +259,14 @@ async def callback(
         )
 
         async def admit() -> str | None:
-            # Someone new. In invite-only mode they need the code they started with.
-            if not settings.invite_only:
+            # Someone new. Anyone may join; a referral code they arrived with is redeemed
+            # for them, and one that does not work is simply left for them to enter later.
+            if not (settings.invite_only and expected["referral"]):
                 return None
             try:
                 return await credits.redeem(session, expected["referral"])
-            except ServiceError as refused:
-                raise SignInError("google_invite", refused.message) from None
+            except ServiceError:
+                return None
 
         try:
             sponsor = await bounty_service.sponsor_for_google(

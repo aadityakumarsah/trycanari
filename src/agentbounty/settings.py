@@ -87,9 +87,10 @@ class Settings(BaseSettings):
     # no proxy is believed.
     proxy_secret: SecretStr | None = None
 
-    # Invite-only mode. Joining needs a referral code, and an attack must come from an
-    # account, which spends credits from a rolling 24-hour allowance. This is what stops
-    # a stranger running up the model bill. Off, anyone may attack without an account.
+    # Invite-only mode. Anyone may make an account, but an attack must come from an account
+    # that has redeemed a referral code, and it spends credits from a rolling 24-hour
+    # allowance. This is what stops a stranger running up the model bill. Off, anyone may
+    # attack without an account.
     invite_only: bool = False
     # Credits an account may spend in any 24 hours: at first, and once it has a verified
     # break to its name.

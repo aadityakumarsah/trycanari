@@ -1,8 +1,9 @@
 """Invites and the credit allowance.
 
 Replaying an attack costs model tokens, which the platform pays for. In
-invite-only mode an attack must come from an account, and each one spends
-credits from that account's allowance for the last 24 hours.
+invite-only mode anyone may make an account, but an attack must come from one
+that has redeemed a referral code, and each attack spends credits from that
+account's allowance for the last 24 hours.
 
 Nothing here stores a balance. What an account has left is its tier's cap
 minus what its attempts of the last 24 hours cost, so the allowance refills by
@@ -103,6 +104,8 @@ async def charge(
     )
     if account is None:
         raise ServiceError(401, "sign in to attack")
+    if account.referral_code is None:
+        raise ServiceError(403, "enter a referral code to take part in bounties")
     cost = cost_of(fills)
     left = (await allowance(session, account, settings)).balance
     if cost > left:
@@ -134,10 +137,10 @@ async def uses_of(session: AsyncSession, code: str) -> int:
 
 async def redeem(session: AsyncSession, code: str | None) -> str:
     """Check a referral code can admit one more account, and hold it until this
-    transaction ends so that no two sign-ups take its last use. Returns the code
+    transaction ends so that no two people take its last use. Returns the code
     as stored."""
     if not code or not code.strip():
-        raise ServiceError(403, "a referral code is needed to join")
+        raise ServiceError(422, "enter a referral code")
     found = await session.scalar(
         select(ReferralCode).where(ReferralCode.code == normalise(code)).with_for_update()
     )
@@ -146,6 +149,14 @@ async def redeem(session: AsyncSession, code: str | None) -> str:
     if await uses_of(session, found.code) >= found.max_uses:
         raise ServiceError(403, "that referral code has been used up")
     return found.code
+
+
+async def redeem_for(session: AsyncSession, account: Sponsor, code: str | None) -> None:
+    """Let an account take part in bounties, using up one use of a referral code."""
+    if account.referral_code is not None:
+        raise ServiceError(409, "you have already redeemed a referral code")
+    account.referral_code = await redeem(session, code)
+    await session.flush()
 
 
 async def create_code(
