@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 
 import { api } from "../api.ts";
 import { Icon, type IconName } from "../components/Brand.tsx";
+import { Flow } from "../components/Flow.tsx";
 import { WalkingMascot } from "../components/WalkingMascot.tsx";
 import { Ago, ErrorNote, Skeleton, words } from "../components/ui.tsx";
 import { useLoad } from "../hooks.ts";
@@ -330,6 +331,19 @@ export function Home() {
             ))}
           </ol>
         )}
+      </section>
+
+      <section className="sec flush flow-sec" aria-labelledby="flow-title">
+        <div className="sec-head">
+          <h2 id="flow-title">
+            Every Attack In. <span className="mint">Only Proof Out.</span>
+          </h2>
+          <p>
+            Hunters and their agents throw everything at a sandboxed copy. What comes out the other side is a
+            verdict, a transcript and a payout.
+          </p>
+        </div>
+        <Flow />
       </section>
 
       <section className="sec flush split" id="how">

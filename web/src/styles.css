@@ -655,3 +655,47 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px soli
 main.frame { min-height: calc(100vh - var(--nav) - 150px); }
 .page label.check { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .page .composer > h2 { margin-bottom: 16px; }
+
+/* --- the flow: attacks in, proof out --- */
+.flow-sec .sec-head { padding: 0 var(--pad); }
+.flow-sec .sec-head p { max-width: 620px; margin-left: auto; margin-right: auto; }
+.flow { --hub: 120px; --gap: 40px; --cell: 84px; --space: 20px; position: relative; height: 520px; margin-top: 48px; border-top: 1px solid var(--border); overflow: hidden; }
+.flow-bg { position: absolute; inset: 0; background-image: linear-gradient(90deg, #3336 1px, transparent 0), linear-gradient(180deg, #3336 1px, transparent 0); background-size: 40px 40px; background-position: calc(50% + 20px) calc(50% + 20px); }
+.flow-hub { position: absolute; top: 50%; left: 50%; z-index: 2; display: grid; place-items: center; width: var(--hub); height: var(--hub); transform: translate(-50%, -50%); border: 1px solid transparent; border-radius: 22px; background-image: linear-gradient(#1a1a1a, #1a1a1a), linear-gradient(90deg, #fff, var(--accent)); background-origin: padding-box, border-box; background-clip: padding-box, border-box; box-shadow: 0 0 0 8px #000, 0 0 60px #6ee7b726; }
+.flow-hub img { width: 62%; height: auto; image-rendering: pixelated; animation: hub-bob 3.2s ease-in-out infinite; }
+@keyframes hub-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.flow-line { position: absolute; top: 50%; z-index: 1; width: var(--gap); height: 1px; overflow: hidden; }
+.flow-line-left { right: calc(50% + var(--hub) / 2); background: #a3a3a3; }
+.flow-line-right { left: calc(50% + var(--hub) / 2); background: var(--accent); }
+.flow-line::after { content: ""; position: absolute; top: -1px; left: 0; width: 10px; height: 3px; border-radius: 2px; background: #fff; animation: pulse-along 1.8s linear infinite; }
+.flow-line-right::after { animation-delay: 0.9s; }
+@keyframes pulse-along { from { transform: translateX(-12px); } to { transform: translateX(52px); } }
+.flow-wrap { position: absolute; top: 0; bottom: 0; display: flex; width: 460px; background-color: #000; -webkit-mask-image: linear-gradient(180deg, transparent, #000 16%, #000 84%, transparent); mask-image: linear-gradient(180deg, transparent, #000 16%, #000 84%, transparent); }
+.flow-wrap-left { right: calc(50% + var(--hub) / 2 + var(--gap)); justify-content: flex-end; border-right: 1px solid #a3a3a366; background-image: radial-gradient(39% 100% at 100% 50%, #ffffff1a, transparent); }
+.flow-wrap-right { left: calc(50% + var(--hub) / 2 + var(--gap)); justify-content: flex-start; border-left: 1px solid #6ee7b780; background-image: radial-gradient(39% 100% at 0% 50%, #6ee7b733, transparent); }
+.flow-grid { display: flex; gap: var(--space); padding: 0 var(--space); }
+.flow-col { display: flex; flex-direction: column; will-change: transform; animation: flow-up 26s linear infinite; }
+.flow-col-1 { animation-name: flow-down; animation-duration: 34s; }
+.flow-col-2 { animation-duration: 30s; }
+.flow-wrap-right .flow-col-0, .flow-wrap-right .flow-col-2 { animation-name: flow-down; }
+.flow-wrap-right .flow-col-1 { animation-name: flow-up; }
+.flow:hover .flow-col { animation-play-state: paused; }
+@keyframes flow-up { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+@keyframes flow-down { from { transform: translateY(-50%); } to { transform: translateY(0); } }
+.flow-col ul { margin: 0; padding: 0; list-style: none; }
+.flow-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: var(--cell); height: var(--cell); margin-bottom: var(--space); padding: 6px; border: 1px solid #ffffff0f; border-radius: 12px; background: #ffffff0a; color: #d4d4d4; text-align: center; transition: border-color 0.2s, color 0.2s, background 0.2s; }
+.flow-cell span { color: var(--muted); font: 500 9.500px/12px var(--sans); letter-spacing: 0.01em; }
+.flow-wrap-right .flow-cell { color: var(--accent); }
+.flow-cell:hover { border-color: var(--border-strong); background: #ffffff14; color: #fff; }
+.flow-wrap-right .flow-cell:hover { border-color: #6ee7b780; color: var(--accent-hover); }
+@media (max-width: 1100px) {
+  .flow-col-2 { display: none; }
+}
+@media (max-width: 720px) {
+  .flow { --hub: 92px; --gap: 22px; --cell: 76px; --space: 14px; height: 400px; }
+  .flow-col-1 { display: none; }
+  .flow-hub { border-radius: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-col, .flow-hub img, .flow-line::after { animation: none; }
+}
