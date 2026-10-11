@@ -1,0 +1,41 @@
+# The backend on Fly.io: one image, three processes, as in docker-compose.yml.
+# The web app is served from Cloudflare Pages, which passes API paths here.
+#
+#   fly launch --no-deploy --copy-config     (once)
+#   fly secrets set DATABASE_URL=... SECRET_ENCRYPTION_KEY=... (see .env.example)
+#   fly deploy
+
+app = "trycanari-api"
+# Mumbai, next to the database.
+primary_region = "bom"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PUBLIC_URL = "https://trycanari.pages.dev"
+
+[processes]
+  api = "uvicorn agentbounty.app:create_app --factory --host 0.0.0.0 --port 8000"
+  worker = "python -m agentbounty.workers.replay"
+  payment = "python -m agentbounty.workers.payment"
+
+[http_service]
+  processes = ["api"]
+  internal_port = 8000
+  force_https = true
+  # The site should answer at once, so the API is never put to sleep.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

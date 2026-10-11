@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     # Where browsers reach this service, such as https://example.com. No path.
     public_url: str | None = None
 
+    # Shared with a proxy in front of the API (the Cloudflare Pages worker). A request that
+    # carries it in X-Proxy-Secret is believed about who the real client is. Unset means
+    # no proxy is believed.
+    proxy_secret: SecretStr | None = None
+
     worker_poll_seconds: float = Field(default=2.0, gt=0)
     # A running attempt older than this is taken to belong to a dead worker and is retried.
     attempt_timeout_seconds: float = Field(default=900.0, gt=0)
@@ -99,6 +104,7 @@ class Settings(BaseSettings):
         "google_client_id",
         "google_client_secret",
         "public_url",
+        "proxy_secret",
         "payout_max_zatoshi",
         "payout_daily_max_zatoshi",
         mode="before",

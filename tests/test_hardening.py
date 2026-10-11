@@ -11,6 +11,7 @@ import subprocess
 from typing import Any
 
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import make_url, select, text
 
 from agentbounty.api.ratelimit import RateLimiter
@@ -66,6 +67,38 @@ async def test_public_endpoints_are_limited_per_client_address(service_settings:
         # Health checks and the app's own files are not rate limited.
         assert (await client.get("/health")).status_code == 200
         assert (await client.get("/")).status_code in (200, 503)
+
+
+async def test_a_proxy_is_believed_about_the_client_only_with_the_shared_secret(
+    service_settings: Settings,
+) -> None:
+    settings = service_settings.model_copy(
+        update={"rate_limit_per_minute": 2, "proxy_secret": SecretStr("shared-with-the-proxy")}
+    )
+    async with platform_on(settings) as platform:
+        client = platform.client
+        shared = "shared-with-the-proxy"
+
+        def via_proxy(address: str, secret: str = shared) -> dict[str, str]:
+            return {"X-Proxy-Secret": secret, "X-Client-Address": address}
+
+        # Two people behind the proxy each have their own allowance.
+        for address in ("203.0.113.1", "203.0.113.2"):
+            for _ in range(2):
+                listed = await client.get("/v1/bounties", headers=via_proxy(address))
+                assert listed.status_code == 200
+        assert (
+            await client.get("/v1/bounties", headers=via_proxy("203.0.113.1"))
+        ).status_code == 429
+
+        # Without the secret, a claimed address is ignored: inventing one buys nothing.
+        for number in range(2):
+            forged = via_proxy(f"198.51.100.{number}", secret="a-guess")
+            assert (await client.get("/v1/bounties", headers=forged)).status_code == 200
+        forged = via_proxy("198.51.100.99", secret="a-guess")
+        assert (await client.get("/v1/bounties", headers=forged)).status_code == 429
+        claim_only = {"X-Client-Address": "198.51.100.100"}
+        assert (await client.get("/v1/bounties", headers=claim_only)).status_code == 429
 
 
 def test_the_window_slides_and_clients_are_counted_apart(monkeypatch: pytest.MonkeyPatch) -> None:

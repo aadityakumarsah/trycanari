@@ -2,6 +2,8 @@
 // API so the browser sees one origin, exactly as when FastAPI serves the app itself.
 //
 // API_ORIGIN (a Pages secret) is where the API runs, such as https://api.example.com.
+// PROXY_SECRET (a Pages secret, the same value as the API's) lets the API trust the
+// client address this worker reports.
 
 const API_PREFIXES = ["/v1/"];
 const API_PATHS = new Set(["/v1", "/health", "/agent.md", "/api-docs", "/openapi.json"]);
@@ -40,6 +42,14 @@ function proxy(request, env, url) {
   // browser's own verdict (Sec-Fetch-Site) is passed on untouched.
   if (headers.has("origin")) headers.set("origin", target.origin);
   headers.set("x-forwarded-host", url.host);
+  // Tell the API who is really calling, so its per-client limit is per person and not
+  // one allowance for this whole site. The API believes it only with the shared secret.
+  headers.delete("x-proxy-secret");
+  headers.delete("x-client-address");
+  if (env.PROXY_SECRET) {
+    headers.set("x-proxy-secret", env.PROXY_SECRET);
+    headers.set("x-client-address", request.headers.get("cf-connecting-ip") ?? "unknown");
+  }
   return fetch(target, {
     method: request.method,
     headers,

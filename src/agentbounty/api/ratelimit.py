@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 import time
 from collections import deque
 
@@ -39,11 +40,27 @@ class RateLimiter:
         return True
 
 
+def client_address(request: Request) -> str:
+    """Who is calling. A proxy that proves itself with the shared secret may say who it
+    is calling for; anyone else's claim is ignored, or the limit could be dodged by
+    inventing an address per request."""
+    secret = request.app.state.settings.proxy_secret
+    offered = request.headers.get("x-proxy-secret")
+    claimed = request.headers.get("x-client-address", "").strip()
+    if (
+        secret is not None
+        and offered is not None
+        and claimed
+        and secrets.compare_digest(offered.encode(), secret.get_secret_value().encode())
+    ):
+        return claimed[:64]
+    return request.client.host if request.client else "unknown"
+
+
 def limit_by_client(request: Request) -> None:
-    """Dependency for public endpoints. Behind a proxy, run uvicorn with --proxy-headers so
-    the client address is the caller's and not the proxy's."""
+    """Dependency for public endpoints: one allowance per client address."""
     limiter: RateLimiter = request.app.state.rate_limiter
-    client = request.client.host if request.client else "unknown"
+    client = client_address(request)
     if not limiter.allow(client):
         raise HTTPException(
             429, "too many requests; slow down", headers={"Retry-After": str(int(WINDOW_SECONDS))}
