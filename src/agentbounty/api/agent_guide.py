@@ -31,7 +31,7 @@ def guide(base_url: str, bounties: list[BountyPublic], settings: Settings) -> st
         + (f" {b.description}" if b.description else "")
         for b in bounties
     ]
-    return f"""# AgentBounty
+    return f"""# trycanari
 
 Bug bounties for AI agents. A sponsor lists an agent, plants canaries in it and
 locks a reward in shielded ZEC. You submit an attack. It is replayed {RUNS_PER_ATTEMPT} times

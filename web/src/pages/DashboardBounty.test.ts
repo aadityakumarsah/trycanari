@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SponsorBountyDetail } from "../types.ts";
-import { isMoving, ruleValue } from "./DashboardBounty.tsx";
+import { isMoving, ruleValue, tabOf } from "./DashboardBounty.tsx";
 
 describe("ruleValue", () => {
   test.each([
@@ -33,5 +33,14 @@ describe("isMoving", () => {
     expect(isMoving({ ...bounty, closing: true })).toBe(true);
     expect(isMoving({ ...bounty, rearm: { ...check, state: "queued" } })).toBe(true);
     expect(isMoving({ ...bounty, rearm: { ...check, state: "running" } })).toBe(true);
+  });
+});
+
+describe("tabOf", () => {
+  test("reads a known tab and falls back to the overview", () => {
+    expect(tabOf("ledger")).toBe("ledger");
+    expect(tabOf("findings")).toBe("findings");
+    expect(tabOf(null)).toBe("overview");
+    expect(tabOf("nope")).toBe("overview");
   });
 });

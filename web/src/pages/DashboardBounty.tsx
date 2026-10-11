@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { NotFound } from "../App.tsx";
 import { api } from "../api.ts";
@@ -504,8 +504,18 @@ export function isMoving(bounty: SponsorBountyDetail): boolean {
   return bounty.state === "awaiting_deposit" || bounty.state === "live" || bounty.closing || checking;
 }
 
+export const TABS = ["overview", "agent", "canaries", "funding", "findings", "ledger"] as const;
+export type Tab = (typeof TABS)[number];
+
+/** The tab a ?tab= value names. Anything unknown is the overview. */
+export function tabOf(value: string | null): Tab {
+  return TABS.find((tab) => tab === value) ?? "overview";
+}
+
 export function DashboardBounty() {
   const { bountyId = "" } = useParams();
+  const [params, setParams] = useSearchParams();
+  const tab = tabOf(params.get("tab"));
   const base = `/v1/bounties/${bountyId}`;
   const page = useLoad<Everything>(async (signal) => {
     const [bounty, findings, ledger] = await Promise.all([
@@ -582,12 +592,44 @@ export function DashboardBounty() {
         )}
       </dl>
 
-      <Actions bounty={bounty} act={act} broken={findings.length > 0} />
-      <Funding bounty={bounty} act={act} />
-      <Config bounty={bounty} act={act} />
-      <CanarySection bounty={bounty} act={act} />
-      <Findings findings={findings} />
-      <LedgerTable ledger={ledger} />
+      <div className="tabs" role="tablist" aria-label="Bounty">
+        {TABS.map((name) => (
+          <button
+            key={name}
+            type="button"
+            role="tab"
+            aria-selected={tab === name}
+            className={tab === name ? "tab current" : "tab"}
+            onClick={() => setParams(name === "overview" ? {} : { tab: name }, { replace: true })}
+          >
+            {name}
+            {name === "canaries" && <span className="count">{bounty.canaries.length}</span>}
+            {name === "findings" && findings.length > 0 && <span className="count hot">{findings.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      <div role="tabpanel">
+        {tab === "overview" && (
+          <>
+            {findings.length > 0 && bounty.state === "paused" && (
+              <p className="error">
+                A hunter broke this agent. Read the finding, patch the config, then replay the paid attack
+                against your patch before reopening.{" "}
+                <Link to="?tab=findings" replace>
+                  See the finding →
+                </Link>
+              </p>
+            )}
+            <Actions bounty={bounty} act={act} broken={findings.length > 0} />
+          </>
+        )}
+        {tab === "agent" && <Config bounty={bounty} act={act} />}
+        {tab === "canaries" && <CanarySection bounty={bounty} act={act} />}
+        {tab === "funding" && <Funding bounty={bounty} act={act} />}
+        {tab === "findings" && <Findings findings={findings} />}
+        {tab === "ledger" && <LedgerTable ledger={ledger} />}
+      </div>
     </>
   );
 }

@@ -1,4 +1,4 @@
-# AgentBounty
+# trycanari
 
 A marketplace where sponsors pay to have their AI agents attacked, and pay only when an
 attack provably works. A sponsor lists an agent and plants canaries; hunters submit

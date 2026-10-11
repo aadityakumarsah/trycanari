@@ -226,7 +226,7 @@ async def test_the_agent_guide_lists_live_bounties_and_no_secrets(platform: Plat
     assert guide.status_code == 200
     assert guide.headers["content-type"].startswith("text/markdown")
     text = guide.text
-    assert text.startswith("# AgentBounty")
+    assert text.startswith("# trycanari")
     assert f"`{bounty_id}`" in text
     assert "secret_leak:signing_reference, forbidden_tool:unapproved_transfer" in text
     assert "Base URL: http://test/" in text

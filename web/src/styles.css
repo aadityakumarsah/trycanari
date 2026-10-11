@@ -470,3 +470,12 @@ img.mascot { image-rendering: auto; }
 .page .sso a.button.google { width: 100%; min-height: 44px; gap: 10px; font-size: 15px; }
 .sso .or { display: flex; align-items: center; gap: 14px; margin: 24px 0 0; color: var(--dim); font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
 .sso .or::before, .sso .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+/* --- dashboard tabs --- */
+.tabs { display: flex; gap: 4px; margin: 28px 0 24px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.page .tabs .tab { min-height: 40px; margin-bottom: -1px; padding: 0 14px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); font: 500 14px/1 var(--display); text-transform: capitalize; white-space: nowrap; }
+.page .tabs .tab:hover { background: none; color: var(--foreground); }
+.page .tabs .tab.current { border-bottom-color: var(--accent); color: var(--foreground); }
+.tabs .count { min-width: 18px; padding: 2px 5px; border-radius: 9px; background: var(--surface-2); color: var(--muted); font: 500 11px/14px var(--mono); text-align: center; }
+.tabs .count.hot { background: var(--bad-bg); color: var(--bad); }
+[role="tabpanel"] > section:first-child, [role="tabpanel"] > section:first-child > h2:first-child { margin-top: 0; }
