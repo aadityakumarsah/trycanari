@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from agentbounty.api.deps import CipherDep, OwnBounty, SettingsDep, SponsorDep, Transaction
 from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import (
+    AccountOut,
     ActivateOut,
     AttemptActivity,
     AttemptLine,
@@ -24,6 +25,8 @@ from agentbounty.api.schemas import (
     ConfigDetail,
     ConfigIn,
     ConfigOut,
+    CostStep,
+    CreditsOut,
     EvidenceOut,
     FillIn,
     FindingOut,
@@ -34,6 +37,8 @@ from agentbounty.api.schemas import (
     MessageOut,
     PayoutOut,
     RearmOut,
+    ReferralCodeCreate,
+    ReferralCodeOut,
     RunOut,
     SecretCanaryIn,
     SponsorBounty,
@@ -43,9 +48,17 @@ from agentbounty.api.schemas import (
     StateOut,
     ToolOut,
 )
-from agentbounty.models import Attempt, AttemptState, BountyState, Canary, CanaryType, Finding
+from agentbounty.models import (
+    Attempt,
+    AttemptState,
+    BountyState,
+    Canary,
+    CanaryType,
+    Finding,
+    ReferralCode,
+)
 from agentbounty.services import bounty as bounty_service
-from agentbounty.services import rearm, reports
+from agentbounty.services import credits, rearm, reports
 from agentbounty.services.bounty import CanaryDefinition
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import MockTool, TargetConfig
@@ -55,9 +68,56 @@ router = APIRouter(prefix="/v1", tags=["sponsor"])
 
 
 @router.post("/sponsors", status_code=201, dependencies=[Depends(limit_by_client)])
-async def create_sponsor(body: SponsorCreate, session: Transaction) -> SponsorCreated:
-    sponsor, api_key = await bounty_service.create_sponsor(session, body.email)
+async def create_sponsor(
+    body: SponsorCreate, session: Transaction, settings: SettingsDep
+) -> SponsorCreated:
+    """Create an account. In invite-only mode this needs a referral code with a use left."""
+    code = await credits.redeem(session, body.referral_code) if settings.invite_only else None
+    sponsor, api_key = await bounty_service.create_sponsor(session, body.email, code)
     return SponsorCreated(sponsor_id=sponsor.id, api_key=api_key)
+
+
+@router.get("/account")
+async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsDep) -> AccountOut:
+    """Who is signed in, and what they may still spend on attacks."""
+    allowed = await credits.allowance(session, sponsor, settings)
+    return AccountOut(
+        email=sponsor.email,
+        is_ambassador=sponsor.is_ambassador,
+        invite_only=settings.invite_only,
+        verified_breaks=allowed.breaks,
+        credits=CreditsOut(
+            balance=allowed.balance,
+            cap=allowed.cap,
+            window_hours=int(credits.WINDOW.total_seconds() // 3600),
+            tier=allowed.tier,
+            next_tier=allowed.next_tier,
+            next_cap=allowed.next_cap,
+            costs=[CostStep(up_to_characters=size, credits=cost) for size, cost in credits.COSTS],
+        ),
+    )
+
+
+def _code_out(code: ReferralCode, used: int) -> ReferralCodeOut:
+    return ReferralCodeOut(
+        code=code.code, max_uses=code.max_uses, used=used, created_at=code.created_at
+    )
+
+
+@router.get("/referral-codes")
+async def referral_codes(session: Transaction, sponsor: SponsorDep) -> list[ReferralCodeOut]:
+    """The referral codes this account has made, and how many people each has brought in."""
+    return [_code_out(code, used) for code, used in await credits.codes_of(session, sponsor)]
+
+
+@router.post("/referral-codes", status_code=201)
+async def create_referral_code(
+    body: ReferralCodeCreate, session: Transaction, sponsor: SponsorDep
+) -> ReferralCodeOut:
+    """Make a referral code. Only ambassadors can."""
+    code = await credits.create_code(session, sponsor, body.max_uses)
+    await session.refresh(code)
+    return _code_out(code, 0)
 
 
 @router.post("/bounties", status_code=201)

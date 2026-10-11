@@ -32,6 +32,7 @@ from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.session import seal_sponsor, set_session_cookie
 from agentbounty.db import get_transaction
 from agentbounty.services import bounty as bounty_service
+from agentbounty.services import credits
 from agentbounty.services.crypto import Cipher, DecryptionError
 from agentbounty.services.errors import ServiceError
 from agentbounty.settings import Settings
@@ -53,6 +54,8 @@ Transaction = Annotated[AsyncSession, Depends(get_transaction)]
 
 class Providers(BaseModel):
     google: bool
+    # Whether joining needs a referral code.
+    invite_only: bool
 
 
 class SignInError(Exception):
@@ -84,7 +87,8 @@ def _read_state(cipher: Cipher, cookie: str | None) -> dict[str, Any]:
         payload = cipher.decrypt_json(base64.urlsafe_b64decode(cookie or ""), purpose=_PURPOSE)
         if time.time() - int(payload["issued"]) > STATE_MAX_AGE_SECONDS:
             raise SignInError("google_state", "the sign-in took too long")
-        return {key: str(payload[key]) for key in ("state", "nonce", "verifier")}
+        kept = {key: str(payload[key]) for key in ("state", "nonce", "verifier")}
+        return {**kept, "referral": str(payload.get("referral") or "")}
     except (DecryptionError, binascii.Error, ValueError, KeyError, TypeError):
         raise SignInError("google_state", "no usable state cookie") from None
 
@@ -149,17 +153,21 @@ async def exchange_code(
 async def providers(request: Request) -> Providers:
     """Which ways of signing in this deployment offers, besides an API key."""
     settings: Settings = request.app.state.settings
-    return Providers(google=settings.google_sign_in)
+    return Providers(google=settings.google_sign_in, invite_only=settings.invite_only)
 
 
 @router.get("/google/start", dependencies=[Depends(limit_by_client)], include_in_schema=False)
-async def start(request: Request) -> RedirectResponse:
-    """Send the browser to Google."""
+async def start(request: Request, code: str | None = None) -> RedirectResponse:
+    """Send the browser to Google. `code` is a referral code, for someone joining."""
     settings = _settings(request)
     public = urlsplit(settings.public_url or "")
+    referral = (code or "")[:40]
     # Cookies belong to a host. Google answers to PUBLIC_URL, so begin there too.
     if request.headers.get("host") != public.netloc:
-        return RedirectResponse(f"{(settings.public_url or '').rstrip('/')}{START_PATH}", 307)
+        onward = f"{(settings.public_url or '').rstrip('/')}{START_PATH}"
+        return RedirectResponse(
+            f"{onward}?{urlencode({'code': referral})}" if referral else onward, 307
+        )
 
     state, nonce, verifier = (secrets.token_urlsafe(32) for _ in range(3))
     query = {
@@ -176,7 +184,13 @@ async def start(request: Request) -> RedirectResponse:
     response = RedirectResponse(f"{AUTHORIZE_URL}?{urlencode(query)}", 302)
     cipher: Cipher = request.app.state.cipher
     sealed = cipher.encrypt_json(
-        {"state": state, "nonce": nonce, "verifier": verifier, "issued": int(time.time())},
+        {
+            "state": state,
+            "nonce": nonce,
+            "verifier": verifier,
+            "referral": referral,
+            "issued": int(time.time()),
+        },
         purpose=_PURPOSE,
     )
     response.set_cookie(
@@ -217,8 +231,18 @@ async def callback(
         subject, email = read_id_token(
             token, client_id=settings.google_client_id or "", nonce=expected["nonce"]
         )
+
+        async def admit() -> str | None:
+            # Someone new. In invite-only mode they need the code they started with.
+            if not settings.invite_only:
+                return None
+            try:
+                return await credits.redeem(session, expected["referral"])
+            except ServiceError as refused:
+                raise SignInError("google_invite", refused.message) from None
+
         try:
-            sponsor = await bounty_service.sponsor_for_google(session, subject, email)
+            sponsor = await bounty_service.sponsor_for_google(session, subject, email, admit)
         except ServiceError:
             raise SignInError("google_email_taken", "the email belongs to a key account") from None
     except SignInError as failure:

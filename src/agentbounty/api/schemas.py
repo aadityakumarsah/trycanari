@@ -27,6 +27,43 @@ class Body(BaseModel):
 
 class SponsorCreate(Body):
     email: str = Field(min_length=3, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    # Needed in invite-only mode.
+    referral_code: str | None = Field(default=None, max_length=40)
+
+
+class CostStep(BaseModel):
+    up_to_characters: int
+    credits: int
+
+
+class CreditsOut(BaseModel):
+    balance: int
+    cap: int
+    window_hours: int
+    tier: str
+    next_tier: str | None
+    next_cap: int | None
+    costs: list[CostStep]
+
+
+class AccountOut(BaseModel):
+    email: str
+    is_ambassador: bool
+    # Whether attacks need an account and credits on this deployment.
+    invite_only: bool
+    verified_breaks: int
+    credits: CreditsOut
+
+
+class ReferralCodeCreate(Body):
+    max_uses: StrictInt = Field(default=5, ge=1, le=25)
+
+
+class ReferralCodeOut(BaseModel):
+    code: str
+    max_uses: int
+    used: int
+    created_at: datetime
 
 
 class SponsorCreated(BaseModel):

@@ -109,7 +109,10 @@ async def sign_in(client: httpx.AsyncClient, stand_in: Google) -> httpx.Response
 
 
 async def test_it_is_off_unless_configured(platform: Platform) -> None:
-    assert (await platform.client.get("/v1/auth/providers")).json() == {"google": False}
+    assert (await platform.client.get("/v1/auth/providers")).json() == {
+        "google": False,
+        "invite_only": False,
+    }
     assert (await platform.client.get("/v1/auth/google/start")).status_code == 404
     assert (await platform.client.get("/v1/auth/google/callback?code=x")).status_code == 404
 
@@ -119,7 +122,7 @@ async def test_signing_in_with_google_creates_a_sponsor_and_a_session(
 ) -> None:
     platform, stand_in = site
     client = browser(platform)
-    assert (await client.get("/v1/auth/providers")).json() == {"google": True}
+    assert (await client.get("/v1/auth/providers")).json() == {"google": True, "invite_only": False}
 
     query = await leave_for_google(client, stand_in)
     assert query["client_id"] == CLIENT_ID

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -100,8 +100,15 @@ async def submit_attempt(
     payout_address: str,
     network: Network,
     limits: SubmissionLimits | None = None,
+    *,
+    account_id: uuid.UUID | None = None,
+    charge: Callable[[], Awaitable[int]] | None = None,
 ) -> tuple[Attempt, str]:
-    """Queue an attempt against the bounty's live config. Returns it with its status token."""
+    """Queue an attempt against the bounty's live config. Returns it with its status token.
+
+    `charge` is asked what the attempt costs its account only once everything else
+    about it has been accepted, so a refused attempt never costs anything.
+    """
     # A shared lock: submissions do not block each other, but none can slip past a pause.
     bounty = await session.scalar(
         select(Bounty).where(Bounty.id == bounty_id).with_for_update(read=True)
@@ -121,6 +128,7 @@ async def submit_attempt(
     except AttemptError as exc:
         raise ServiceError(422, str(exc)) from exc
     await _enforce_limits(session, bounty, payout_address, limits or SubmissionLimits())
+    cost = await charge() if charge else 0
     token = secrets.token_urlsafe(32)
     attempt = Attempt(
         bounty_id=bounty.id,
@@ -129,6 +137,8 @@ async def submit_attempt(
         payload_json=[{"slot": fill.slot.value, "content": fill.content} for fill in fills],
         payout_address=payout_address,
         status_token=hash_token(token),
+        account_id=account_id,
+        cost_credits=cost,
     )
     session.add(attempt)
     await session.flush()

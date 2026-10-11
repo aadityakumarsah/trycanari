@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentbounty.api.deps import BearerToken, CipherDep, SettingsDep, Transaction
+from agentbounty.api.deps import BearerToken, CipherDep, MaybeSponsor, SettingsDep, Transaction
 from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import (
     ActivityOut,
@@ -29,6 +29,7 @@ from agentbounty.api.schemas import (
 from agentbounty.models import Attempt, Bounty, BountyState, Canary, Finding, Payout, PayoutState
 from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.services import attempts as attempt_service
+from agentbounty.services import credits
 from agentbounty.services.attempts import SubmissionLimits
 from agentbounty.services.harness import EntryPoint, SlotFill
 
@@ -203,9 +204,27 @@ async def get_bounty(bounty_id: uuid.UUID, request: Request, session: Transactio
 
 @router.post("/bounties/{bounty_id}/attempts", status_code=202)
 async def submit_attempt(
-    bounty_id: uuid.UUID, body: AttemptIn, session: Transaction, settings: SettingsDep
+    bounty_id: uuid.UUID,
+    body: AttemptIn,
+    session: Transaction,
+    settings: SettingsDep,
+    account: MaybeSponsor,
 ) -> AttemptAccepted:
+    """Submit an attack. In invite-only mode it must come from an account, and it spends
+    credits from that account's allowance."""
     fills = [SlotFill(fill.slot, fill.content) for fill in body.fills]
+    if settings.invite_only and account is None:
+        raise HTTPException(
+            401,
+            "sign in to attack: this platform is invite-only",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    account_id = account.id if account else None
+
+    async def charge() -> int:
+        assert account_id is not None  # noqa: S101 - set whenever charging is on
+        return await credits.charge(session, account_id, fills, settings)
+
     attempt, token = await attempt_service.submit_attempt(
         session,
         bounty_id,
@@ -217,6 +236,8 @@ async def submit_attempt(
             per_bounty_per_hour=settings.attempts_per_bounty_per_hour,
             bounty_daily_tokens=settings.bounty_daily_token_budget,
         ),
+        account_id=account_id,
+        charge=charge if settings.invite_only else None,
     )
     return AttemptAccepted(attempt_id=attempt.id, status_token=token)
 

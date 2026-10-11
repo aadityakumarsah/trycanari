@@ -11,7 +11,7 @@ import hashlib
 import json
 import secrets
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -56,12 +56,17 @@ def hash_token(token: str) -> str:
 # --- sponsors ---------------------------------------------------------------------------
 
 
-async def create_sponsor(session: AsyncSession, email: str) -> tuple[Sponsor, str]:
-    """Create a sponsor and return it with its API key, which is not stored."""
+async def create_sponsor(
+    session: AsyncSession, email: str, referral_code: str | None = None
+) -> tuple[Sponsor, str]:
+    """Create an account and return it with its API key, which is not stored.
+
+    `referral_code` is one that has already been checked (services/credits.py).
+    """
     if await session.scalar(select(Sponsor.id).where(Sponsor.email == email)):
         raise ServiceError(409, "a sponsor with this email already exists")
     api_key = "sk_" + secrets.token_urlsafe(32)
-    sponsor = Sponsor(email=email, api_key_hash=hash_token(api_key))
+    sponsor = Sponsor(email=email, api_key_hash=hash_token(api_key), referral_code=referral_code)
     session.add(sponsor)
     await session.flush()
     return sponsor, api_key
@@ -71,7 +76,12 @@ async def sponsor_for_key(session: AsyncSession, api_key: str) -> Sponsor | None
     return await session.scalar(select(Sponsor).where(Sponsor.api_key_hash == hash_token(api_key)))
 
 
-async def sponsor_for_google(session: AsyncSession, google_sub: str, email: str) -> Sponsor:
+async def sponsor_for_google(
+    session: AsyncSession,
+    google_sub: str,
+    email: str,
+    admit: Callable[[], Awaitable[str | None]] | None = None,
+) -> Sponsor:
     """The sponsor for a Google account, created the first time it signs in.
 
     An account is matched on Google's identifier only. Sign-up by email does not
@@ -84,7 +94,9 @@ async def sponsor_for_google(session: AsyncSession, google_sub: str, email: str)
         return sponsor
     if await session.scalar(select(Sponsor.id).where(Sponsor.email == email)):
         raise ServiceError(409, "a sponsor with this email already exists")
-    sponsor = Sponsor(email=email, google_sub=google_sub)
+    # A new account. `admit` decides whether it may join, and with which referral code.
+    referral_code = await admit() if admit else None
+    sponsor = Sponsor(email=email, google_sub=google_sub, referral_code=referral_code)
     session.add(sponsor)
     await session.flush()
     return sponsor

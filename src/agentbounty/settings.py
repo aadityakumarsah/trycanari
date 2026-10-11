@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     # no proxy is believed.
     proxy_secret: SecretStr | None = None
 
+    # Invite-only mode. Joining needs a referral code, and an attack must come from an
+    # account, which spends credits from a rolling 24-hour allowance. This is what stops
+    # a stranger running up the model bill. Off, anyone may attack without an account.
+    invite_only: bool = False
+    # Credits an account may spend in any 24 hours: at first, and once it has a verified
+    # break to its name.
+    starter_credits: int = Field(default=25, ge=1)
+    proven_credits: int = Field(default=200, ge=1)
+
     # How long the public listing, a bounty's public page and the activity feed may be
     # served from memory. They are the same for everyone, so a few seconds saves most of
     # the database work a busy page would cause. 0 switches the cache off.

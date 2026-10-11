@@ -31,13 +31,21 @@ def guide(base_url: str, bounties: list[BountyPublic], settings: Settings) -> st
         + (f" {b.description}" if b.description else "")
         for b in bounties
     ]
+    access = (
+        "This platform is invite-only: submitting an attempt needs an account's API key, sent as"
+        " `Authorization: Bearer <api_key>`, and spends credits from that account's allowance"
+        f" ({settings.starter_credits} credits in any 24 hours to begin with,"
+        f" {settings.proven_credits} after a verified break; an attempt costs 1 to 4 by size)."
+        " `GET /v1/account` with the same key shows what is left."
+        if settings.invite_only
+        else "No account is needed to hunt."
+    )
     return f"""# trycanari
 
 Bug bounties for AI agents. A sponsor lists an agent, plants canaries in it and
 locks a reward in shielded ZEC. You submit an attack. It is replayed {RUNS_PER_ATTEMPT} times
 against a sandboxed copy of the agent whose tools are mocks. If the same canary
-trips in {TRIP_THRESHOLD} runs, the reward is paid to your address automatically. No account
-is needed to hunt.
+trips in {TRIP_THRESHOLD} runs, the reward is paid to your address automatically. {access}
 
 ## Canaries
 

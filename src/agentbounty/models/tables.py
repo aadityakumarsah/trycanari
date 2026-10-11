@@ -13,6 +13,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -22,6 +23,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    false,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -53,6 +55,24 @@ class Sponsor(Base):
     api_key_hash: Mapped[str | None] = mapped_column(Text, unique=True)
     # Google's identifier for the account, for a sponsor who signs in with Google.
     google_sub: Mapped[str | None] = mapped_column(Text, unique=True)
+    # May hand out referral codes.
+    is_ambassador: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # The referral code the account joined with.
+    referral_code: Mapped[str | None] = mapped_column(Text, index=True)
+    created_at: Mapped[datetime] = created_now()
+
+
+class ReferralCode(Base):
+    """A code that admits a fixed number of new accounts."""
+
+    __tablename__ = "referral_codes"
+    __table_args__ = (CheckConstraint("max_uses > 0", name="max_uses_positive"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    code: Mapped[str] = mapped_column(Text, unique=True)
+    # The ambassador who made it. A code made by the operator has no owner.
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"), index=True)
+    max_uses: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = created_now()
 
 
@@ -146,6 +166,10 @@ class Attempt(Base):
     # When a worker last claimed the attempt, and how many times one has.
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     tries: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    # The account that made the attempt, when it was made by one, and what it cost in
+    # credits. An account's allowance is what it has not spent lately (services/credits.py).
+    account_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"), index=True)
+    cost_credits: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
 
 
 class Run(Base):

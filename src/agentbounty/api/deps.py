@@ -58,6 +58,17 @@ async def current_sponsor(
     return sponsor
 
 
+async def maybe_sponsor(
+    request: Request,
+    session: Transaction,
+    authorization: Annotated[str | None, Header()] = None,
+) -> Sponsor | None:
+    """The account making a request that may also be made without one."""
+    if authorization is None and session_identity(request) is None:
+        return None
+    return await current_sponsor(request, session, authorization)
+
+
 async def own_bounty(
     bounty_id: uuid.UUID,
     session: Transaction,
@@ -73,5 +84,6 @@ async def own_bounty(
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 CipherDep = Annotated[Cipher, Depends(get_cipher)]
 SponsorDep = Annotated[Sponsor, Depends(current_sponsor)]
+MaybeSponsor = Annotated[Sponsor | None, Depends(maybe_sponsor)]
 OwnBounty = Annotated[Bounty, Depends(own_bounty)]
 BearerToken = Annotated[str, Depends(bearer_token)]

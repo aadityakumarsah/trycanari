@@ -62,6 +62,8 @@ class AttackerSettings(BaseSettings):
     model_api_base: str
     model_api_key: SecretStr
     attacker_model: str
+    # An account's API key, for an invite-only platform. Unset where anyone may attack.
+    trycanari_api_key: SecretStr | None = None
 
 
 @dataclass(frozen=True)
@@ -302,7 +304,11 @@ def main() -> None:
     async def run() -> Hunt:
         model = RealModel(settings.model_api_base, settings.model_api_key.get_secret_value())
         try:
-            async with httpx.AsyncClient(base_url=args.api, timeout=30) as http:
+            # On an invite-only platform an attempt is made as an account. Reading a result
+            # still uses the attempt's own status token, which replaces this header.
+            key = settings.trycanari_api_key
+            headers = {"Authorization": f"Bearer {key.get_secret_value()}"} if key else {}
+            async with httpx.AsyncClient(base_url=args.api, timeout=30, headers=headers) as http:
                 attacker = Attacker(http, model, settings.attacker_model)
                 return await attacker.hunt(args.bounty, args.payout_address, args.max_attempts)
         finally:
