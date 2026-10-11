@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     # allowance. This is what stops a stranger running up the model bill. Off, anyone may
     # attack without an account.
     invite_only: bool = False
+    # Where uploaded profile pictures are kept: cloudinary://<api_key>:<api_secret>@<cloud>.
+    # Unset, people keep the picture Google or GitHub gives them and cannot upload one.
+    cloudinary_url: SecretStr | None = None
+
     # The owners: email addresses, separated by commas, whose accounts are always admins.
     # It only counts for an account that signs in with Google, which is what proves the
     # address is theirs; signing up with someone's email proves nothing.
@@ -125,6 +129,7 @@ class Settings(BaseSettings):
         "google_client_secret",
         "public_url",
         "proxy_secret",
+        "cloudinary_url",
         "payout_max_zatoshi",
         "payout_daily_max_zatoshi",
         mode="before",
@@ -201,6 +206,17 @@ class Settings(BaseSettings):
         return frozenset(
             email.strip().lower() for email in self.admin_emails.split(",") if email.strip()
         )
+
+    @field_validator("cloudinary_url")
+    @classmethod
+    def _is_a_cloudinary_url(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None:
+            parts = urlsplit(value.get_secret_value())
+            if parts.scheme != "cloudinary" or not (
+                parts.username and parts.password and parts.hostname
+            ):
+                raise ValueError("must look like cloudinary://<api_key>:<api_secret>@<cloud_name>")
+        return value
 
     @property
     def secure_cookies(self) -> bool:

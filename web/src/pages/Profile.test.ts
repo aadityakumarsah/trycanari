@@ -8,6 +8,8 @@ const account: Account = {
   email: "ada@example.com",
   name: "Ada Lovelace",
   picture_url: null,
+  picture_uploaded: false,
+  can_upload_picture: true,
   google_linked: false,
   github: "ada",
   company: null,

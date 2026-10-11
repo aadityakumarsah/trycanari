@@ -1072,3 +1072,21 @@ table.people td { vertical-align: middle; white-space: nowrap; }
 .pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .pager .muted { margin-right: auto; font: 400 13px/18px var(--mono); }
 .page .code-maker input:disabled { opacity: 0.45; }
+
+/* --- changing the profile picture --- */
+.photo { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.photo-change { position: absolute; right: 2px; bottom: 2px; z-index: 2; display: grid; place-items: center; width: 32px; height: 32px; border: 2px solid var(--surface); border-radius: 50%; background: var(--accent); color: #06130d; cursor: pointer; transition: transform 0.15s, background 0.15s; }
+.photo-change:hover { background: var(--accent-hover); transform: scale(1.08); }
+.photo-change:disabled { opacity: 0.6; cursor: progress; }
+.halo.busy::before { animation-duration: 0.9s; }
+.halo.busy .avatar { opacity: 0.55; }
+.photo-actions { display: flex; gap: 4px; margin-left: 2px; }
+.page button.text-button.quiet { color: var(--muted); }
+.photo-error { max-width: 220px; color: var(--bad); font-size: 12.500px; line-height: 17px; }
+.profile-face { align-items: flex-start; }
+.profile-face .tier-pill { margin-top: 62px; }
+.page button.photo-change { position: absolute; right: 2px; bottom: 2px; z-index: 2; display: grid; place-items: center; width: 32px; min-height: 0; height: 32px; padding: 0; border: 2px solid var(--surface); border-radius: 50%; background: var(--accent); color: #06130d; }
+.page button.photo-change:hover { border-color: var(--surface); background: var(--accent-hover); }
+/* The page's arrival animation ends by making everything visible, which would hold the
+   save bar on screen for good. The bar comes and goes by itself. */
+.page > .save-bar { animation: none; }

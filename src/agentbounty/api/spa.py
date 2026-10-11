@@ -21,10 +21,11 @@ _RESERVED = ("v1/", "v1", "health", "api-docs", "openapi.json", "app/")
 
 SECURITY_HEADERS = {
     # Script and style only from this origin, and none inline: transcripts are attacker-written.
-    # Images may also come from Google and GitHub, for a person's profile picture.
+    # Images may also come from Google, GitHub and Cloudinary, for a person's profile
+    # picture, and from the browser itself, for the preview of one being uploaded.
     "Content-Security-Policy": "default-src 'self';"
-    " img-src 'self' https://*.googleusercontent.com https://github.com"
-    " https://avatars.githubusercontent.com;"
+    " img-src 'self' blob: https://*.googleusercontent.com https://github.com"
+    " https://avatars.githubusercontent.com https://res.cloudinary.com;"
     " frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",

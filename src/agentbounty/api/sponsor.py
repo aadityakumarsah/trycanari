@@ -61,11 +61,12 @@ from agentbounty.models import (
     Finding,
 )
 from agentbounty.services import bounty as bounty_service
-from agentbounty.services import credits, rearm, reports
+from agentbounty.services import credits, pictures, rearm, reports
 from agentbounty.services.bounty import CanaryDefinition
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import MockTool, TargetConfig
 from agentbounty.services.judge import ArgumentPredicate, ToolRule
+from agentbounty.settings import Settings
 
 router = APIRouter(prefix="/v1", tags=["sponsor"])
 
@@ -89,7 +90,9 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
     return AccountOut(
         email=sponsor.email,
         name=sponsor.name,
-        picture_url=sponsor.picture_url,
+        picture_url=sponsor.uploaded_picture_url or sponsor.picture_url,
+        picture_uploaded=sponsor.uploaded_picture_url is not None,
+        can_upload_picture=settings.cloudinary_url is not None,
         google_linked=sponsor.google_sub is not None,
         github=sponsor.github,
         company=sponsor.company,
@@ -125,6 +128,50 @@ async def update_account(
             raise ServiceError(422, "a name cannot be blank")
         setattr(sponsor, field, value or None)
     await session.flush()
+    return await account(session, sponsor, settings)
+
+
+def _cloudinary(settings: Settings) -> pictures.Cloudinary:
+    if settings.cloudinary_url is None:
+        raise ServiceError(404, "uploading a picture is not available here")
+    return pictures.Cloudinary.from_url(settings.cloudinary_url.get_secret_value())
+
+
+@router.put("/account/picture", dependencies=[Depends(limit_by_client)])
+async def upload_picture(
+    request: Request, session: Transaction, sponsor: SponsorDep, settings: SettingsDep
+) -> AccountOut:
+    """Set the profile picture. The request body is the image itself: PNG, JPEG or WebP,
+    up to 4 MB. It replaces the picture the account had, which is not kept."""
+    store = _cloudinary(settings)
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > pictures.MAX_BYTES:
+        raise ServiceError(413, "that picture is larger than 4 MB")
+    # Read with a ceiling, whatever the length header said.
+    data = bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data) > pictures.MAX_BYTES:
+            raise ServiceError(413, "that picture is larger than 4 MB")
+    kind = pictures.image_type(bytes(data))
+    if kind is None:
+        raise ServiceError(415, "upload a PNG, JPEG or WebP image")
+    sponsor.uploaded_picture_url = await store.upload(
+        sponsor.id, bytes(data), kind, request.app.state.cloudinary_transport
+    )
+    await session.flush()
+    return await account(session, sponsor, settings)
+
+
+@router.delete("/account/picture", dependencies=[Depends(limit_by_client)])
+async def remove_picture(
+    request: Request, session: Transaction, sponsor: SponsorDep, settings: SettingsDep
+) -> AccountOut:
+    """Remove the uploaded picture, here and where it was stored."""
+    if sponsor.uploaded_picture_url is not None:
+        await _cloudinary(settings).delete(sponsor.id, request.app.state.cloudinary_transport)
+        sponsor.uploaded_picture_url = None
+        await session.flush()
     return await account(session, sponsor, settings)
 
 

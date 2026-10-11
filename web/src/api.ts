@@ -59,6 +59,19 @@ export async function api<T>(method: string, path: string, options: CallOptions 
   return body as T;
 }
 
+/** Send a file as the body of a request: the bytes themselves, with their type. */
+export async function upload<T>(path: string, file: Blob): Promise<T> {
+  const response = await fetch(path, {
+    method: "PUT",
+    headers: { Accept: "application/json", "Content-Type": file.type || "application/octet-stream" },
+    credentials: "same-origin",
+    body: file,
+  });
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new ApiError(response.status, errorDetail(body, `Upload failed (${response.status}).`));
+  return body as T;
+}
+
 /** What to show for anything thrown by a call. */
 export function messageOf(error: unknown): string {
   if (error instanceof ApiError) return error.message;

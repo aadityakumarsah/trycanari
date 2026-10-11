@@ -115,6 +115,8 @@ export interface Account {
   email: string;
   name: string | null;
   picture_url: string | null;
+  picture_uploaded: boolean;
+  can_upload_picture: boolean;
   google_linked: boolean;
   github: string | null;
   company: string | null;

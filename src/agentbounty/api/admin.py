@@ -50,7 +50,7 @@ def _person(account: Sponsor, settings: Settings) -> PersonOut:
         id=account.id,
         email=account.email,
         name=account.name,
-        picture_url=account.picture_url,
+        picture_url=account.uploaded_picture_url or account.picture_url,
         github=account.github,
         company=account.company,
         is_admin=account.is_admin or owner,

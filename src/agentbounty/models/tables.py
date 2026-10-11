@@ -61,6 +61,8 @@ class Sponsor(Base):
     # What to call them and the picture to show, when known. Google supplies both.
     name: Mapped[str | None] = mapped_column(Text)
     picture_url: Mapped[str | None] = mapped_column(Text)
+    # A picture they uploaded themselves, which is shown in preference to Google's.
+    uploaded_picture_url: Mapped[str | None] = mapped_column(Text)
     # What they say about themselves. All of it is theirs to give or leave out.
     github: Mapped[str | None] = mapped_column(Text)
     company: Mapped[str | None] = mapped_column(Text)

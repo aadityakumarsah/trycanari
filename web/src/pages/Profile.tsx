@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { accountChanged, completeness, pictureOf, PROFILE_FIELDS, useAccount } from "../account.tsx";
-import { api } from "../api.ts";
+import { api, upload } from "../api.ts";
 import { Icon, type IconName } from "../components/Brand.tsx";
 import { ReferralGate } from "../components/ReferralGate.tsx";
 import { Avatar, ErrorNote, Skeleton } from "../components/ui.tsx";
@@ -62,6 +62,91 @@ function Row({ icon, children }: { icon: IconName; children: React.ReactNode }) 
   );
 }
 
+const PHOTO_LIMIT = 4 * 1024 * 1024;
+const PHOTO_TYPES = ["image/png", "image/jpeg", "image/webp"];
+
+/** The picture, with the way to change it. A new one replaces the old; nothing piles up. */
+function Photo({ account, name, github }: { account: Account; name: string | null; github: string }) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const changing = useAction();
+  const toast = useToast();
+  const input = useRef<HTMLInputElement>(null);
+
+  // A preview is a temporary address the browser made; give it back when done with it.
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview);
+  }, [preview]);
+
+  async function choose(file: File | undefined) {
+    if (!file) return;
+    setError("");
+    if (!PHOTO_TYPES.includes(file.type)) return setError("Choose a PNG, JPEG or WebP image.");
+    if (file.size > PHOTO_LIMIT) return setError("That picture is larger than 4 MB.");
+    setPreview(URL.createObjectURL(file));
+    const done = await changing.run(async () => {
+      await upload<Account>("/v1/account/picture", file);
+      accountChanged();
+    });
+    setPreview(null);
+    if (done) toast("Profile picture updated");
+  }
+
+  async function remove() {
+    const done = await changing.run(async () => {
+      await api<Account>("DELETE", "/v1/account/picture");
+      accountChanged();
+    });
+    if (done) toast("Profile picture removed");
+  }
+
+  const picture = preview ?? pictureOf({ picture_url: account.picture_url, github: github || null });
+  return (
+    <div className="photo">
+      <span className={changing.busy ? "halo busy" : "halo"}>
+        <Avatar name={name} picture={picture} size={96} />
+        {account.can_upload_picture && (
+          <button
+            type="button"
+            className="photo-change"
+            aria-label="Change profile picture"
+            title="Change profile picture"
+            disabled={changing.busy}
+            onClick={() => input.current?.click()}
+          >
+            <Icon name="camera" size={16} />
+          </button>
+        )}
+      </span>
+      {account.can_upload_picture && (
+        <>
+          <input
+            ref={input}
+            type="file"
+            accept={PHOTO_TYPES.join(",")}
+            hidden
+            onChange={(event) => {
+              void choose(event.target.files?.[0]);
+              event.target.value = "";
+            }}
+          />
+          <span className="photo-actions">
+            <button type="button" className="text-button" disabled={changing.busy} onClick={() => input.current?.click()}>
+              {changing.busy ? "Uploading…" : account.picture_uploaded ? "Change photo" : "Upload a photo"}
+            </button>
+            {account.picture_uploaded && !changing.busy && (
+              <button type="button" className="text-button quiet" onClick={() => void remove()}>
+                Remove
+              </button>
+            )}
+          </span>
+        </>
+      )}
+      {(error || changing.error) && <small className="photo-error">{error || changing.error}</small>}
+    </div>
+  );
+}
+
 /** How the profile reads to someone else, updating as the form is typed into. */
 function Card({ account, draft, github }: { account: Account; draft: Draft; github: string }) {
   const shown = { ...account, ...Object.fromEntries(PROFILE_FIELDS.map((f) => [f, draft[f].trim() || null])) } as Account;
@@ -79,9 +164,7 @@ function Card({ account, draft, github }: { account: Account; draft: Draft; gith
     <aside className="profile-card">
       <div className="profile-cover" aria-hidden="true" />
       <div className="profile-face">
-        <span className="halo">
-          <Avatar name={shown.name} picture={pictureOf({ picture_url: account.picture_url, github: github || null })} size={96} />
-        </span>
+        <Photo account={account} name={shown.name} github={github} />
         <span className={`tier-pill ${account.credits.tier.toLowerCase()}`}>
           <Icon name="shield" size={12} /> {account.credits.tier}
         </span>

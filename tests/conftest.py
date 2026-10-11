@@ -48,6 +48,7 @@ def _no_sign_in_provider_from_the_developers_env(monkeypatch: pytest.MonkeyPatch
         "PROXY_SECRET",
         "INVITE_ONLY",
         "ADMIN_EMAILS",
+        "CLOUDINARY_URL",
         "STARTER_CREDITS",
         "PROVEN_CREDITS",
     ):

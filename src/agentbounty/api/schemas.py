@@ -160,7 +160,11 @@ class ApiKeyOut(BaseModel):
 class AccountOut(BaseModel):
     email: str
     name: str | None
+    # The picture to show: one they uploaded, or failing that the one Google supplies.
     picture_url: str | None
+    # Whether that picture is one they uploaded, and whether uploading is available here.
+    picture_uploaded: bool
+    can_upload_picture: bool
     # Whether the account signs in with Google, which is where a picture comes from.
     google_linked: bool
     github: str | None
