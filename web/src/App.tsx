@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { messageOf } from "./api.ts";
-import { Icon, Mark } from "./components/Brand.tsx";
+import { Icon, Wordmark } from "./components/Brand.tsx";
 import { ErrorNote } from "./components/ui.tsx";
 import { BountyPage } from "./pages/BountyPage.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
@@ -45,9 +45,8 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
 
   return (
     <header className="nav">
-      <Link className="brand" to="/" onClick={onNavigate} aria-label="AgentBounty, home">
-        <Mark />
-        <span>AgentBounty</span>
+      <Link className="brand" to="/" onClick={onNavigate} aria-label="trycanari, home">
+        <Wordmark />
       </Link>
       <nav id="menu" className={menu ? "nav-links open" : "nav-links"} aria-label="Main">
         <div className="drop">
@@ -140,9 +139,8 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
 function Footer({ onNavigate }: { onNavigate: () => void }) {
   return (
     <footer className="frame footer">
-      <Link className="brand" to="/" onClick={onNavigate}>
-        <Mark size={20} />
-        <span>AgentBounty</span>
+      <Link className="brand" to="/" onClick={onNavigate} aria-label="trycanari, home">
+        <Wordmark height={26} />
       </Link>
       <nav aria-label="Footer">
         {SECTIONS.map(([label, to]) => (

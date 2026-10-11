@@ -18,6 +18,10 @@ function proxy(request: Request): Promise<Response> {
   });
 }
 
+function fromPublic(request: Request): Response {
+  return new Response(Bun.file(`./public${new URL(request.url).pathname.replace(/^\/app/, "")}`));
+}
+
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 5173),
   development: true,
@@ -28,7 +32,8 @@ const server = Bun.serve({
     "/docs": proxy,
     "/openapi.json": proxy,
     // In a build these are copied next to the bundle; here they are served from public/.
-    "/app/fonts/*": (request) => new Response(Bun.file(`./public/fonts/${new URL(request.url).pathname.split("/").pop()}`)),
+    "/app/fonts/*": fromPublic,
+    "/app/brand/*": fromPublic,
     "/*": index,
   },
 });

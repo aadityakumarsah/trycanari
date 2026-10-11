@@ -343,3 +343,8 @@ tbody tr td, tfoot tr th { border-top: 1px solid var(--border); }
 .agent .eyebrow { color: var(--accent); font: 500 12px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
 .agent .lede { margin-top: 12px; }
 .mode button { text-transform: uppercase; }
+
+/* --- brand artwork --- */
+.brand .wordmark { display: block; width: auto; }
+.nav .brand { margin-left: -6px; }
+img.mascot { image-rendering: auto; }

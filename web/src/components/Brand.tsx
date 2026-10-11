@@ -1,51 +1,23 @@
-/** The mark and wordmark. */
-export function Mark({ size = 22 }: { size?: number }) {
+// Brand artwork is served as files from /app/brand/ (see public/brand), not bundled:
+// the page's Content-Security-Policy does not allow images inlined as data: URLs.
+
+/** The trycanari mascot with its name, as it appears in the navigation bar. */
+export function Wordmark({ height = 30 }: { height?: number }) {
+  // The artwork is 388 x 90.
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
-      <path fill="#fff" d="M3 2h18v10l-9 10-9-10z" />
-      <path fill="#000" d="M7 6h10v2H9v3h6v2H9v3l-2-2z" />
-    </svg>
+    <img
+      className="wordmark"
+      src="/app/brand/wordmark.png"
+      alt="trycanari"
+      height={height}
+      width={Math.round((height * 388) / 90)}
+    />
   );
 }
 
-// The pixel-art canary. Each character is one square.
-const PIXELS = [
-  "................",
-  ".....ggww.......",
-  "....gggww.......",
-  "...mmmmmmmm.....",
-  "..mmmmmmmmmm....",
-  "..mmkmmmmkmmyy..",
-  "..mmkmmmmkmmyyy.",
-  "..mmmmmmmmmmyy..",
-  ".dmmmmmmmmmm....",
-  ".ddmmmmmmmmm....",
-  "..ddmmmmmmm.....",
-  "....dd..dd......",
-  "....d...d.......",
-  "...dd..dd.......",
-];
-const COLOURS: Record<string, string> = {
-  m: "#6ee7b7",
-  d: "#3f9f7c",
-  k: "#000",
-  w: "#fff",
-  g: "#a3a3a3",
-  y: "#f4b728",
-};
-
+/** The mascot alone, standing on the call-to-action button. */
 export function Mascot() {
-  return (
-    <svg className="mascot" viewBox="0 0 16 14" width={64} height={56} shapeRendering="crispEdges" aria-hidden="true">
-      {PIXELS.flatMap((line, y) =>
-        [...line].map((character, x) =>
-          character === "." ? null : (
-            <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill={COLOURS[character]} />
-          ),
-        ),
-      )}
-    </svg>
-  );
+  return <img className="mascot" src="/app/brand/mascot.png" alt="" width={66} height={56} />;
 }
 
 const ICONS = {

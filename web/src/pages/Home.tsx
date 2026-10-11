@@ -19,7 +19,7 @@ const VERIFIED_BY: [IconName, string][] = [
 
 const FAQ: [string, string][] = [
   [
-    "What is AgentBounty?",
+    "What is trycanari?",
     "A bug bounty platform for AI agents. A sponsor lists an agent, plants canaries in it and locks a reward in escrow. Hunters submit attacks. Each attack is replayed five times against a sandboxed copy of the agent, and if the same canary trips in three runs the reward is paid automatically.",
   ],
   [
