@@ -1,10 +1,11 @@
-"""Browser sessions for sponsors: the API key, sealed in an HttpOnly cookie.
+"""Browser sessions for sponsors: who is signed in, sealed in an HttpOnly cookie.
 
 The single-page app cannot be trusted to hold an API key where script can read
 it, so signing in exchanges the key for a cookie the browser keeps and script
 never sees. There is no session table: the cookie holds the key encrypted
 under the service's key, so it is opaque, useless on another deployment, and
-expires by itself.
+expires by itself. A sponsor who signed in with Google has no key in hand, so
+their cookie names the sponsor instead.
 
 A cookie is sent by the browser on every request, whoever caused it, so a
 request authenticated by cookie must also prove it came from this site.
@@ -15,7 +16,9 @@ from __future__ import annotations
 import base64
 import binascii
 import time
-from typing import Annotated
+import uuid
+from dataclasses import dataclass
+from typing import Annotated, Any
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -24,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.db import get_transaction
+from agentbounty.models import Sponsor
 from agentbounty.services import bounty as bounty_service
 from agentbounty.services.crypto import Cipher, DecryptionError
 
@@ -38,17 +42,69 @@ def seal(cipher: Cipher, api_key: str) -> str:
     return base64.urlsafe_b64encode(cipher.encrypt_json(payload, purpose=_PURPOSE)).decode()
 
 
-def unseal(cipher: Cipher, cookie: str | None) -> str | None:
-    """The API key in the cookie, or None if it is missing, forged or expired."""
+def seal_sponsor(cipher: Cipher, sponsor_id: uuid.UUID) -> str:
+    payload = {"sponsor": str(sponsor_id), "issued": int(time.time())}
+    return base64.urlsafe_b64encode(cipher.encrypt_json(payload, purpose=_PURPOSE)).decode()
+
+
+def _open(cipher: Cipher, cookie: str | None) -> dict[str, Any] | None:
+    """What the cookie holds, or None if it is missing, forged or expired."""
     if not cookie:
         return None
     try:
         payload = cipher.decrypt_json(base64.urlsafe_b64decode(cookie), purpose=_PURPOSE)
-        if time.time() - int(payload["issued"]) > MAX_AGE_SECONDS:
+        if not isinstance(payload, dict) or time.time() - int(payload["issued"]) > MAX_AGE_SECONDS:
             return None
-        return str(payload["key"])
+        return payload
     except (DecryptionError, binascii.Error, ValueError, KeyError, TypeError):
         return None
+
+
+def unseal(cipher: Cipher, cookie: str | None) -> str | None:
+    """The API key in the cookie, or None if it holds none or is forged or expired."""
+    payload = _open(cipher, cookie)
+    key = payload.get("key") if payload else None
+    return key if isinstance(key, str) else None
+
+
+@dataclass(frozen=True)
+class Identity:
+    """Who a session cookie says the browser is: exactly one of the two is set."""
+
+    api_key: str | None = None
+    sponsor_id: uuid.UUID | None = None
+
+
+def identify(cipher: Cipher, cookie: str | None) -> Identity | None:
+    payload = _open(cipher, cookie)
+    if payload is None:
+        return None
+    if isinstance(payload.get("key"), str):
+        return Identity(api_key=payload["key"])
+    try:
+        return Identity(sponsor_id=uuid.UUID(str(payload["sponsor"])))
+    except (KeyError, ValueError):
+        return None
+
+
+async def sponsor_of(session: AsyncSession, identity: Identity | None) -> Sponsor | None:
+    if identity is None:
+        return None
+    if identity.api_key is not None:
+        return await bounty_service.sponsor_for_key(session, identity.api_key)
+    return await session.get(Sponsor, identity.sponsor_id)
+
+
+def set_session_cookie(request: Request, response: Response, value: str) -> None:
+    response.set_cookie(
+        COOKIE,
+        value,
+        max_age=MAX_AGE_SECONDS,
+        httponly=True,
+        samesite="strict",
+        secure=request.app.state.settings.app_env == "production",
+        path="/",
+    )
 
 
 def require_same_origin(request: Request) -> None:
@@ -70,12 +126,12 @@ def require_same_origin(request: Request) -> None:
         raise HTTPException(403, "cross-site request refused")
 
 
-def session_key(request: Request) -> str | None:
-    """The API key of the signed-in browser, for a request that is provably from this site."""
-    key = unseal(request.app.state.cipher, request.cookies.get(COOKIE))
-    if key is not None:
+def session_identity(request: Request) -> Identity | None:
+    """Who the signed-in browser is, for a request that is provably from this site."""
+    identity = identify(request.app.state.cipher, request.cookies.get(COOKIE))
+    if identity is not None:
         require_same_origin(request)
-    return key
+    return identity
 
 
 router = APIRouter(prefix="/v1", tags=["session"], dependencies=[Depends(require_same_origin)])
@@ -96,8 +152,8 @@ class SessionOut(BaseModel):
 @router.get("/session")
 async def read_session(request: Request, session: Transaction) -> SessionOut:
     """Whether this browser is signed in. The page cannot read the cookie itself."""
-    key = unseal(request.app.state.cipher, request.cookies.get(COOKIE))
-    sponsor = await bounty_service.sponsor_for_key(session, key) if key else None
+    identity = identify(request.app.state.cipher, request.cookies.get(COOKIE))
+    sponsor = await sponsor_of(session, identity)
     return SessionOut(signed_in=sponsor is not None, email=sponsor.email if sponsor else None)
 
 
@@ -110,15 +166,7 @@ async def sign_in(
     sponsor = await bounty_service.sponsor_for_key(session, key)
     if sponsor is None:
         raise HTTPException(401, "that API key was not recognised")
-    response.set_cookie(
-        COOKIE,
-        seal(request.app.state.cipher, key),
-        max_age=MAX_AGE_SECONDS,
-        httponly=True,
-        samesite="strict",
-        secure=request.app.state.settings.app_env == "production",
-        path="/",
-    )
+    set_session_cookie(request, response, seal(request.app.state.cipher, key))
     return SessionOut(signed_in=True, email=sponsor.email)
 
 

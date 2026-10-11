@@ -6,6 +6,7 @@ import base64
 import binascii
 from decimal import Decimal
 from typing import Literal, Self
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -73,6 +74,14 @@ class Settings(BaseSettings):
     # bounty takes no more attempts until some of that spend ages out.
     bounty_daily_token_budget: int = Field(default=2_000_000, ge=1)
 
+    # Sign in with Google, for sponsors. Off unless both are set. The client is created
+    # in the Google Cloud console, with PUBLIC_URL + /v1/auth/google/callback as its
+    # authorised redirect URI.
+    google_client_id: str | None = None
+    google_client_secret: SecretStr | None = None
+    # Where browsers reach this service, such as https://example.com. No path.
+    public_url: str | None = None
+
     worker_poll_seconds: float = Field(default=2.0, gt=0)
     # A running attempt older than this is taken to belong to a dead worker and is retried.
     attempt_timeout_seconds: float = Field(default=900.0, gt=0)
@@ -87,6 +96,9 @@ class Settings(BaseSettings):
         "zipher_seed",
         "direct_url",
         "escrow_address",
+        "google_client_id",
+        "google_client_secret",
+        "public_url",
         "payout_max_zatoshi",
         "payout_daily_max_zatoshi",
         mode="before",
@@ -139,6 +151,28 @@ class Settings(BaseSettings):
                 "APP_ENV=production needs PAYOUT_MAX_ZATOSHI and PAYOUT_DAILY_MAX_ZATOSHI"
             )
         return self
+
+    @model_validator(mode="after")
+    def _google_sign_in_is_usable(self) -> Self:
+        if (self.google_client_id is None) != (self.google_client_secret is None):
+            raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together")
+        if self.public_url is not None:
+            parts = urlsplit(self.public_url)
+            if parts.scheme not in ("http", "https") or not parts.netloc:
+                raise ValueError("PUBLIC_URL must be an http or https URL")
+            if parts.path.strip("/") or parts.query or parts.fragment:
+                raise ValueError("PUBLIC_URL must not have a path")
+        if self.google_client_id is not None:
+            if self.public_url is None:
+                raise ValueError("GOOGLE_CLIENT_ID needs PUBLIC_URL")
+            # The session cookie is marked Secure in production, so it needs HTTPS.
+            if self.app_env == "production" and not self.public_url.startswith("https://"):
+                raise ValueError("PUBLIC_URL must be https when APP_ENV=production")
+        return self
+
+    @property
+    def google_sign_in(self) -> bool:
+        return self.google_client_id is not None
 
     @property
     def allow_unfunded_activation(self) -> bool:

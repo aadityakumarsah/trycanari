@@ -464,3 +464,9 @@ img.mascot { image-rendering: auto; }
   .docs-nav { column-count: 1; }
   .docs-body td:first-child { white-space: normal; }
 }
+
+/* --- sign in with Google --- */
+.sso { max-width: 420px; margin: 20px 0 28px; }
+.page .sso a.button.google { width: 100%; min-height: 44px; gap: 10px; font-size: 15px; }
+.sso .or { display: flex; align-items: center; gap: 14px; margin: 24px 0 0; color: var(--dim); font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.sso .or::before, .sso .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }

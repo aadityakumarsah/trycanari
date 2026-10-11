@@ -71,6 +71,25 @@ async def sponsor_for_key(session: AsyncSession, api_key: str) -> Sponsor | None
     return await session.scalar(select(Sponsor).where(Sponsor.api_key_hash == hash_token(api_key)))
 
 
+async def sponsor_for_google(session: AsyncSession, google_sub: str, email: str) -> Sponsor:
+    """The sponsor for a Google account, created the first time it signs in.
+
+    An account is matched on Google's identifier only. Sign-up by email does not
+    prove the address is the caller's, so a Google account is never attached to
+    an existing sponsor just because the emails agree: whoever made that sponsor
+    holds its API key and would keep access to everything the newcomer does.
+    """
+    sponsor = await session.scalar(select(Sponsor).where(Sponsor.google_sub == google_sub))
+    if sponsor is not None:
+        return sponsor
+    if await session.scalar(select(Sponsor.id).where(Sponsor.email == email)):
+        raise ServiceError(409, "a sponsor with this email already exists")
+    sponsor = Sponsor(email=email, google_sub=google_sub)
+    session.add(sponsor)
+    await session.flush()
+    return sponsor
+
+
 # --- canaries ---------------------------------------------------------------------------
 
 

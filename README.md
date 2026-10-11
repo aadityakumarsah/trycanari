@@ -88,6 +88,20 @@ Then `make migrate`. What to know:
 - **The tests refuse to run against a remote server.** They use `TEST_DATABASE_URL` when
   it is set, and stop if the server they are given is not local.
 
+## Sign in with Google
+
+Optional. Sponsors can always sign in with an API key; setting these adds a Continue
+with Google button to the sign-in page.
+
+1. In the Google Cloud console, create an OAuth client ID of type **Web application**.
+2. Authorised JavaScript origin: your `PUBLIC_URL`, such as `http://localhost:3000`.
+3. Authorised redirect URI: `PUBLIC_URL` + `/v1/auth/google/callback`.
+4. Put `PUBLIC_URL`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env` and restart the API.
+
+The flow runs on the server (authorisation code with PKCE), so the browser never holds
+a token. A sponsor is identified by Google's account ID. A Google account is never
+attached to a sponsor that was created by email, even if the addresses match.
+
 ## Configuration
 
 Configuration comes only from environment variables; nothing is read from a file by the

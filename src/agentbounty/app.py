@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from agentbounty.api import agent_guide, health, public, session, spa, sponsor
+from agentbounty.api import agent_guide, google, health, public, session, spa, sponsor
 from agentbounty.api.ratelimit import RateLimiter
 from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
@@ -48,6 +48,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # without holding a wallet. A missing or malformed address stops the app starting.
     app.state.escrow_address = escrow_address(settings)
     app.state.rate_limiter = RateLimiter(settings.rate_limit_per_minute)
+    # Tests put a transport here to stand in for Google. None means the real network.
+    app.state.google_transport = None
 
     @app.exception_handler(ServiceError)
     async def service_error(_: Request, exc: ServiceError) -> JSONResponse:
@@ -57,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(sponsor.router)
     app.include_router(public.router)
     app.include_router(session.router)
+    app.include_router(google.router)
     app.include_router(agent_guide.router)
     # Last: it answers every path the routes above did not claim.
     spa.install(app)

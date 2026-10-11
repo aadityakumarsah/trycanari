@@ -51,6 +51,8 @@ class Sponsor(Base):
     refund_address: Mapped[str | None] = mapped_column(Text)
     # SHA-256 of the sponsor's API key. The key itself is shown once and never stored.
     api_key_hash: Mapped[str | None] = mapped_column(Text, unique=True)
+    # Google's identifier for the account, for a sponsor who signs in with Google.
+    google_sub: Mapped[str | None] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = created_now()
 
 

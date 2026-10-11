@@ -541,6 +541,8 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="POST" path="/v1/session" />, "Exchange an API key for a session cookie."],
               [<Endpoint method="GET" path="/v1/session" />, "Whether this browser is signed in."],
               [<Endpoint method="DELETE" path="/v1/session" />, "Sign out."],
+              [<Endpoint method="GET" path="/v1/auth/providers" />, "Whether Google sign-in is offered."],
+              [<Endpoint method="GET" path="/v1/auth/google/start" />, "Begin signing in with Google. A page to visit, not to call."],
             ]}
           />
           <h3>An attempt's status</h3>
@@ -564,13 +566,24 @@ python -m agentbounty.attacker --api ${origin} \\
             rows={[
               ["A hunter reading an attempt", <>The attempt's status token: <code>Authorization: Bearer &lt;status_token&gt;</code></>],
               ["A sponsor's script", <>The API key from sign-up: <code>Authorization: Bearer &lt;api_key&gt;</code></>],
-              ["A sponsor in the browser", "A session cookie, set by signing in on this site. It lasts 12 hours."],
+              [
+                "A sponsor in the browser",
+                "A session cookie, set by signing in on this site with an API key or with Google. It lasts 12 hours.",
+              ],
             ]}
           />
           <p>
             API keys and status tokens are shown once and stored only as hashes, so they cannot be recovered. The
             session cookie is HttpOnly and SameSite=Strict, and a state-changing request that relies on it must
             come from this site. Listing bounties and submitting attempts need no authentication at all.
+          </p>
+          <h3>Sign in with Google</h3>
+          <p>
+            Where it is switched on, the <Link to="/login">sign-in page</Link> offers Continue with Google. The
+            first sign-in creates your sponsor account; later ones return to it. Only the address of a verified
+            Google email is kept. An account made this way has no API key, so it is used from the dashboard. A
+            Google account is never attached to an account that was created by email, even when the addresses
+            match, because signing up by email does not prove the address is yours.
           </p>
         </Section>
 
@@ -669,6 +682,12 @@ uv run --env-file .env python -m agentbounty.workers.payment`}</Code>
               [<code>PAYOUT_MAX_ZATOSHI</code>, "Cap on a single payout. Required in production"],
               [<code>PAYOUT_DAILY_MAX_ZATOSHI</code>, "Cap on payouts in any 24 hours. Required in production"],
               [<code>FEE_RATE</code>, "The fee as a fraction of the reward. Default 0.1"],
+              [<code>PUBLIC_URL</code>, "Where browsers reach the service, such as https://example.com"],
+              [<code>GOOGLE_CLIENT_ID</code>, "An OAuth web client from the Google Cloud console. Turns on Google sign-in"],
+              [
+                <code>GOOGLE_CLIENT_SECRET</code>,
+                "Its secret. The client's redirect URI must be PUBLIC_URL + /v1/auth/google/callback",
+              ],
             ]}
           />
           <p>
