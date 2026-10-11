@@ -13,6 +13,7 @@ from agentbounty.models.enums import (
     RearmState,
 )
 from agentbounty.models.tables import (
+    AdminAction,
     Attempt,
     Bounty,
     Canary,
@@ -30,6 +31,7 @@ from agentbounty.models.tables import (
 )
 
 __all__ = [
+    "AdminAction",
     "Attempt",
     "AttemptState",
     "Base",

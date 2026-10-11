@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -81,6 +81,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.google_transport = None
     # Public answers kept for a few seconds (see api/public.py).
     app.state.public_cache = {}
+
+    @app.middleware("http")
+    async def security_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Headers every answer carries, whatever route made it."""
+        response = await call_next(request)
+        headers = response.headers
+        headers.setdefault("X-Content-Type-Options", "nosniff")
+        headers.setdefault("X-Frame-Options", "DENY")
+        headers.setdefault("Referrer-Policy", "same-origin")
+        if request.url.path.startswith("/v1/"):
+            # Answers about an account must never be kept by a browser or a proxy and
+            # shown to the next person, and nothing here belongs in a search engine.
+            headers.setdefault("Cache-Control", "no-store")
+            headers.setdefault("X-Robots-Tag", "noindex")
+        if settings.app_env == "production":
+            headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
 
     @app.exception_handler(ServiceError)
     async def service_error(_: Request, exc: ServiceError) -> JSONResponse:

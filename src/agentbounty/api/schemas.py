@@ -96,7 +96,8 @@ class ReferralRedeem(Body):
 
 class InviteOut(BaseModel):
     code: str
-    remaining: int
+    # False once someone has used it. A code works once.
+    available: bool
     invited_by: str | None
 
 
@@ -114,6 +115,7 @@ class PersonOut(BaseModel):
     is_owner: bool
     is_ambassador: bool
     can_hunt: bool
+    hunting_granted: bool
     referral_code: str | None
     created_at: datetime
 
@@ -121,22 +123,38 @@ class PersonOut(BaseModel):
 class PersonUpdate(Body):
     is_ambassador: bool | None = None
     is_admin: bool | None = None
-    # Let them take part in bounties without a referral code.
-    can_hunt: Literal[True] | None = None
+    # Let them take part in bounties without a referral code, or take that back.
+    hunting_granted: bool | None = None
 
 
 class AdminCodeCreate(Body):
-    max_uses: StrictInt = Field(default=10, ge=1, le=10_000)
-    # The code itself; one is generated if left out.
-    code: str | None = Field(default=None, min_length=4, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
+    # How many single-use codes to make.
+    count: StrictInt = Field(default=1, ge=1, le=500)
+    # The code itself, when making one; otherwise they are generated.
+    code: str | None = Field(default=None, min_length=6, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
 
 
 class AdminCodeOut(BaseModel):
     code: str
-    max_uses: int
-    used: int
+    # Who used it, or null while it is still good.
+    used_by: str | None
     owner_email: str | None
     created_at: datetime
+
+
+class PeoplePage(BaseModel):
+    items: list[PersonOut]
+    total: int
+
+
+class CodesPage(BaseModel):
+    items: list[AdminCodeOut]
+    total: int
+
+
+class ApiKeyOut(BaseModel):
+    # Shown once. Only its hash is stored, and the key it replaces stops working.
+    api_key: str
 
 
 class AccountOut(BaseModel):
@@ -163,13 +181,13 @@ class AccountOut(BaseModel):
 
 
 class ReferralCodeCreate(Body):
-    max_uses: StrictInt = Field(default=5, ge=1, le=25)
+    # How many single-use codes to make.
+    count: StrictInt = Field(default=1, ge=1, le=10)
 
 
 class ReferralCodeOut(BaseModel):
     code: str
-    max_uses: int
-    used: int
+    used: bool
     created_at: datetime
 
 

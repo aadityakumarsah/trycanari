@@ -194,7 +194,7 @@ async def invite(code: str, session: Transaction) -> InviteOut:
     found = await credits.invite(session, code[:40])
     if found is None:
         raise HTTPException(404, "that invite does not exist")
-    return InviteOut(code=found.code, remaining=found.remaining, invited_by=found.invited_by)
+    return InviteOut(code=found.code, available=found.available, invited_by=found.invited_by)
 
 
 @router.get("/bounties/{bounty_id}")

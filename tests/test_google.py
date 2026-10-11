@@ -250,15 +250,64 @@ async def test_google_failing_is_a_refusal_not_a_crash(site: tuple[Platform, Goo
     await refused(client, await sign_in(client, stand_in), "google_failed")
 
 
-async def test_google_is_never_attached_to_an_account_made_by_email(
+async def test_google_reclaims_an_address_someone_signed_up_with_and_revokes_their_key(
     site: tuple[Platform, Google],
 ) -> None:
-    """Sign-up by email proves nothing, so its holder must not inherit a Google user."""
+    """Sign-up by email proves nothing; Google proves who owns the address. The account
+    passes to the Google identity, and the key its maker holds stops working, so a
+    squatter is locked out rather than left with a key to the owner's work."""
     platform, stand_in = site
     squatter = await platform.sponsor("ada@example.com")
+    await squatter.call("POST", "/v1/bounties", 201, json={"reward_zatoshi": 5})
+
     client = browser(platform)
-    await refused(client, await sign_in(client, stand_in), "google_email_taken")
-    assert await squatter.call("GET", "/v1/sponsor/bounties") == []
+    returned = await sign_in(client, stand_in)
+    assert returned.headers["location"] == "http://test/dashboard"
+    assert (await client.get("/v1/session")).json() == {
+        "signed_in": True,
+        "email": "ada@example.com",
+    }
+    # The owner has the account, with what was in it. The old key is dead.
+    assert len((await client.get("/v1/sponsor/bounties")).json()) == 1
+    await squatter.call("GET", "/v1/sponsor/bounties", 401)
+    await squatter.call("GET", "/v1/account", 401)
+
+    # A different Google identity claiming the same address does not get in.
+    stand_in.account = {"sub": "someone-else", "email": "ada@example.com", "email_verified": True}
+    await refused(
+        browser(platform), await sign_in(browser(platform), stand_in), "google_email_taken"
+    )
+
+
+async def test_an_account_can_mint_a_new_api_key_which_replaces_the_old(
+    site: tuple[Platform, Google],
+) -> None:
+    platform, stand_in = site
+    # Someone who signed in with Google has no key until they ask for one.
+    client = browser(platform)
+    await sign_in(client, stand_in)
+    minted = await client.post("/v1/account/api-key", headers=SAME_ORIGIN)
+    assert minted.status_code == 200
+    first = minted.json()["api_key"]
+    assert first.startswith("sk_")
+    by_key = {"Authorization": f"Bearer {first}"}
+    assert (await platform.client.get("/v1/account", headers=by_key)).status_code == 200
+    # Asking again replaces it, and the browser stays signed in throughout.
+    second = (await client.post("/v1/account/api-key", headers=SAME_ORIGIN)).json()["api_key"]
+    assert second != first
+    assert (await platform.client.get("/v1/account", headers=by_key)).status_code == 401
+    assert (await client.get("/v1/session")).json()["signed_in"] is True
+    # It cannot be done to someone from another site.
+    assert (await client.post("/v1/account/api-key")).status_code == 403
+
+    # A browser signed in with a key is not signed out by changing that key.
+    sponsor = await platform.sponsor("keyed@example.com")
+    keyed = browser(platform)
+    key = sponsor.headers["Authorization"].removeprefix("Bearer ")
+    await keyed.post("/v1/session", json={"api_key": key}, headers=SAME_ORIGIN)
+    assert (await keyed.post("/v1/account/api-key", headers=SAME_ORIGIN)).status_code == 200
+    assert (await keyed.get("/v1/session")).json()["signed_in"] is True
+    await sponsor.call("GET", "/v1/account", 401)
 
 
 async def test_starting_on_another_host_moves_to_the_public_one(

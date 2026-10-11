@@ -34,9 +34,9 @@ WINDOW = timedelta(hours=24)
 # Longer attacks cost more to replay, five times over.
 COSTS: tuple[tuple[int, int], ...] = ((2_000, 1), (8_000, 2), (40_000, 4))
 
-# What an ambassador may hand out.
-MAX_CODES_PER_AMBASSADOR = 20
-MAX_USES_PER_CODE = 25
+# An ambassador may hold this many unused codes at a time, so a stolen ambassador
+# account cannot mint invitations without end.
+MAX_UNUSED_PER_AMBASSADOR = 25
 # Easy to read aloud and type: no 0/O or 1/I/L.
 _ALPHABET = "".join(sorted(set(string.ascii_uppercase + string.digits) - set("0O1IL")))
 
@@ -105,7 +105,7 @@ async def charge(
     )
     if account is None:
         raise ServiceError(401, "sign in to attack")
-    if account.referral_code is None:
+    if not can_hunt(account, settings):
         raise ServiceError(403, "enter a referral code to take part in bounties")
     cost = cost_of(fills)
     left = (await allowance(session, account, settings)).balance
@@ -119,6 +119,22 @@ async def charge(
 
 
 # --- referral codes ---------------------------------------------------------------------
+#
+# A code lets exactly one account take part in bounties. It is used when an account
+# holds it, and the unique constraint on that column is what makes a second use
+# impossible, whatever two requests do at the same moment.
+
+
+def can_hunt(account: Sponsor, settings: Settings) -> bool:
+    """Whether the account may attack: always, unless the platform is invite-only and it
+    has neither redeemed a code nor been let in by an admin."""
+    return not settings.invite_only or account.referral_code is not None or account.hunting_granted
+
+
+def is_admin(account: Sponsor, settings: Settings) -> bool:
+    """Whether the account runs the platform: made an admin, or named as an owner in the
+    settings and proven to hold that address by signing in with Google."""
+    return account.is_admin or (account.google_sub is not None and account.email in settings.owners)
 
 
 def new_code() -> str:
@@ -129,17 +145,19 @@ def normalise(code: str) -> str:
     return code.strip().upper()
 
 
-async def uses_of(session: AsyncSession, code: str) -> int:
-    used = await session.scalar(
-        select(func.count()).select_from(Sponsor).where(Sponsor.referral_code == code)
+def _holder() -> Any:
+    """The email of the account that used a code, or NULL while it is unused."""
+    return (
+        select(Sponsor.email)
+        .where(Sponsor.referral_code == ReferralCode.code)
+        .correlate(ReferralCode)
+        .scalar_subquery()
     )
-    return int(used or 0)
 
 
 async def redeem(session: AsyncSession, code: str | None) -> str:
-    """Check a referral code can admit one more account, and hold it until this
-    transaction ends so that no two people take its last use. Returns the code
-    as stored."""
+    """Check a referral code exists and is unused, and hold it until this transaction
+    ends so that no two people take it. Returns the code as stored."""
     if not code or not code.strip():
         raise ServiceError(422, "enter a referral code")
     found = await session.scalar(
@@ -147,61 +165,63 @@ async def redeem(session: AsyncSession, code: str | None) -> str:
     )
     if found is None:
         raise ServiceError(403, "that referral code is not valid")
-    if await uses_of(session, found.code) >= found.max_uses:
-        raise ServiceError(403, "that referral code has been used up")
+    if await session.scalar(select(Sponsor.id).where(Sponsor.referral_code == found.code)):
+        raise ServiceError(403, "that referral code has already been used")
     return found.code
 
 
 async def redeem_for(session: AsyncSession, account: Sponsor, code: str | None) -> None:
-    """Let an account take part in bounties, using up one use of a referral code."""
-    if account.referral_code is not None:
-        raise ServiceError(409, "you have already redeemed a referral code")
+    """Let an account take part in bounties, using up a referral code."""
+    if account.referral_code is not None or account.hunting_granted:
+        raise ServiceError(409, "you already have access to the bounties")
     account.referral_code = await redeem(session, code)
     await session.flush()
 
 
-def is_admin(account: Sponsor, settings: Settings) -> bool:
-    """Whether the account runs the platform: made an admin, or named as an owner in the
-    settings and proven to hold that address by signing in with Google."""
-    return account.is_admin or (account.google_sub is not None and account.email in settings.owners)
-
-
-async def create_code(
+async def create_codes(
     session: AsyncSession,
     owner: Sponsor | None,
-    max_uses: int,
+    count: int = 1,
     code: str | None = None,
     *,
     unlimited: bool = False,
-) -> ReferralCode:
-    """Make a code. An ambassador's are limited in number and size; an admin's, and the
-    operator's (no owner), are not."""
+) -> list[ReferralCode]:
+    """Make single-use codes. An ambassador may hold only so many unused ones at a time;
+    an admin, and the operator (no owner), may make as many as they ask for."""
+    if count < 1:
+        raise ServiceError(422, "make at least one code")
+    if code is not None and count != 1:
+        raise ServiceError(422, "a code of your own choosing can only be made one at a time")
     if owner is not None and not unlimited:
         if not owner.is_ambassador:
             raise ServiceError(403, "only ambassadors can make referral codes")
-        if max_uses > MAX_USES_PER_CODE:
-            raise ServiceError(422, f"a code can admit at most {MAX_USES_PER_CODE} people")
-        made = await session.scalar(
-            select(func.count()).select_from(ReferralCode).where(ReferralCode.owner_id == owner.id)
+        # Counted with the ambassador's row held, so two requests cannot both fit under it.
+        await session.execute(select(Sponsor.id).where(Sponsor.id == owner.id).with_for_update())
+        unused = await session.scalar(
+            select(func.count())
+            .select_from(ReferralCode)
+            .where(ReferralCode.owner_id == owner.id, _holder().is_(None))
         )
-        if int(made or 0) >= MAX_CODES_PER_AMBASSADOR:
-            raise ServiceError(409, f"you have made {MAX_CODES_PER_AMBASSADOR} codes already")
-    value = normalise(code) if code else new_code()
-    if await session.scalar(select(ReferralCode.id).where(ReferralCode.code == value)):
-        raise ServiceError(409, "that code already exists")
-    referral = ReferralCode(code=value, owner_id=owner.id if owner else None, max_uses=max_uses)
-    session.add(referral)
+        if int(unused or 0) + count > MAX_UNUSED_PER_AMBASSADOR:
+            raise ServiceError(
+                409,
+                f"you can hold {MAX_UNUSED_PER_AMBASSADOR} unused codes at a time;"
+                f" you have {int(unused or 0)}. Share those first",
+            )
+    if code is not None:
+        value = normalise(code)
+        if await session.scalar(select(ReferralCode.id).where(ReferralCode.code == value)):
+            raise ServiceError(409, "that code already exists")
+        values = [value]
+    else:
+        values = list({new_code() for _ in range(count)})
+        # Astronomically unlikely to collide; top up rather than assume.
+        while len(values) < count:
+            values = list({*values, new_code()})
+    made = [ReferralCode(code=value, owner_id=owner.id if owner else None) for value in values]
+    session.add_all(made)
     await session.flush()
-    return referral
-
-
-def _used() -> Any:
-    return (
-        select(func.count())
-        .where(Sponsor.referral_code == ReferralCode.code)
-        .correlate(ReferralCode)
-        .scalar_subquery()
-    )
+    return made
 
 
 @dataclass(frozen=True)
@@ -209,41 +229,52 @@ class Invite:
     """What a referral code offers, as shown to whoever follows its link."""
 
     code: str
-    remaining: int
+    available: bool
     invited_by: str | None
 
 
 async def invite(session: AsyncSession, code: str) -> Invite | None:
     row = (
         await session.execute(
-            select(ReferralCode, _used(), Sponsor.name)
+            select(ReferralCode, _holder(), Sponsor.name)
             .outerjoin(Sponsor, Sponsor.id == ReferralCode.owner_id)
             .where(ReferralCode.code == normalise(code))
         )
     ).first()
     if row is None:
         return None
-    found, used, owner_name = row
-    return Invite(found.code, max(0, found.max_uses - int(used)), owner_name)
+    found, holder, owner_name = row
+    return Invite(found.code, holder is None, owner_name)
 
 
-async def all_codes(session: AsyncSession) -> list[tuple[ReferralCode, int, str | None]]:
-    """Every code, newest first, with its use and its owner's email."""
+@dataclass(frozen=True)
+class CodeLine:
+    code: ReferralCode
+    used_by: str | None
+    owner_email: str | None
+
+
+async def all_codes(
+    session: AsyncSession, *, limit: int, offset: int
+) -> tuple[list[CodeLine], int]:
+    """A page of every code, newest first, with who used it and who made it, and the total."""
+    total = await session.scalar(select(func.count()).select_from(ReferralCode))
     rows = await session.execute(
-        select(ReferralCode, _used(), Sponsor.email)
+        select(ReferralCode, _holder(), Sponsor.email)
         .outerjoin(Sponsor, Sponsor.id == ReferralCode.owner_id)
         .order_by(ReferralCode.created_at.desc(), ReferralCode.id)
-        .limit(500)
+        .limit(limit)
+        .offset(offset)
     )
-    return [(code, int(used), email) for code, used, email in rows]
+    return [CodeLine(code, holder, owner) for code, holder, owner in rows], int(total or 0)
 
 
-async def codes_of(session: AsyncSession, owner: Sponsor) -> list[tuple[ReferralCode, int]]:
-    """An ambassador's codes, newest first, each with how many accounts joined with it."""
-    used = _used()
+async def codes_of(session: AsyncSession, owner: Sponsor) -> list[CodeLine]:
+    """An ambassador's codes, newest first, each with whether it has been used."""
     rows = await session.execute(
-        select(ReferralCode, used)
+        select(ReferralCode, _holder())
         .where(ReferralCode.owner_id == owner.id)
         .order_by(ReferralCode.created_at.desc(), ReferralCode.id)
+        .limit(200)
     )
-    return [(code, int(count)) for code, count in rows]
+    return [CodeLine(code, holder, owner.email) for code, holder in rows]

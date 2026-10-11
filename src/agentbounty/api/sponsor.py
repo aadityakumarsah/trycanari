@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import func, select
 
 from agentbounty.api.deps import CipherDep, OwnBounty, SettingsDep, SponsorDep, Transaction
@@ -13,6 +13,7 @@ from agentbounty.api.schemas import (
     AccountOut,
     AccountUpdate,
     ActivateOut,
+    ApiKeyOut,
     AttemptActivity,
     AttemptLine,
     BountyCreate,
@@ -50,6 +51,7 @@ from agentbounty.api.schemas import (
     StateOut,
     ToolOut,
 )
+from agentbounty.api.session import COOKIE, seal_sponsor, set_session_cookie
 from agentbounty.models import (
     Attempt,
     AttemptState,
@@ -57,7 +59,6 @@ from agentbounty.models import (
     Canary,
     CanaryType,
     Finding,
-    ReferralCode,
 )
 from agentbounty.services import bounty as bounty_service
 from agentbounty.services import credits, rearm, reports
@@ -96,7 +97,7 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
         location=sponsor.location,
         website=sponsor.website,
         bio=sponsor.bio,
-        can_hunt=not settings.invite_only or sponsor.referral_code is not None,
+        can_hunt=credits.can_hunt(sponsor, settings),
         is_ambassador=sponsor.is_ambassador,
         is_admin=credits.is_admin(sponsor, settings),
         invite_only=settings.invite_only,
@@ -127,7 +128,7 @@ async def update_account(
     return await account(session, sponsor, settings)
 
 
-@router.post("/account/referral")
+@router.post("/account/referral", dependencies=[Depends(limit_by_client)])
 async def redeem_referral(
     body: ReferralRedeem, session: Transaction, sponsor: SponsorDep, settings: SettingsDep
 ) -> AccountOut:
@@ -136,26 +137,45 @@ async def redeem_referral(
     return await account(session, sponsor, settings)
 
 
-def _code_out(code: ReferralCode, used: int) -> ReferralCodeOut:
-    return ReferralCodeOut(
-        code=code.code, max_uses=code.max_uses, used=used, created_at=code.created_at
-    )
+@router.post("/account/api-key", dependencies=[Depends(limit_by_client)])
+async def new_api_key(
+    request: Request, response: Response, session: Transaction, sponsor: SponsorDep
+) -> ApiKeyOut:
+    """Make a new API key for scripts and agents. The old one stops working at once.
+
+    An account that signed in with Google has no key until it asks for one here.
+    """
+    api_key = bounty_service.new_api_key(sponsor)
+    await session.flush()
+    if request.cookies.get(COOKIE):
+        # A browser signed in with the old key would be signed out by this. Its session
+        # is re-issued to name the account instead, which no key change can break.
+        set_session_cookie(request, response, seal_sponsor(request.app.state.cipher, sponsor.id))
+    return ApiKeyOut(api_key=api_key)
 
 
 @router.get("/referral-codes")
 async def referral_codes(session: Transaction, sponsor: SponsorDep) -> list[ReferralCodeOut]:
-    """The referral codes this account has made, and how many people each has brought in."""
-    return [_code_out(code, used) for code, used in await credits.codes_of(session, sponsor)]
+    """The referral codes this account has made, and which have been used."""
+    return [
+        ReferralCodeOut(
+            code=line.code.code, used=line.used_by is not None, created_at=line.code.created_at
+        )
+        for line in await credits.codes_of(session, sponsor)
+    ]
 
 
-@router.post("/referral-codes", status_code=201)
-async def create_referral_code(
+@router.post("/referral-codes", status_code=201, dependencies=[Depends(limit_by_client)])
+async def create_referral_codes(
     body: ReferralCodeCreate, session: Transaction, sponsor: SponsorDep
-) -> ReferralCodeOut:
-    """Make a referral code. Only ambassadors can."""
-    code = await credits.create_code(session, sponsor, body.max_uses)
-    await session.refresh(code)
-    return _code_out(code, 0)
+) -> list[ReferralCodeOut]:
+    """Make single-use referral codes. Only ambassadors can."""
+    made = await credits.create_codes(session, sponsor, body.count)
+    for code in made:
+        await session.refresh(code)
+    return [
+        ReferralCodeOut(code=code.code, used=False, created_at=code.created_at) for code in made
+    ]
 
 
 @router.post("/bounties", status_code=201)

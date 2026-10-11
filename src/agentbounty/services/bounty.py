@@ -65,11 +65,18 @@ async def create_sponsor(
     """
     if await session.scalar(select(Sponsor.id).where(Sponsor.email == email)):
         raise ServiceError(409, "a sponsor with this email already exists")
-    api_key = "sk_" + secrets.token_urlsafe(32)
-    sponsor = Sponsor(email=email, api_key_hash=hash_token(api_key), referral_code=referral_code)
+    sponsor = Sponsor(email=email, referral_code=referral_code)
+    api_key = new_api_key(sponsor)
     session.add(sponsor)
     await session.flush()
     return sponsor, api_key
+
+
+def new_api_key(sponsor: Sponsor) -> str:
+    """Give the account a new API key, replacing any it had. Only the hash is kept."""
+    api_key = "sk_" + secrets.token_urlsafe(32)
+    sponsor.api_key_hash = hash_token(api_key)
+    return api_key
 
 
 async def sponsor_for_key(session: AsyncSession, api_key: str) -> Sponsor | None:
@@ -82,18 +89,26 @@ async def sponsor_for_google(
     email: str,
     admit: Callable[[], Awaitable[str | None]] | None = None,
 ) -> Sponsor:
-    """The sponsor for a Google account, created the first time it signs in.
+    """The account for a Google identity, created the first time it signs in.
 
-    An account is matched on Google's identifier only. Sign-up by email does not
-    prove the address is the caller's, so a Google account is never attached to
-    an existing sponsor just because the emails agree: whoever made that sponsor
-    holds its API key and would keep access to everything the newcomer does.
+    An account is matched on Google's identifier. If none matches but an account
+    made by email already holds the same address, Google has just proven who owns
+    that address, and sign-up by email never did: the account passes to the Google
+    identity and its API key is revoked, so whoever made it, if it was someone
+    else, is locked out of it rather than left holding a key to the owner's work.
     """
     sponsor = await session.scalar(select(Sponsor).where(Sponsor.google_sub == google_sub))
     if sponsor is not None:
         return sponsor
-    if await session.scalar(select(Sponsor.id).where(Sponsor.email == email)):
-        raise ServiceError(409, "a sponsor with this email already exists")
+    claimed = await session.scalar(select(Sponsor).where(Sponsor.email == email).with_for_update())
+    if claimed is not None:
+        if claimed.google_sub is not None:
+            # Another Google identity already holds the address. Leave both alone.
+            raise ServiceError(409, "a sponsor with this email already exists")
+        claimed.google_sub = google_sub
+        claimed.api_key_hash = None
+        await session.flush()
+        return claimed
     # A new account. `admit` decides whether it may join, and with which referral code.
     referral_code = await admit() if admit else None
     sponsor = Sponsor(email=email, google_sub=google_sub, referral_code=referral_code)

@@ -8,7 +8,8 @@ from typing import Any
 import httpx
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 
 from agentbounty.models import Attempt, AttemptState, Sponsor
 from agentbounty.services import credits
@@ -29,9 +30,11 @@ async def club(service_settings: Settings) -> AsyncIterator[Platform]:
         yield platform
 
 
-async def operator_code(platform: Platform, uses: int = 5, code: str | None = None) -> str:
+async def operator_code(platform: Platform, code: str | None = None) -> str:
+    """A fresh single-use code, as the operator would make one."""
     async with platform.sessions.begin() as session:
-        return (await credits.create_code(session, None, uses, code)).code
+        (made,) = await credits.create_codes(session, None, 1, code)
+        return made.code
 
 
 async def join(platform: Platform, email: str, code: str | None) -> httpx.Response:
@@ -72,7 +75,9 @@ def test_what_an_attack_costs_grows_with_its_size() -> None:
     assert cost(1_500, 1_500) == 2
 
 
-async def test_anyone_may_join_but_a_referral_code_is_what_lets_them_hunt(club: Platform) -> None:
+async def test_anyone_may_join_and_a_referral_code_lets_exactly_one_of_them_hunt(
+    club: Platform,
+) -> None:
     assert (await club.client.get("/v1/auth/providers")).json()["invite_only"] is True
     # No code: an account all the same. It just cannot take part in bounties yet.
     joined = await join(club, "a@example.com", None)
@@ -85,28 +90,59 @@ async def test_anyone_may_join_but_a_referral_code_is_what_lets_them_hunt(club: 
 
     wrong = await redeem(a, "NOPE-NOPE")
     assert (wrong.status_code, wrong.json()["detail"]) == (403, "that referral code is not valid")
-    code = await operator_code(club, uses=2)
+    code = await operator_code(club)
     # Typed in lower case with spaces around it, it is still the same code.
     redeemed = await redeem(a, f"  {code.lower()} ")
     assert (redeemed.status_code, redeemed.json()["can_hunt"]) == (200, True)
-    again = await redeem(a, code)
+    again = await redeem(a, await operator_code(club))
     assert (again.status_code, again.json()["detail"]) == (
         409,
-        "you have already redeemed a referral code",
+        "you already have access to the bounties",
     )
 
-    # A code given at sign-up is redeemed there and then, and a code runs out.
-    b = await member(club, "b@example.com", code)
-    assert (await club.client.get("/v1/account", headers=b)).json()["can_hunt"] is True
-    late = await join(club, "c@example.com", None)
-    c = {"Authorization": f"Bearer {late.json()['api_key']}"}
-    spent = await redeem(c, code)
+    # The code is spent: nobody else can use it, at sign-up or afterwards.
+    late = await join(club, "b@example.com", None)
+    b = {"Authorization": f"Bearer {late.json()['api_key']}"}
+    spent = await redeem(b, code)
     assert (spent.status_code, spent.json()["detail"]) == (
         403,
-        "that referral code has been used up",
+        "that referral code has already been used",
     )
+    assert (await join(club, "c@example.com", code)).status_code == 403
     assert (await join(club, "d@example.com", "NOPE-NOPE")).status_code == 403
     assert (await club.client.post("/v1/account/referral", json={"code": code})).status_code == 401
+    # A code given at sign-up is redeemed there and then.
+    e = await member(club, "e@example.com", await operator_code(club))
+    assert (await club.client.get("/v1/account", headers=e)).json()["can_hunt"] is True
+
+
+async def test_two_people_cannot_share_a_code_even_at_the_same_instant(club: Platform) -> None:
+    code = await operator_code(club)
+    people = []
+    for name in ("x", "y", "z"):
+        joined = await join(club, f"{name}@example.com", None)
+        people.append({"Authorization": f"Bearer {joined.json()['api_key']}"})
+
+    import asyncio
+
+    answers = await asyncio.gather(
+        *(
+            club.client.post("/v1/account/referral", json={"code": code}, headers=headers)
+            for headers in people
+        )
+    )
+    assert sorted(answer.status_code for answer in answers) == [200, 403, 403]
+    async with club.sessions() as session:
+        holders = await session.scalar(
+            select(func.count()).select_from(Sponsor).where(Sponsor.referral_code == code)
+        )
+    assert holders == 1
+    # And the database itself would refuse a second holder, whatever the code above did.
+    with pytest.raises(IntegrityError):
+        async with club.sessions.begin() as session:
+            await session.execute(
+                update(Sponsor).where(Sponsor.email == "y@example.com").values(referral_code=code)
+            )
 
 
 async def test_without_invite_only_nothing_changes(platform: Platform) -> None:
@@ -127,8 +163,8 @@ async def test_without_invite_only_nothing_changes(platform: Platform) -> None:
 
 async def test_an_attack_needs_an_account_and_spends_its_credits(club: Platform) -> None:
     code = await operator_code(club)
-    sponsor = await member(club, "sponsor@example.com", code)
-    hunter = await member(club, "hunter@example.com", code)
+    sponsor = await member(club, "sponsor@example.com", await operator_code(club))
+    hunter = await member(club, "hunter@example.com", await operator_code(club))
     from .platform import Sponsor as SponsorClient
 
     bounty_id = await SponsorClient(club.client, sponsor).live()
@@ -191,12 +227,11 @@ async def test_an_attack_needs_an_account_and_spends_its_credits(club: Platform)
 async def test_the_allowance_refills_and_forgives_what_the_platform_failed(
     club: Platform,
 ) -> None:
-    code = await operator_code(club)
-    hunter = await member(club, "hunter@example.com", code)
+    hunter = await member(club, "hunter@example.com", await operator_code(club))
     from .platform import Sponsor as SponsorClient
 
     bounty_id = await SponsorClient(
-        club.client, await member(club, "sponsor@example.com", code)
+        club.client, await member(club, "sponsor@example.com", await operator_code(club))
     ).live()
     for _ in range(3):
         assert (await attack(club, bounty_id, hunter)).status_code == 202
@@ -227,11 +262,12 @@ async def test_the_allowance_refills_and_forgives_what_the_platform_failed(
 
 
 async def test_a_verified_break_raises_the_allowance(club: Platform) -> None:
-    code = await operator_code(club)
-    hunter = await member(club, "hunter@example.com", code)
+    hunter = await member(club, "hunter@example.com", await operator_code(club))
     from .platform import Sponsor as SponsorClient
 
-    sponsor = SponsorClient(club.client, await member(club, "sponsor@example.com", code))
+    sponsor = SponsorClient(
+        club.client, await member(club, "sponsor@example.com", await operator_code(club))
+    )
     bounty_id = await sponsor.funded(club)
     accepted = await attack(club, bounty_id, hunter, STRONG)
     assert accepted.status_code == 202
@@ -249,11 +285,10 @@ async def test_a_verified_break_raises_the_allowance(club: Platform) -> None:
     }
 
 
-async def test_only_ambassadors_make_referral_codes(club: Platform) -> None:
-    code = await operator_code(club)
-    someone = await member(club, "someone@example.com", code)
+async def test_only_ambassadors_make_referral_codes_and_only_so_many(club: Platform) -> None:
+    someone = await member(club, "someone@example.com", await operator_code(club))
     assert (await club.client.get("/v1/referral-codes", headers=someone)).json() == []
-    refused = await club.client.post("/v1/referral-codes", json={"max_uses": 2}, headers=someone)
+    refused = await club.client.post("/v1/referral-codes", json={"count": 2}, headers=someone)
     assert (refused.status_code, refused.json()["detail"]) == (
         403,
         "only ambassadors can make referral codes",
@@ -264,17 +299,42 @@ async def test_only_ambassadors_make_referral_codes(club: Platform) -> None:
         await session.execute(
             update(Sponsor).where(Sponsor.email == "someone@example.com").values(is_ambassador=True)
         )
-    made = await club.client.post("/v1/referral-codes", json={"max_uses": 2}, headers=someone)
+    made = await club.client.post("/v1/referral-codes", json={"count": 3}, headers=someone)
     assert made.status_code == 201
-    theirs = made.json()
-    assert (theirs["max_uses"], theirs["used"], len(theirs["code"])) == (2, 0, 9)
-    too_many = await club.client.post("/v1/referral-codes", json={"max_uses": 26}, headers=someone)
-    assert too_many.status_code == 422
+    codes = [item["code"] for item in made.json()]
+    assert len(set(codes)) == 3
+    assert all(
+        len(code) == 9 and item["used"] is False
+        for code, item in zip(codes, made.json(), strict=True)
+    )
+    for bad in ({"count": 0}, {"count": 11}, {"max_uses": 5}):
+        assert (
+            await club.client.post("/v1/referral-codes", json=bad, headers=someone)
+        ).status_code == 422
 
-    # The code works, and its owner sees it being used. They see only their own codes.
-    await member(club, "friend@example.com", theirs["code"])
+    # Each works once, and its owner sees which have gone. They see only their own codes.
+    await member(club, "friend@example.com", codes[0])
+    assert (await join(club, "second@example.com", codes[0])).status_code == 403
     listed = (await club.client.get("/v1/referral-codes", headers=someone)).json()
-    assert [(item["code"], item["used"]) for item in listed] == [(theirs["code"], 1)]
+    assert {(item["code"], item["used"]) for item in listed} == {
+        (codes[0], True),
+        (codes[1], False),
+        (codes[2], False),
+    }
+
+    # At most 25 unused at a time: two are out, so 23 more fit and a 24th does not.
+    for size in (10, 10, 3):
+        assert (
+            await club.client.post("/v1/referral-codes", json={"count": size}, headers=someone)
+        ).status_code == 201
+    full = await club.client.post("/v1/referral-codes", json={"count": 1}, headers=someone)
+    assert full.status_code == 409
+    assert full.json()["detail"].startswith("you can hold 25 unused codes at a time; you have 25.")
+    # Using one up makes room for one more.
+    await member(club, "third@example.com", codes[1])
+    assert (
+        await club.client.post("/v1/referral-codes", json={"count": 1}, headers=someone)
+    ).status_code == 201
 
 
 async def test_google_sign_in_lets_anyone_join_and_redeems_a_code_they_arrived_with(
@@ -291,7 +351,7 @@ async def test_google_sign_in_lets_anyone_join_and_redeems_a_code_they_arrived_w
     async with platform_on(settings) as platform:
         stand_in = Google()
         platform.app.state.google_transport = httpx.MockTransport(stand_in.handle)
-        code = await operator_code(platform, uses=1)
+        code = await operator_code(platform)
 
         async def sign_in(referral: str | None) -> dict[str, Any]:
             client = httpx.AsyncClient(
@@ -320,8 +380,7 @@ async def test_google_sign_in_lets_anyone_join_and_redeems_a_code_they_arrived_w
         # A third arrives through an invite link: in, and hunting.
         stand_in.account = {"sub": "three", "email": "three@example.com", "email_verified": True}
         assert (await sign_in(code))["can_hunt"] is True
-        async with platform.sessions() as session:
-            assert await credits.uses_of(session, code) == 1
+        assert (await platform.client.get(f"/v1/invites/{code}")).json()["available"] is False
 
 
 async def test_a_profile_is_filled_in_a_field_at_a_time(platform: Platform) -> None:

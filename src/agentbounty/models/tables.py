@@ -17,6 +17,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     Numeric,
@@ -46,6 +47,8 @@ from agentbounty.models.enums import (
 
 class Sponsor(Base):
     __tablename__ = "sponsors"
+    # Accounts are listed newest first.
+    __table_args__ = (Index("ix_sponsors_created_at", "created_at"),)
 
     id: Mapped[uuid.UUID] = uuid_pk()
     email: Mapped[str] = mapped_column(Text, unique=True)
@@ -69,22 +72,39 @@ class Sponsor(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # May hand out referral codes.
     is_ambassador: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
-    # The referral code the account has redeemed, which is what lets it take part in bounties.
-    referral_code: Mapped[str | None] = mapped_column(Text, index=True)
+    # The referral code the account has redeemed, which is what lets it take part in
+    # bounties. Unique: a code admits one account, and the database holds it to that.
+    referral_code: Mapped[str | None] = mapped_column(Text, unique=True)
+    # Let in by an admin, without a code.
+    hunting_granted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = created_now()
 
 
 class ReferralCode(Base):
-    """A code that admits a fixed number of new accounts."""
+    """A code that lets one account take part in bounties. Whether it has been used is
+    not stored here: it is used when an account holds it."""
 
     __tablename__ = "referral_codes"
-    __table_args__ = (CheckConstraint("max_uses > 0", name="max_uses_positive"),)
+    __table_args__ = (Index("ix_referral_codes_created_at", "created_at"),)
 
     id: Mapped[uuid.UUID] = uuid_pk()
     code: Mapped[str] = mapped_column(Text, unique=True)
     # The ambassador who made it. A code made by the operator has no owner.
     owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"), index=True)
-    max_uses: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = created_now()
+
+
+class AdminAction(Base):
+    """Something an admin did. Append-only, like the ledger: the database refuses edits."""
+
+    __tablename__ = "admin_actions"
+    __table_args__ = (Index("ix_admin_actions_created_at", "created_at"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    admin_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sponsors.id"), index=True)
+    action: Mapped[str] = mapped_column(Text)
+    target_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"))
+    detail: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_now()
 
 
@@ -159,6 +179,12 @@ class Canary(Base):
 
 class Attempt(Base):
     __tablename__ = "attempts"
+    # What every attack asks: what has this account, this address, this bounty done lately?
+    __table_args__ = (
+        Index("ix_attempts_account_submitted", "account_id", "submitted_at"),
+        Index("ix_attempts_bounty_submitted", "bounty_id", "submitted_at"),
+        Index("ix_attempts_address_submitted", "payout_address", "submitted_at"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"), index=True)

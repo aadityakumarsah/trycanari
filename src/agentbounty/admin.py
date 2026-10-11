@@ -1,6 +1,6 @@
 """Operator commands for invite-only mode.
 
-    python -m agentbounty.admin code --uses 10          make a referral code
+    python -m agentbounty.admin code --count 10         make ten single-use referral codes
     python -m agentbounty.admin ambassador a@b.com      let an account hand out codes
     python -m agentbounty.admin admin a@b.com           let an account run the platform
 
@@ -26,12 +26,12 @@ from agentbounty.services.errors import ServiceError
 from agentbounty.settings import load_settings
 
 
-async def make_code(uses: int, code: str | None) -> str:
+async def make_codes(count: int, code: str | None) -> str:
     engine = create_engine(load_settings().database_url)
     try:
         async with create_session_factory(engine).begin() as session:
-            made = await credits.create_code(session, None, uses, code)
-            return f"{made.code}   (admits {made.max_uses})"
+            made = await credits.create_codes(session, None, count, code)
+            return "\n".join(item.code for item in made)
     finally:
         await engine.dispose()
 
@@ -65,9 +65,9 @@ async def make_ambassador(email: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Operator commands for invite-only mode.")
     commands = parser.add_subparsers(dest="command", required=True)
-    code = commands.add_parser("code", help="make a referral code")
-    code.add_argument("--uses", type=int, default=10, help="how many accounts it admits")
-    code.add_argument("--code", help="the code itself; one is generated if left out")
+    code = commands.add_parser("code", help="make single-use referral codes")
+    code.add_argument("--count", type=int, default=1, help="how many single-use codes to make")
+    code.add_argument("--code", help="the code itself, when making one")
     ambassador = commands.add_parser("ambassador", help="let an account hand out codes")
     ambassador.add_argument("email")
     admin = commands.add_parser("admin", help="let an account run the platform")
@@ -75,9 +75,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         if args.command == "code":
-            if args.uses < 1:
-                sys.exit("--uses must be at least 1")
-            result = asyncio.run(make_code(args.uses, args.code))
+            result = asyncio.run(make_codes(args.count, args.code))
         elif args.command == "admin":
             result = asyncio.run(make_admin(args.email))
         else:
