@@ -13,6 +13,7 @@ import { Home } from "./pages/Home.tsx";
 import { Login } from "./pages/Login.tsx";
 import { MyAttempts, useSavedAttempts } from "./pages/MyAttempts.tsx";
 import { useSession } from "./session.tsx";
+import { dismissSplash } from "./splash.ts";
 
 type Mode = "human" | "agent";
 
@@ -359,6 +360,12 @@ function ToTop() {
 
 export function App() {
   const [mode, setMode] = useState<Mode>("human");
+  const { session } = useSession();
+  // The app is ready once it knows whether someone is signed in: until then the bar
+  // cannot be drawn correctly, and a signed-in page would flash its signed-out form.
+  useEffect(() => {
+    if (session !== null) dismissSplash();
+  }, [session]);
   // Following any link in the page chrome goes back to the pages people read.
   const human = () => setMode("human");
 

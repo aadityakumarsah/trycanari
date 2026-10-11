@@ -862,3 +862,44 @@ img.avatar { display: block; background: var(--surface-2); }
 .user-card .avatar, .welcome .avatar, .user-chip .avatar { display: grid; place-items: center; }
 .user-card img.avatar, .welcome img.avatar, .user-chip img.avatar { display: block; }
 .user-card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+
+/* ============ the loading screen ============ */
+.splash { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; color: #fff; transition: opacity 0.45s ease, transform 0.5s ease, visibility 0s 0.5s; }
+.splash.leaving { opacity: 0; transform: scale(1.04); visibility: hidden; pointer-events: none; }
+.splash-grid { position: absolute; inset: 0; background-image: linear-gradient(90deg, #ffffff12 1px, transparent 0), linear-gradient(180deg, #ffffff12 1px, transparent 0); background-size: 40px 40px; background-position: center; -webkit-mask-image: radial-gradient(60% 55% at 50% 45%, #000 20%, transparent 75%); mask-image: radial-gradient(60% 55% at 50% 45%, #000 20%, transparent 75%); animation: splash-drift 12s linear infinite; }
+@keyframes splash-drift { to { background-position: calc(50% + 40px) calc(50% + 40px); } }
+.splash-core { position: relative; display: grid; place-items: center; width: 190px; height: 190px; animation: splash-in 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+@keyframes splash-in { from { opacity: 0; transform: scale(0.82); } to { opacity: 1; transform: none; } }
+/* A soft glow that breathes behind the tile. */
+.splash-core::before { content: ""; position: absolute; inset: 18px; border-radius: 50%; background: radial-gradient(closest-side, #6ee7b74d, transparent); filter: blur(10px); animation: splash-breathe 2.4s ease-in-out infinite; }
+@keyframes splash-breathe { 0%, 100% { opacity: 0.55; transform: scale(0.92); } 50% { opacity: 1; transform: scale(1.08); } }
+/* Three sparks circling the tile at different distances and speeds. */
+.splash-orbit, .splash-orbit i { position: absolute; inset: 0; border-radius: 50%; }
+.splash-orbit i { border: 1px solid #ffffff14; animation: splash-spin 3.2s linear infinite; }
+.splash-orbit i::after { content: ""; position: absolute; top: -4px; left: 50%; width: 7px; height: 7px; margin-left: -3.500px; border-radius: 50%; background: #6ee7b7; box-shadow: 0 0 12px 2px #6ee7b7b3; }
+.splash-orbit i:nth-child(2) { inset: 16px; border-style: dashed; border-color: #6ee7b72e; animation-duration: 4.6s; animation-direction: reverse; }
+.splash-orbit i:nth-child(2)::after { width: 5px; height: 5px; margin-left: -2.500px; top: -3px; background: #fff; box-shadow: 0 0 10px 1px #ffffff99; }
+.splash-orbit i:nth-child(3) { inset: -14px; border-color: #ffffff0a; animation-duration: 7s; }
+.splash-orbit i:nth-child(3)::after { width: 4px; height: 4px; margin-left: -2px; top: -2px; opacity: 0.7; }
+@keyframes splash-spin { to { transform: rotate(360deg); } }
+.splash-tile { position: relative; display: grid; place-items: center; width: 104px; height: 104px; border: 1px solid transparent; border-radius: 26px; background-image: linear-gradient(#141414, #141414), linear-gradient(120deg, #fff, #6ee7b7 60%, #ffffff40); background-origin: padding-box, border-box; background-clip: padding-box, border-box; box-shadow: 0 0 0 8px #000, 0 18px 60px #6ee7b733; }
+.splash-mascot { width: 64px; height: 55px; background: url("/app/brand/mascot.png") center / contain no-repeat; image-rendering: pixelated; animation: splash-hop 1.1s cubic-bezier(0.4, 0, 0.3, 1) infinite; }
+@keyframes splash-hop { 0%, 100% { transform: translateY(2px) scaleY(0.96); } 45% { transform: translateY(-7px) scaleY(1.03); } 70% { transform: translateY(0) scaleY(1); } }
+.splash-name { position: relative; margin: 30px 0 0; color: #a3a3a3; font: 500 26px/32px Manrope, "Helvetica Neue", Arial, sans-serif; letter-spacing: -0.02em; animation: splash-rise 0.6s 0.15s ease-out both; }
+.splash-name b { color: #fff; font-weight: 600; }
+@keyframes splash-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.splash-bar { position: relative; width: 168px; height: 3px; margin-top: 22px; border-radius: 2px; background: #1c1c1c; overflow: hidden; animation: splash-rise 0.6s 0.25s ease-out both; }
+.splash-bar i { position: absolute; top: 0; bottom: 0; left: 0; width: 45%; border-radius: 2px; background: linear-gradient(90deg, transparent, #6ee7b7, #fff); animation: splash-run 1.25s cubic-bezier(0.5, 0, 0.3, 1) infinite; }
+@keyframes splash-run { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
+/* One line at a time, each taking its turn. */
+.splash-note { position: relative; width: 240px; height: 18px; margin: 16px 0 0; color: #737373; font: 500 11px/18px ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: 0.1em; text-align: center; text-transform: uppercase; }
+.splash-note span { position: absolute; inset: 0; opacity: 0; animation: splash-turn 6s ease-in-out infinite; }
+.splash-note span:nth-child(2) { animation-delay: 2s; }
+.splash-note span:nth-child(3) { animation-delay: 4s; }
+@keyframes splash-turn { 0% { opacity: 0; transform: translateY(6px); } 6%, 28% { opacity: 1; transform: none; } 34%, 100% { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .splash-grid, .splash-core, .splash-core::before, .splash-orbit i, .splash-mascot, .splash-name, .splash-bar, .splash-bar i { animation: none; }
+  .splash-note span { animation: none; }
+  .splash-note span:first-child { opacity: 1; }
+  .splash-bar i { width: 100%; opacity: 0.5; }
+}

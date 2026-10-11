@@ -8,6 +8,20 @@
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
+    <!-- Shown from the first paint until the app is ready. Its styles are in the stylesheet,
+         which arrives before the script, so it appears straight away. -->
+    <div id="splash" class="splash" role="status" aria-label="Loading trycanari">
+      <div class="splash-grid"></div>
+      <div class="splash-core">
+        <div class="splash-orbit"><i></i><i></i><i></i></div>
+        <div class="splash-tile"><span class="splash-mascot"></span></div>
+      </div>
+      <p class="splash-name">try<b>canari</b></p>
+      <div class="splash-bar"><i></i></div>
+      <p class="splash-note">
+        <span>Waking the sandbox</span><span>Arming the canaries</span><span>Checking the escrow</span>
+      </p>
+    </div>
     <div id="root"></div>
     <script type="module" src="./src/main.tsx"></script>
   </body>
