@@ -1,0 +1,47 @@
+x-app: &app
+  build: .
+  environment:
+    APP_ENV: ${APP_ENV:?set APP_ENV in .env}
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *app
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Placeholder commands: the replay worker and the payment service are built in later steps.
+  worker:
+    <<: *app
+    command: ["sleep", "infinity"]
+
+  payment:
+    <<: *app
+    command: ["sleep", "infinity"]
+
+volumes:
+  db-data:
