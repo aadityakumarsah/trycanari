@@ -694,3 +694,24 @@ main.frame { min-height: calc(100vh - var(--nav) - 150px); }
 @media (prefers-reduced-motion: reduce) {
   .flow-hub img, .flow-line::after { animation: none; }
 }
+
+/* --- the badge above the headline --- */
+.pill { position: relative; gap: 12px; height: 40px; padding: 0 14px 0 5px; border: 1px solid transparent; border-radius: 999px; background-image: linear-gradient(#0c0c0c, #0c0c0c), linear-gradient(100deg, #ffffff40, #6ee7b780 55%, #ffffff1f); background-origin: padding-box, border-box; background-clip: padding-box, border-box; background-color: transparent; color: #d4d4d4; font: 400 13.500px/1 var(--sans); text-decoration: none; box-shadow: 0 0 0 4px #6ee7b70a, 0 8px 30px #0009; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s, color 0.2s; animation: arrive 0.4s ease-out both; }
+.pill::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 60px; background: linear-gradient(100deg, transparent, #ffffff1f, transparent); transform: translateX(-80px) skewX(-18deg); animation: pill-shine 5s ease-in-out 1s infinite; pointer-events: none; }
+@keyframes pill-shine { 0%, 62% { transform: translateX(-80px) skewX(-18deg); } 100% { transform: translateX(460px) skewX(-18deg); } }
+.pill:hover { color: #fff; transform: translateY(-1px); box-shadow: 0 0 0 4px #6ee7b71a, 0 10px 34px #000c; }
+.pill-live { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px 0 9px; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font: 600 11.500px/1 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+.pill .pill-live i { position: relative; display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.pill .pill-live i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--accent); animation: ping 1.8s ease-out infinite; }
+@keyframes ping { from { transform: scale(1); opacity: 0.7; } to { transform: scale(3.2); opacity: 0; } }
+.pill-text { white-space: nowrap; }
+.pill-text b { color: #fff; font-weight: 500; }
+.pill > svg { color: var(--dim); transition: transform 0.2s, color 0.2s; }
+.pill:hover > svg { color: var(--accent); transform: translateX(2px); }
+@media (max-width: 480px) {
+  .pill { gap: 9px; height: 36px; padding-right: 11px; font-size: 12.500px; }
+  .pill-live { height: 26px; padding: 0 9px 0 8px; font-size: 10.500px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pill, .pill::after, .pill .pill-live i::after { animation: none; }
+}

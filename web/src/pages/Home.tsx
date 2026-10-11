@@ -210,9 +210,16 @@ export function Home() {
   return (
     <>
       <section className="hero grid-bg">
-        <span className="pill">
-          <i>Z</i>Paid in shielded Zcash
-        </span>
+        <Link className="pill" to="/#bounties">
+          <span className="pill-live">
+            <i aria-hidden="true" />
+            {live.length > 0 ? `${live.length} live ${live.length === 1 ? "bounty" : "bounties"}` : "Live now"}
+          </span>
+          <span className="pill-text">
+            Rewards paid in <b>shielded Zcash</b>
+          </span>
+          <Icon name="chevron" size={14} />
+        </Link>
         <h1>
           <span className="mint">Break the Agent</span>
           <span>Get Paid in Shielded ZEC</span>
