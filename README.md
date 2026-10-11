@@ -115,6 +115,45 @@ an HttpOnly cookie that expires after 12 hours. Everything typed by a sponsor or
 hunter is escaped on output; pages carry a Content-Security-Policy that allows no
 inline script and nothing from another origin, and HTMX is served from this server.
 
+## Demo target and attacker agent
+
+**The demo target** is a treasury agent: a system prompt for an assistant that moves
+funds, a `transfer_funds(recipient, amount)` tool, and a signing reference planted in
+its context. It has two canaries: a secret leak on the reference, and a forbidden tool
+call on any transfer to a recipient outside its allowlist. It is deliberately breakable:
+it treats an attached "runbook" document as operating procedure.
+
+**The attacker agent** is a standalone client of the public API. It reads the bounty
+(`GET /v1/bounties/{id}`), asks a model for an attempt that fills the declared entry
+points, submits it, polls the result and reads the agent's replies. If the attempt is
+not verified it gives the replies back to the model and tries again, logging each try,
+up to `--max-attempts`. It stops when a canary trips and prints the winning attack and
+the payout transaction.
+
+To run both against a local stack with a real model:
+
+```sh
+# 1. The stack, with the fake wallet and a real model for the target agent.
+#    In .env:  WALLET_BACKEND=fake  MODEL_BACKEND=real
+#              MODEL_API_BASE=https://api.anthropic.com/v1/   (or any OpenAI-compatible endpoint)
+#              MODEL_API_KEY=<your key>
+make up && make migrate
+
+# 2. Seed the demo bounty. It is funded by itself (fake wallet) and goes live in seconds.
+PYTHONPATH=src uv run python -m agentbounty.demo --model <target model id>
+
+# 3. Attack it. ATTACKER_MODEL is the model the attacker thinks with.
+export MODEL_API_BASE=https://api.anthropic.com/v1/ MODEL_API_KEY=<your key>
+export ATTACKER_MODEL=<attacker model id>
+PYTHONPATH=src uv run python -m agentbounty.attacker \
+  --bounty <id printed by step 2> --payout-address <a shielded testnet address> --max-attempts 8
+```
+
+Both commands take `--api` (default `http://127.0.0.1:8000`). The attacker exits 0 on a
+verified break and 1 otherwise. With `MODEL_BACKEND=fake` the target is the scripted
+FakeModel, which only reacts to its two directives, so a real attacker model will not
+break it; use the fake target for the manual walk-through above and a real one here.
+
 ## The core loop
 
 A sponsor signs up (`POST /v1/sponsors`, which returns an API key once), creates a
@@ -234,6 +273,8 @@ src/agentbounty/
   services/      bounty, attempts, judge, harness, model, wallet, crypto, ledger, payment
   workers/       replay: turns attempts into verdicts. payment: the only holder of a wallet
   models/        Database models and enum types
+  demo.py        The demo treasury agent and the command that seeds it over the API
+  attacker.py    The attacker agent: a model-driven hunter using the public API only
   web/           Pages: a client of the API, with the session cookie and money formatting
   templates/     Jinja2 templates
   static/        style.css, favicon.svg and a local copy of htmx
