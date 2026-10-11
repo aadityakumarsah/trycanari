@@ -14,6 +14,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
+from agentbounty.db import engine_options
 from agentbounty.models import Base
 from agentbounty.settings import load_settings
 
@@ -25,7 +26,17 @@ target_metadata = Base.metadata
 
 
 def database_url() -> str:
-    return config.get_main_option("sqlalchemy.url") or load_settings().database_url
+    """Where to migrate: the URL the caller set, else DIRECT_URL, else DATABASE_URL.
+
+    Migrations want a real session (they take locks and run DDL in one
+    transaction), so a direct or session-mode connection is preferred over a
+    transaction-mode pooler.
+    """
+    override = config.get_main_option("sqlalchemy.url")
+    if override:
+        return override
+    settings = load_settings()
+    return settings.direct_url or settings.database_url
 
 
 def run_migrations_offline() -> None:
@@ -47,7 +58,8 @@ def _run(connection: Connection) -> None:
 
 
 async def run_migrations_online() -> None:
-    engine = create_async_engine(database_url(), poolclass=NullPool)
+    url, connect_args = engine_options(database_url())
+    engine = create_async_engine(url, poolclass=NullPool, connect_args=connect_args)
     async with engine.connect() as connection:
         await connection.run_sync(_run)
     await engine.dispose()

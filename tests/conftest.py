@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import secrets
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
@@ -21,6 +22,20 @@ from agentbounty.settings import Settings, load_settings
 from .platform import Platform
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# The tests create and drop whole databases, so they only ever run against a local
+# server. TEST_DATABASE_URL names it when DATABASE_URL points somewhere that matters.
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "db", "postgres", None}
+if os.environ.get("TEST_DATABASE_URL"):
+    os.environ["DATABASE_URL"] = os.environ["TEST_DATABASE_URL"]
+os.environ.pop("DIRECT_URL", None)
+_host = make_url(os.environ.get("DATABASE_URL", "postgresql+asyncpg://localhost/x")).host
+if _host not in LOCAL_HOSTS:
+    pytest.exit(
+        f"Refusing to run the tests against {_host}: they create and drop databases."
+        " Set TEST_DATABASE_URL to a local PostgreSQL server.",
+        returncode=2,
+    )
 
 
 @pytest.fixture

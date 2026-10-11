@@ -41,7 +41,7 @@ The tests never touch the database named in `DATABASE_URL`. They connect to that
 create a scratch database, apply the migrations to it and drop it afterwards, so the
 role needs permission to create databases.
 
-`make test` reads `DATABASE_URL` from `.env`. With the Compose stack up, the value in
+`make test` reads `.env` (`TEST_DATABASE_URL` if set, else `DATABASE_URL`). With the Compose stack up, the value in
 `.env.example` points at its database on `localhost:5433`.
 
 ### Without Docker
@@ -50,17 +50,43 @@ Point `DATABASE_URL` at any PostgreSQL 16 database, then:
 
 ```sh
 uv sync
-set -a; . ./.env; set +a
-uv run alembic upgrade head
+make migrate
 make web-build                                                 # once; needs Bun
-uv run uvicorn agentbounty.app:create_app --factory --app-dir src
-PYTHONPATH=src uv run python -m agentbounty.workers.replay     # in a second terminal
-PYTHONPATH=src uv run python -m agentbounty.workers.payment    # in a third
+uv run --env-file .env uvicorn agentbounty.app:create_app --factory --app-dir src
+PYTHONPATH=src uv run --env-file .env python -m agentbounty.workers.replay     # in a second terminal
+PYTHONPATH=src uv run --env-file .env python -m agentbounty.workers.payment    # in a third
 ```
 
 `--app-dir src` imports the package from the source tree. It is needed on macOS when the
 repo sits in a folder the system marks hidden files in (Desktop, Documents): Python 3.12
 skips the hidden `.pth` file that an editable install relies on.
+
+## Hosted Postgres (Supabase)
+
+The service runs on a hosted Postgres as it does on a local one. For Supabase, take the
+two connection strings from the project's "Connect" panel and change the scheme to
+`postgresql+asyncpg://`:
+
+```sh
+# The app: the transaction-mode pooler, port 6543.
+DATABASE_URL="postgresql+asyncpg://postgres.<ref>:<password>@<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&ssl=require"
+# Migrations: the session-mode pooler, port 5432.
+DIRECT_URL="postgresql+asyncpg://postgres.<ref>:<password>@<region>.pooler.supabase.com:5432/postgres?ssl=require"
+# The tests, which create and drop databases, stay on a local server.
+TEST_DATABASE_URL="postgresql+asyncpg://localhost:5432/agentbounty"
+```
+
+Then `make migrate`. What to know:
+
+- **`pgbouncer=true`** tells the service it is behind a transaction-mode pooler, where
+  each transaction may land on a different server connection. It switches off the
+  driver's prepared-statement caches. The parameter is read here and not passed on.
+- **Row level security is on for every table, with no policies** (migration `0006`).
+  Supabase serves the public schema over an HTTP API to anyone with the project's
+  public key; this denies that API everything. The service connects as the tables'
+  owner, which row level security does not apply to.
+- **The tests refuse to run against a remote server.** They use `TEST_DATABASE_URL` when
+  it is set, and stop if the server they are given is not local.
 
 ## Configuration
 
@@ -71,7 +97,9 @@ to start, naming the variable, if a required one is missing or invalid.
 | Variable | Used by | Meaning |
 |---|---|---|
 | `APP_ENV` | app | `development`, `test` or `production` |
-| `DATABASE_URL` | app | `postgresql+asyncpg://user:password@host:port/database` |
+| `DATABASE_URL` | app | `postgresql+asyncpg://user:password@host:port/database`. Add `?pgbouncer=true` behind a transaction-mode pooler |
+| `DIRECT_URL` | migrations | A session-mode or direct connection for `make migrate`, when `DATABASE_URL` is pooled |
+| `TEST_DATABASE_URL` | tests | A local server for the tests, when `DATABASE_URL` is not local |
 | `SECRET_ENCRYPTION_KEY` | app | 32 random bytes, base64. Encrypts system prompts, tool definitions and canary secrets |
 | `MODEL_BACKEND` | app | `fake` (deterministic, no key, refused in production) or `real` |
 | `MODEL_API_BASE`, `MODEL_API_KEY` | app | OpenAI-compatible chat completions endpoint and its key. Required when `MODEL_BACKEND=real` |

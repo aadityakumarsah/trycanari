@@ -1,6 +1,7 @@
-# Settings come from .env when it exists (see .env.example).
--include .env
-export
+# Settings come from .env when it exists (see .env.example). uv reads it as a dotenv
+# file, so values may be quoted, which a URL containing & or ? needs.
+ENV := $(if $(wildcard .env),--env-file .env,)
+API_PORT ?= 8000
 
 .PHONY: up down migrate seed e2e test lint typecheck fmt web-install web-build web-dev web-test web-typecheck check
 
@@ -12,19 +13,19 @@ down:
 
 # Apply migrations to the database in DATABASE_URL.
 migrate:
-	uv run alembic upgrade head
+	uv run $(ENV) alembic upgrade head
 
 # Create the demo treasury bounty on the running stack and print its URL. With the fake
 # wallet it is funded by a simulated deposit and is live within seconds.
 seed:
-	PYTHONPATH=src uv run python -m agentbounty.demo --api http://127.0.0.1:$${API_PORT:-8000}
+	PYTHONPATH=src uv run $(ENV) python -m agentbounty.demo --api http://127.0.0.1:$(API_PORT)
 
 # The definition of done, in one test.
 e2e:
-	uv run pytest tests/test_e2e.py -v
+	uv run $(ENV) pytest tests/test_e2e.py -v
 
 test:
-	uv run pytest
+	uv run $(ENV) pytest
 
 lint:
 	uv run ruff check .

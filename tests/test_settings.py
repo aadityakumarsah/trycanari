@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from agentbounty.db import engine_options
 from agentbounty.services.crypto import generate_key
 from agentbounty.settings import SettingsError, load_settings
 
@@ -16,7 +17,7 @@ def environment(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     monkeypatch.setenv("SECRET_ENCRYPTION_KEY", generate_key())
     monkeypatch.setenv("MODEL_BACKEND", "fake")
     monkeypatch.setenv("WALLET_BACKEND", "fake")
-    for optional in ("MODEL_API_BASE", "MODEL_API_KEY", "FEE_RATE", "ZCASH_NETWORK"):
+    for optional in ("MODEL_API_BASE", "MODEL_API_KEY", "FEE_RATE", "ZCASH_NETWORK", "DIRECT_URL"):
         monkeypatch.delenv(optional, raising=False)
     for optional in ("ESCROW_ADDRESS", "PAYOUT_MAX_ZATOSHI", "PAYOUT_DAILY_MAX_ZATOSHI"):
         monkeypatch.delenv(optional, raising=False)
@@ -120,3 +121,35 @@ def test_the_wallet_defaults_to_fake_and_zcash_needs_a_binary_and_a_wallet(
     assert settings.wallet_backend == "zcash"
     assert "passphrase" not in repr(settings)
     assert "abandon" not in repr(settings)
+
+
+def test_a_direct_url_is_optional_and_checked_like_the_main_one(
+    environment: pytest.MonkeyPatch,
+) -> None:
+    assert load_settings().direct_url is None
+    environment.setenv("DIRECT_URL", "postgresql://user:hunter2@db.example.com:5432/postgres")
+    with pytest.raises(SettingsError, match="DIRECT_URL: Value error, must start with") as raised:
+        load_settings()
+    assert "hunter2" not in str(raised.value)
+    environment.setenv(
+        "DIRECT_URL", "postgresql+asyncpg://user:hunter2@db.example.com:5432/postgres"
+    )
+    settings = load_settings()
+    assert settings.direct_url is not None
+    assert "hunter2" not in repr(settings)
+
+
+def test_a_pooled_url_switches_off_prepared_statement_caching() -> None:
+    plain, no_arguments = engine_options("postgresql+asyncpg://u:p@localhost:5432/app?ssl=require")
+    assert no_arguments == {}
+    assert dict(plain.query) == {"ssl": "require"}
+
+    pooled = "postgresql+asyncpg://u:p@pooler.example.com:6543/postgres?pgbouncer=true&ssl=require"
+    url, arguments = engine_options(pooled)
+    # The marker is ours; the driver must never see it.
+    assert dict(url.query) == {"ssl": "require"}
+    assert (url.host, url.port) == ("pooler.example.com", 6543)
+    assert arguments["statement_cache_size"] == 0
+    assert arguments["prepared_statement_cache_size"] == 0
+    names = {arguments["prepared_statement_name_func"]() for _ in range(50)}
+    assert len(names) == 50

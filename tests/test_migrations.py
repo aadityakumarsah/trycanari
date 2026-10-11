@@ -68,6 +68,24 @@ def test_migration_applies_to_a_clean_database_and_reverses() -> None:
         assert asyncio.run(_names(url, PUBLIC_TABLES)) == TABLES | {"alembic_version"}
 
 
+async def test_every_table_has_row_level_security(session: AsyncSession) -> None:
+    rows = await session.execute(
+        text(
+            "SELECT c.relname, c.relrowsecurity FROM pg_class c"
+            " JOIN pg_namespace n ON n.oid = c.relnamespace"
+            " WHERE n.nspname = 'public' AND c.relkind = 'r'"
+        )
+    )
+    secured = {name: enabled for name, enabled in rows}
+    assert set(secured) == TABLES | {"alembic_version"}
+    assert all(secured.values()), [name for name, enabled in secured.items() if not enabled]
+    # No policies: nothing but the owner, which the service connects as, gets in.
+    assert (
+        await session.scalar(text("SELECT count(*) FROM pg_policies WHERE schemaname = 'public'"))
+        == 0
+    )
+
+
 async def test_models_and_migrations_describe_the_same_schema(session: AsyncSession) -> None:
     def diff(connection: Connection) -> list[object]:
         return list(compare_metadata(MigrationContext.configure(connection), Base.metadata))

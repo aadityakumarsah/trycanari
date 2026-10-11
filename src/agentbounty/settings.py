@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"]
     # Holds the database password, so it is kept out of repr() and logs.
     database_url: str = Field(repr=False)
+    # A connection that supports sessions, for migrations, when DATABASE_URL goes through
+    # a transaction-mode pooler. Unset means migrations use DATABASE_URL.
+    direct_url: str | None = Field(default=None, repr=False)
     # 32 random bytes, base64. Encrypts system prompts, tool definitions and canary secrets.
     secret_encryption_key: SecretStr
 
@@ -82,6 +85,7 @@ class Settings(BaseSettings):
         "zipher_data_dir",
         "zipher_server",
         "zipher_seed",
+        "direct_url",
         "escrow_address",
         "payout_max_zatoshi",
         "payout_daily_max_zatoshi",
@@ -91,10 +95,10 @@ class Settings(BaseSettings):
     def _empty_is_unset(cls, value: object) -> object:
         return None if value == "" else value
 
-    @field_validator("database_url")
+    @field_validator("database_url", "direct_url")
     @classmethod
-    def _requires_async_driver(cls, value: str) -> str:
-        if not value.startswith(ASYNC_DRIVER_PREFIX):
+    def _requires_async_driver(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith(ASYNC_DRIVER_PREFIX):
             raise ValueError(f"must start with {ASYNC_DRIVER_PREFIX}")
         return value
 
