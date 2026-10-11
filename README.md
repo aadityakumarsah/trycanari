@@ -188,7 +188,7 @@ Then, in a browser:
 
 `make e2e` runs exactly this, with assertions on the ledger and the states at each
 stage, against the real database with the fake wallet and the fake model. It is the
-definition of done and runs in CI (`.github/workflows/ci.yml`) with the rest of the suite.
+definition of done and runs in CI (`ci/github-actions.yml`; copy it to `.github/workflows/ci.yml` to switch it on) with the rest of the suite.
 
 ## Hardening
 
