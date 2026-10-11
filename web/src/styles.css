@@ -1012,3 +1012,57 @@ img.avatar.xl { display: block; }
 .toasts { top: calc(var(--nav) + 14px); bottom: auto; right: 20px; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-10px) scale(0.98); } to { opacity: 1; transform: none; } }
 @media (max-width: 640px) { .toasts { left: 12px; right: 12px; } }
+
+/* ============ admin and invites ============ */
+.count-note { align-self: center; font-size: 13px; white-space: nowrap; }
+.page p.count-note { margin: 22px 0 10px; }
+table.people td { vertical-align: middle; white-space: nowrap; }
+.person { display: flex; align-items: center; gap: 12px; min-width: 240px; }
+.person .avatar { display: grid; place-items: center; width: 34px; height: 34px; font-size: 14px; }
+.person img.avatar { display: block; }
+.person > span { display: flex; flex-direction: column; min-width: 0; }
+.person b { display: flex; align-items: center; gap: 8px; color: var(--foreground); font: 500 14px/20px var(--sans); }
+.person small { color: var(--muted); font-size: 12.500px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; max-width: 340px; }
+.role-tag { padding: 1px 7px; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font: 600 10px/15px var(--mono); font-style: normal; letter-spacing: 0.06em; text-transform: uppercase; }
+/* A switch that slides. */
+.page button.switch { position: relative; width: 40px; min-height: 0; height: 23px; padding: 0; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface-2); transition: background 0.2s, border-color 0.2s; }
+.page button.switch:hover { background: var(--surface-2); border-color: var(--muted); }
+.page button.switch i { position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; border-radius: 50%; background: #8a8a8a; transition: transform 0.22s cubic-bezier(0.3, 1.4, 0.5, 1), background 0.2s; }
+.page button.switch.on { border-color: var(--accent); background: #6ee7b740; }
+.page button.switch.on i { transform: translateX(17px); background: var(--accent); }
+.page button.switch:disabled { opacity: 0.55; cursor: not-allowed; }
+.page form.code-maker { display: grid; grid-template-columns: minmax(0, 1.6fr) 110px minmax(0, 1fr) auto; align-items: end; gap: 16px; margin-top: 0; }
+.page .code-maker h2 { margin: 0 0 4px; padding: 0; border: 0; font-size: 18px; }
+.page .code-maker p { margin: 0; font-size: 13.500px; }
+.page .code-maker label { margin: 0; }
+.page .code-maker label small { color: var(--dim); font-weight: 400; }
+.page .code-maker button { min-height: 40px; white-space: nowrap; }
+.page .code-maker .error { grid-column: 1 / -1; margin: 0; }
+.code-chip { padding: 3px 9px; border: 1px solid #6ee7b740; border-radius: 6px; background: var(--accent-bg); color: var(--accent); font: 600 13.500px/20px var(--mono); letter-spacing: 0.05em; }
+.use { display: flex; align-items: center; gap: 10px; font: 400 13px/18px var(--mono); }
+.use .meter { width: 90px; margin: 0; }
+.page button.small-button { min-height: 32px; padding: 0 12px; font-size: 13px; }
+
+/* the page an invite link opens */
+@keyframes invite-in { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: none; } }
+.invite-card { position: relative; display: flex; flex-direction: column; align-items: center; max-width: 520px; margin: 24px auto 0; padding: 40px 32px 34px; border: 1px solid #6ee7b755; border-radius: 22px; background: radial-gradient(90% 60% at 50% 0%, #6ee7b71f, transparent 70%), var(--surface); text-align: center; animation: invite-in 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.invite-seal { display: grid; place-items: center; width: 96px; height: 96px; margin-bottom: 18px; border: 1px solid transparent; border-radius: 26px; background-image: linear-gradient(#141414, #141414), linear-gradient(120deg, #fff, #6ee7b7 60%, #ffffff40); background-origin: padding-box, border-box; background-clip: padding-box, border-box; box-shadow: 0 16px 50px #6ee7b733; }
+.invite-seal img { image-rendering: pixelated; animation: hub-bob 3.2s ease-in-out infinite; }
+.invite-seal.bad { border-color: #f8717166; background: var(--bad-bg); color: var(--bad); box-shadow: none; }
+.invite-card .eyebrow { color: var(--accent); }
+.page .invite-card h1 { margin: 2px 0 10px; font-size: 32px; line-height: 40px; }
+.page .invite-card .lede { margin: 0 0 20px; font-size: 16px; line-height: 25px; }
+.page .invite-code { display: flex; align-items: center; gap: 12px; margin: 0 0 24px; padding: 8px 14px 8px 8px; border: 1px dashed #6ee7b766; border-radius: 12px; }
+.invite-code code { padding: 5px 12px; border-radius: 7px; background: var(--accent-bg); color: var(--accent); font: 600 17px/24px var(--mono); letter-spacing: 0.1em; }
+.invite-code span { color: var(--muted); font-size: 13px; }
+.invite-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 340px; }
+.page .invite-card .button, .page .invite-card button.big { width: 100%; max-width: 340px; min-height: 46px; font-size: 15px; }
+.page .invite-card .notice, .page .invite-card .done, .page .invite-card .error { width: 100%; }
+.invite-actions small { font-size: 12.500px; }
+
+@media (max-width: 860px) {
+  .page form.code-maker { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .invite-card, .invite-seal img { animation: none; }
+}

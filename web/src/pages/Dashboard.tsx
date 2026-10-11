@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { completeness, pictureOf, useAccount } from "../account.tsx";
+import { completeness, inviteLink, pictureOf, useAccount } from "../account.tsx";
 import { api } from "../api.ts";
 import { Icon } from "../components/Brand.tsx";
 import { ReferralGate } from "../components/ReferralGate.tsx";
@@ -263,8 +263,8 @@ function Referrals() {
     <section className="panel">
       <h2>Your referral codes</h2>
       <p className="muted">
-        You are an ambassador. Each code lets a fixed number of new people join; give them out to hunters and
-        sponsors you trust.
+        You are an ambassador. Each code lets a fixed number of people take part in bounties. Copy its invite
+        link and send it to hunters you trust: opening the link is all they need to do.
       </p>
       <form className="inline-form" onSubmit={(event) => void make(event)}>
         <label>
@@ -295,8 +295,7 @@ function Referrals() {
                 type="button"
                 className="secondary"
                 onClick={() => {
-                  const link = `${window.location.origin}/login?code=${encodeURIComponent(item.code)}`;
-                  void navigator.clipboard.writeText(link).then(() => toast("Invite link copied"));
+                  void navigator.clipboard.writeText(inviteLink(item.code)).then(() => toast("Invite link copied"));
                 }}
               >
                 <Icon name="link" size={14} /> Copy invite link

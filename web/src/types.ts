@@ -124,9 +124,39 @@ export interface Account {
   bio: string | null;
   can_hunt: boolean;
   is_ambassador: boolean;
+  is_admin: boolean;
   invite_only: boolean;
   verified_breaks: number;
   credits: Credits;
+}
+
+export interface Invite {
+  code: string;
+  remaining: number;
+  invited_by: string | null;
+}
+
+export interface Person {
+  id: string;
+  email: string;
+  name: string | null;
+  picture_url: string | null;
+  github: string | null;
+  company: string | null;
+  is_admin: boolean;
+  is_owner: boolean;
+  is_ambassador: boolean;
+  can_hunt: boolean;
+  referral_code: string | null;
+  created_at: string;
+}
+
+export interface AdminCode {
+  code: string;
+  max_uses: number;
+  used: number;
+  owner_email: string | null;
+  created_at: string;
 }
 
 export interface ReferralCode {

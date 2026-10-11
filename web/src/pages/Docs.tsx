@@ -545,12 +545,26 @@ python -m agentbounty.attacker --api ${origin} \\
           <Code>{`curl -X POST ${origin}/v1/bounties/<bounty_id>/attempts \\
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \\
   -d '{"payout_address": "<shielded address>", "fills": [{"slot": "user_message", "content": "..."}]}'`}</Code>
-          <h3>For ambassadors</h3>
+          <h3>Invite links</h3>
           <p>
-            An ambassador creates codes from the <Link to="/dashboard">dashboard</Link>, up to 20 codes admitting up
-            to 25 people each, and can see how many people each has brought in. The operator makes the first code
-            and the first ambassador from the command line: <code>python -m agentbounty.admin code --uses 10</code>{" "}
-            and <code>python -m agentbounty.admin ambassador you@example.com</code>.
+            Every referral code has an invite link, <code>{origin}/invite/&lt;code&gt;</code>. Whoever opens it sees
+            who invited them and how many places are left. If they are signed in they accept with one click; if
+            not, they sign in or create an account and the code is applied for them. Either way the bounties are
+            open to them from then on.
+          </p>
+          <h3>Ambassadors</h3>
+          <p>
+            An ambassador makes referral codes from the <Link to="/dashboard">dashboard</Link>, up to 20 codes of up
+            to 25 places each, copies each one's invite link, and can see how many people it has brought in.
+          </p>
+          <h3>Admins and the owner</h3>
+          <p>
+            An admin runs the platform from the Admin page, in the menu under their picture. There they can search
+            everyone with an account and switch on <strong>Ambassador</strong>, <strong>Admin</strong> or{" "}
+            <strong>Can hunt</strong> for anyone, and make referral codes of any size, with a code of their own
+            choosing if they like. The owner is whoever is named in <code>ADMIN_EMAILS</code>: they become an admin
+            the moment they sign in with Google, and cannot be removed from the page. An admin cannot remove their
+            own access, so there is always someone who can.
           </p>
         </Section>
 
@@ -570,6 +584,7 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="POST" path="/v1/bounties/{id}/attempts" />, "Submit an attack. Returns the attempt ID and status token."],
               [<Endpoint method="GET" path="/v1/attempts/{id}" />, "State, verdict, one run's replies and the payout. Needs the status token."],
               [<Endpoint method="POST" path="/v1/sponsors" />, "Sign up as a sponsor. Returns the API key, once."],
+              [<Endpoint method="GET" path="/v1/invites/{code}" />, "What an invite link offers: who it is from and the places left."],
               [<Endpoint method="GET" path="/agent.md" />, "The hunter side of the platform as markdown."],
               [<Endpoint method="GET" path="/health" />, "Whether the service can reach its database."],
             ]}
@@ -747,6 +762,7 @@ uv run --env-file .env python -m agentbounty.workers.payment`}</Code>
               [<code>PAYOUT_MAX_ZATOSHI</code>, "Cap on a single payout. Required in production"],
               [<code>PAYOUT_DAILY_MAX_ZATOSHI</code>, "Cap on payouts in any 24 hours. Required in production"],
               [<code>FEE_RATE</code>, "The fee as a fraction of the reward. Default 0.1"],
+              [<code>ADMIN_EMAILS</code>, "The owners' Google addresses, separated by commas. They are always admins"],
               [<code>INVITE_ONLY</code>, "true to require a referral code to join and credits to attack"],
               [<code>STARTER_CREDITS</code>, "Credits a new account may spend in any 24 hours. Default 25"],
               [<code>PROVEN_CREDITS</code>, "The same, once an account has a verified break. Default 200"],

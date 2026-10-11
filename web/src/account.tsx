@@ -54,6 +54,11 @@ export function rememberedReferral(): string {
   }
 }
 
+/** The address that lets whoever opens it take part in bounties with this code. */
+export function inviteLink(code: string): string {
+  return `${window.location.origin}/invite/${encodeURIComponent(code)}`;
+}
+
 /** GitHub serves a public picture for every username. */
 export function pictureOf(account: Pick<Account, "picture_url" | "github">): string | null {
   return account.picture_url ?? (account.github ? `https://github.com/${account.github}.png?size=160` : null);

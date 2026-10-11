@@ -12,6 +12,8 @@ import { DashboardBounty } from "./pages/DashboardBounty.tsx";
 import { Home } from "./pages/Home.tsx";
 import { Login } from "./pages/Login.tsx";
 import { MyAttempts, useSavedAttempts } from "./pages/MyAttempts.tsx";
+import { Admin } from "./pages/Admin.tsx";
+import { InvitePage } from "./pages/Invite.tsx";
 import { Profile } from "./pages/Profile.tsx";
 import { useSession } from "./session.tsx";
 import { dismissSplash } from "./splash.ts";
@@ -99,6 +101,18 @@ function Account({ email, onNavigate }: { email: string; onNavigate: () => void 
           >
             <Icon name="user" /> Profile
           </Link>
+          {profile?.is_admin && (
+            <Link
+              role="menuitem"
+              to="/admin"
+              onClick={() => {
+                onNavigate();
+                close();
+              }}
+            >
+              <Icon name="shield" /> Admin
+            </Link>
+          )}
           <button
             type="button"
             role="menuitem"
@@ -126,7 +140,7 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
   const running = useSavedAttempts().filter((attempt) => !attempt.outcome).length;
   const account = useAccount().data;
   // The credits meter belongs where credits are spent or managed, not on the landing page.
-  const metered = /^\/(b|dashboard|attempts|profile)(\/|$)/.test(location.pathname);
+  const metered = /^\/(b|dashboard|attempts|profile|admin)(\/|$)/.test(location.pathname);
   useDismiss(product, closeProduct, ".drop");
 
   // Any navigation closes whatever was open.
@@ -413,6 +427,24 @@ export function App() {
               element={
                 <Page>
                   <Login />
+                </Page>
+              }
+            />
+            <Route
+              path="/invite/:code"
+              element={
+                <Page>
+                  <InvitePage />
+                </Page>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <Page wide>
+                  <Private>
+                    <Admin />
+                  </Private>
                 </Page>
               }
             />
