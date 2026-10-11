@@ -1117,3 +1117,33 @@ table.people td { vertical-align: middle; white-space: nowrap; }
   .page .tabs .tab { min-height: 46px; }
   .mode button { height: 36px; }
 }
+
+/* --- tokens: shown where they are spent, on a bounty --- */
+.page .bounty-side .panel.tokens { padding: 18px; border-color: #6ee7b755; background: radial-gradient(120% 90% at 100% 0%, #6ee7b724, transparent 60%), var(--surface); }
+.page .bounty-side .panel.tokens.empty, .page .bounty-side .panel.tokens.short { border-color: #fbbf2466; background: radial-gradient(120% 90% at 100% 0%, #fbbf2424, transparent 60%), var(--surface); }
+.tokens-top { display: flex; align-items: center; justify-content: space-between; }
+.tokens-label { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font: 600 11px/16px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.tokens.empty .tokens-label, .tokens.short .tokens-label { color: var(--warn); }
+.tokens-tier { padding: 2px 9px; border: 1px solid var(--border-strong); border-radius: 999px; color: var(--muted); font: 500 11px/16px var(--sans); }
+.page .tokens-count { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 12px; }
+.tokens-count b { font: 600 40px/44px var(--mono); letter-spacing: -0.03em; }
+.tokens-count span { color: var(--dim); font: 500 18px/24px var(--mono); }
+.tokens-bar { position: relative; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.tokens-bar i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 4px; background: var(--accent); opacity: 0.35; transition: width 0.35s cubic-bezier(0.3, 0.8, 0.3, 1); }
+.tokens-bar i.spend { opacity: 1; }
+.tokens-bar i:only-child { opacity: 1; }
+.tokens.empty .tokens-bar i, .tokens.short .tokens-bar i { background: var(--warn); }
+.w0 { width: 0; } .w5 { width: 5%; } .w10 { width: 10%; } .w15 { width: 15%; } .w20 { width: 20%; } .w25 { width: 25%; } .w30 { width: 30%; }
+.w35 { width: 35%; } .w40 { width: 40%; } .w45 { width: 45%; } .w50 { width: 50%; } .w55 { width: 55%; } .w60 { width: 60%; } .w65 { width: 65%; }
+.w70 { width: 70%; } .w75 { width: 75%; } .w80 { width: 80%; } .w85 { width: 85%; } .w90 { width: 90%; } .w95 { width: 95%; } .w100 { width: 100%; }
+.page .tokens-note { margin: 10px 0 14px; color: #d4d4d4; font: 500 13px/19px var(--sans); }
+.tokens.short .tokens-note { color: var(--warn); }
+.tokens-costs { margin: 0; padding: 10px 0 0; border-top: 1px solid var(--border); list-style: none; }
+.tokens-costs li { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; border-radius: 6px; color: var(--muted); font-size: 12.500px; line-height: 18px; transition: background 0.2s, color 0.2s; }
+.tokens-costs b { font: 600 12.500px/18px var(--mono); }
+.tokens-costs li.now { background: var(--accent-bg); color: var(--accent); }
+.page .tokens-foot { margin: 10px 0 0; color: var(--dim); font-size: 12px; line-height: 17px; }
+.quest-how { flex: none; color: var(--accent); font-size: 13.500px; text-decoration: none; white-space: nowrap; }
+.quest-how:hover { text-decoration: underline; }
+.page .tier-progress .button { min-height: 36px; }
+.profile-stats dd.word { font: 500 15px/24px var(--display); }

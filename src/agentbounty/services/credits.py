@@ -112,7 +112,7 @@ async def charge(
     if cost > left:
         raise ServiceError(
             402,
-            f"this attack costs {cost} credits and you have {left}."
+            f"this attack costs {cost} tokens and you have {left}."
             " Your allowance refills as attempts from the last 24 hours age out",
         )
     return cost

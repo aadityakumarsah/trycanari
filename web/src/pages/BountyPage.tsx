@@ -14,7 +14,7 @@ import { useAction, useLoad } from "../hooks.ts";
 import { formatZec } from "../money.ts";
 import { useSession } from "../session.tsx";
 import { useToast } from "../toast.tsx";
-import type { AttemptAccepted, BountyPublic, EntryPoint } from "../types.ts";
+import type { Account, AttemptAccepted, BountyPublic, EntryPoint } from "../types.ts";
 import { AttemptRow, useSavedAttempts } from "./MyAttempts.tsx";
 
 export const MAX_FILL = 20_000;
@@ -37,7 +37,15 @@ function Counter({ used }: { used: number }) {
   return <span className={left < 500 ? "counter near" : "counter"}>{used.toLocaleString()} / 20,000</span>;
 }
 
-function AttemptForm({ bounty, onSubmitted }: { bounty: BountyPublic; onSubmitted: (a: AttemptAccepted) => void }) {
+function AttemptForm({
+  bounty,
+  onSubmitted,
+  onCost,
+}: {
+  bounty: BountyPublic;
+  onSubmitted: (a: AttemptAccepted) => void;
+  onCost: (cost: number) => void;
+}) {
   const [fills, setFills] = useState<Record<EntryPoint, string>>({ document: "", user_message: "" });
   const [address, setAddress] = useState(savedPayoutAddress);
   const [keep, setKeep] = useState(() => savedPayoutAddress() !== "");
@@ -48,6 +56,9 @@ function AttemptForm({ bounty, onSubmitted }: { bounty: BountyPublic; onSubmitte
   const size = slots.reduce((sum, slot) => sum + fills[slot].length, 0);
   const cost = account ? costOf(size, account.credits.costs) : 0;
   const short = metered && account !== null && cost > account.credits.balance;
+
+  // The sidebar's token meter shows what this attack would leave.
+  useEffect(() => onCost(metered && size > 0 ? cost : 0), [metered, size, cost, onCost]);
 
   async function send() {
     await action.run(async () => {
@@ -110,20 +121,20 @@ function AttemptForm({ bounty, onSubmitted }: { bounty: BountyPublic; onSubmitte
           <input type="checkbox" checked={keep} onChange={(event) => setKeep(event.target.checked)} />
           Remember this address in this browser
         </label>
-        {metered && account && (
-          <p className={short ? "cost short" : "cost"}>
+        {short && account && (
+          <p className="cost short">
             <Icon name="zap" size={14} />
             <span>
-              This attack costs <b>{cost}</b> {cost === 1 ? "credit" : "credits"}. You have{" "}
-              <b>{account.credits.balance}</b> of {account.credits.cap}.
-              {short && ` Your allowance refills over ${account.credits.window_hours} hours.`}
+              This attack costs <b>{cost}</b> {cost === 1 ? "token" : "tokens"} and you have{" "}
+              <b>{account.credits.balance}</b>. Shorten it, or wait: tokens come back as your attempts from the
+              last {account.credits.window_hours} hours age out.
             </span>
           </p>
         )}
         <ErrorNote>{action.error}</ErrorNote>
         <div className="form-foot">
           <button disabled={action.busy || short}>
-            {action.busy ? "Submitting…" : metered ? `Submit attack · ${cost} ${cost === 1 ? "credit" : "credits"}` : "Submit attack"}
+            {action.busy ? "Submitting…" : metered ? `Submit attack · ${cost} ${cost === 1 ? "token" : "tokens"}` : "Submit attack"}
           </button>
           <span className="muted">
             <kbd>⌘</kbd> <kbd>Enter</kbd> to submit
@@ -134,12 +145,60 @@ function AttemptForm({ bounty, onSubmitted }: { bounty: BountyPublic; onSubmitte
   );
 }
 
-function Sidebar({ bounty }: { bounty: BountyPublic }) {
+/** What the hunter has to spend, shown only here, where it is spent. */
+function Tokens({ account, cost }: { account: Account; cost: number }) {
+  const { balance, cap, window_hours: hours, tier, costs } = account.credits;
+  const after = Math.max(0, balance - cost);
+  const short = cost > balance;
+  const percent = (value: number) => Math.round((value / cap) * 20) * 5;
+  return (
+    <div className={short ? "panel tokens short" : balance === 0 ? "panel tokens empty" : "panel tokens"}>
+      <div className="tokens-top">
+        <span className="tokens-label">
+          <Icon name="zap" size={14} /> Tokens
+        </span>
+        <span className="tokens-tier">{tier}</span>
+      </div>
+      <p className="tokens-count" aria-label={`${balance} of ${cap} tokens left`}>
+        <b>{balance}</b>
+        <span>/ {cap}</span>
+      </p>
+      <div className="tokens-bar" aria-hidden="true">
+        <i className={`w${percent(balance)}`} />
+        {cost > 0 && !short && <i className={`spend w${percent(after)}`} />}
+      </div>
+      <p className="tokens-note">
+        {cost === 0
+          ? "Start typing to see what your attack costs."
+          : short
+            ? `This attack needs ${cost}. You are ${cost - balance} short.`
+            : `This attack: −${cost}. You will have ${after} left.`}
+      </p>
+      <ul className="tokens-costs">
+        {costs.map((step, index) => (
+          <li key={step.up_to_characters} className={cost === step.credits ? "now" : undefined}>
+            <span>
+              {index === costs.length - 1 ? "Longer" : `Up to ${step.up_to_characters.toLocaleString()} characters`}
+            </span>
+            <b>{step.credits}</b>
+          </li>
+        ))}
+      </ul>
+      <p className="tokens-foot">
+        Tokens come back by themselves as your attempts get older than {hours} hours. An attempt the platform
+        fails to run costs nothing.
+      </p>
+    </div>
+  );
+}
+
+function Sidebar({ bounty, account, cost }: { bounty: BountyPublic; account: Account | null; cost: number }) {
   const toast = useToast();
   const origin = window.location.origin;
   const slot = bounty.entry_points.includes("user_message") ? "user_message" : (bounty.entry_points[0] ?? "user_message");
   return (
     <aside className="bounty-side">
+      {account?.invite_only && account.can_hunt && bounty.accepting_attempts && <Tokens account={account} cost={cost} />}
       <div className="panel reward-panel">
         <p className="label">Reward</p>
         <p className="reward">
@@ -239,6 +298,7 @@ export function BountyPage() {
   const { session } = useSession();
   const location = useLocation();
   const [current, setCurrent] = useState<AttemptAccepted | null>(null);
+  const [cost, setCost] = useState(0);
   const toast = useToast();
 
   // Coming back to the page picks up an attempt that had not been judged yet.
@@ -295,7 +355,7 @@ export function BountyPage() {
                 <Link className="button" to="/login" state={{ from: location.pathname }}>
                   Sign in
                 </Link>
-                <Link to="/docs#invites">How invites and credits work →</Link>
+                <Link to="/docs#invites">How invites and tokens work →</Link>
               </div>
             </section>
           ) : data.accepting_attempts && needsCode ? (
@@ -303,6 +363,7 @@ export function BountyPage() {
           ) : data.accepting_attempts ? (
             <AttemptForm
               bounty={data}
+              onCost={setCost}
               onSubmitted={(accepted) => {
                 saveAttempt({
                   ...accepted,
@@ -347,7 +408,7 @@ export function BountyPage() {
             </section>
           )}
         </div>
-        <Sidebar bounty={data} />
+        <Sidebar bounty={data} account={account.data} cost={cost} />
       </div>
     </>
   );

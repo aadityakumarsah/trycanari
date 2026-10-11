@@ -200,11 +200,8 @@ function Card({ account, draft, github }: { account: Account; draft: Draft; gith
           <dd>{account.verified_breaks}</dd>
         </div>
         <div>
-          <dt>Credits</dt>
-          <dd>
-            {account.credits.balance}
-            <small> / {account.credits.cap}</small>
-          </dd>
+          <dt>Tier</dt>
+          <dd className="word">{account.credits.tier}</dd>
         </div>
         <div>
           <dt>Hunting</dt>

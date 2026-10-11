@@ -107,7 +107,6 @@ function Welcome({ account }: { account: Account }) {
 
 /** What to do next: the first break, which is also what unlocks the larger allowance. */
 function Quest({ account }: { account: Account }) {
-  const [open, setOpen] = useState(false);
   const { credits } = account;
   const proven = credits.next_tier === null;
   return (
@@ -145,49 +144,16 @@ function Quest({ account }: { account: Account }) {
             </span>
           </p>
         </div>
-        <div className="quest-amount">
-          <small>Daily allowance</small>
-          <b>{credits.next_cap ?? credits.cap}</b>
-        </div>
-        <button
-          type="button"
-          className="icon-button round"
-          aria-expanded={open}
-          aria-label="How the allowance works"
-          onClick={() => setOpen((shown) => !shown)}
-        >
-          <Icon name={open ? "up" : "down"} size={16} />
-        </button>
+        <Link className="quest-how" to="/docs#invites">
+          How tiers and tokens work →
+        </Link>
       </div>
-      {open && (
-        <div className="quest-more">
-          <p>
-            Every attack is replayed five times against a real model, which costs money. So each attack spends
-            credits from your allowance for the last {credits.window_hours} hours:
-          </p>
-          <ul>
-            {credits.costs.map((step) => (
-              <li key={step.up_to_characters}>
-                <b>
-                  {step.credits} {step.credits === 1 ? "credit" : "credits"}
-                </b>{" "}
-                for an attack of up to {step.up_to_characters.toLocaleString()} characters
-              </li>
-            ))}
-          </ul>
-          <p>
-            Credits come back by themselves as attempts get older than {credits.window_hours} hours, and a replay
-            the platform fails to run costs nothing.
-          </p>
-        </div>
-      )}
     </section>
   );
 }
 
 function Tier({ account }: { account: Account }) {
   const { credits } = account;
-  const used = credits.cap - credits.balance;
   return (
     <section className="tier">
       <div className="tier-now">
@@ -197,26 +163,18 @@ function Tier({ account }: { account: Account }) {
         <div>
           <p className="eyebrow">Your tier</p>
           <b>{credits.tier}</b>
-          <small>
-            <Icon name="zap" size={12} /> {credits.cap} credits every {credits.window_hours} hours
-          </small>
+          <small>{account.verified_breaks === 0 ? "Where every hunter starts" : "Earned with a verified break"}</small>
         </div>
       </div>
       <div className="tier-progress">
         <p>
           {credits.next_tier
-            ? "Get one attack verified to move up. Until then, spend your credits on your best ideas."
-            : "You are on the top tier. Your allowance refills as attempts age out."}
+            ? "Get one attack verified to move up a tier and be trusted with a larger daily allowance. You will see your tokens when you open a bounty to attack it."
+            : "You are on the top tier, with the largest daily allowance. You will see your tokens when you open a bounty to attack it."}
         </p>
-        <div className="tier-bar">
-          <span className="meter" role="img" aria-label={`${credits.balance} of ${credits.cap} credits left`}>
-            <i className={`fill p${Math.round((credits.balance / credits.cap) * 10) * 10}`} />
-          </span>
-          <span className="tier-count">
-            {credits.balance} / {credits.cap} left
-          </span>
-        </div>
-        <small>{used === 0 ? "Nothing spent in this window." : `${used} spent in the last ${credits.window_hours} hours.`}</small>
+        <Link className="button secondary" to="/#bounties">
+          Open a bounty <Icon name="chevron" size={15} />
+        </Link>
       </div>
       <div className="tier-next">
         {credits.next_tier ? (
@@ -227,8 +185,8 @@ function Tier({ account }: { account: Account }) {
             <div>
               <p className="eyebrow">Next tier</p>
               <b>{credits.next_tier}</b>
-              <small>{credits.next_cap} credits every {credits.window_hours} hours</small>
-              <Link to="/docs#invites">How tiers and credits work</Link>
+              <small>After your first verified break</small>
+              <Link to="/docs#invites">How tiers and tokens work</Link>
             </div>
           </>
         ) : (

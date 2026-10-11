@@ -210,7 +210,7 @@ async def test_an_attack_needs_an_account_and_spends_its_credits(club: Platform)
     assert (await attack(club, bounty_id, hunter)).status_code == 202
     broke = await attack(club, bounty_id, hunter)
     assert broke.status_code == 402
-    assert broke.json()["detail"].startswith("this attack costs 1 credits and you have 0.")
+    assert broke.json()["detail"].startswith("this attack costs 1 tokens and you have 0.")
     assert (await club.client.get("/v1/account", headers=hunter)).json()["credits"]["balance"] == 0
     # Someone else's allowance is their own.
     assert (await attack(club, bounty_id, sponsor)).status_code == 202

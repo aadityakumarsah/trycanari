@@ -42,7 +42,7 @@ export const CONTENTS: Group[] = [
       { id: "verification", title: "Replays and verdicts" },
       { id: "money", title: "Escrow, payouts and refunds" },
       { id: "rearm", title: "Patching and re-arming" },
-      { id: "invites", title: "Invites and credits" },
+      { id: "invites", title: "Invites and tokens" },
     ],
   },
   {
@@ -498,7 +498,7 @@ python -m agentbounty.attacker --api ${origin} \\
           <p>The paid attack is your regression test.</p>
         </Section>
 
-        <Section id="invites" title="Invites and credits">
+        <Section id="invites" title="Invites and tokens">
           <p>
             Every attack is replayed five times against a real model, and the platform pays for that. So a
             deployment can run <strong>invite-only</strong>, which limits who can attack and how much.
@@ -511,29 +511,29 @@ python -m agentbounty.attacker --api ${origin} \\
             platform and by <strong>ambassadors</strong>, and each one is for one person. If you arrive through
             an invite link, the code is applied for you as you join.
           </p>
-          <h3>Attacking spends credits</h3>
+          <h3>Attacking spends tokens</h3>
           <p>
-            An attack must come from an account that has redeemed a referral code, and spends credits from that
+            An attack must come from an account that has redeemed a referral code, and spends tokens from that
             account's allowance for the last 24 hours.
           </p>
           <Table
             head={["Size of the attack, all entry points together", "Cost"]}
             rows={[
-              ["Up to 2,000 characters", "1 credit"],
-              ["Up to 8,000 characters", "2 credits"],
-              ["Anything longer", "4 credits"],
+              ["Up to 2,000 characters", "1 token"],
+              ["Up to 8,000 characters", "2 tokens"],
+              ["Anything longer", "4 tokens"],
             ]}
           />
           <Table
             head={["Tier", "Allowance", "How you get it"]}
             rows={[
-              ["Starter", "25 credits in any 24 hours", "Everyone starts here"],
-              ["Proven", "200 credits in any 24 hours", "Have one attack verified"],
+              ["Starter", "25 tokens in any 24 hours", "Everyone starts here"],
+              ["Proven", "200 tokens in any 24 hours", "Have one attack verified"],
             ]}
           />
           <p>
             No balance is stored. What you have left is your tier's allowance minus what your attempts of the last
-            24 hours cost, so credits come back by themselves as attempts age out. An attempt that is refused costs
+            24 hours cost, so tokens come back by themselves as attempts age out. An attempt that is refused costs
             nothing, and neither does one the platform failed to replay. An attack you cannot afford is answered
             with status 402.
           </p>
@@ -596,7 +596,7 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="POST" path="/v1/bounties/{id}/pause" />, "Stop taking attempts. Refused while attempts are queued."],
               [<Endpoint method="POST" path="/v1/bounties/{id}/rearm" />, "Replay the paid attacks against a patched config."],
               [<Endpoint method="POST" path="/v1/bounties/{id}/close" />, "Stop for good and refund the unspent escrow."],
-              [<Endpoint method="GET" path="/v1/account" />, "Who you are, your tier and the credits you have left."],
+              [<Endpoint method="GET" path="/v1/account" />, "Who you are, your tier and the tokens you have left."],
               [<Endpoint method="PATCH" path="/v1/account" />, "Change your profile: name, GitHub, company, role, location, website, bio."],
               [<Endpoint method="POST" path="/v1/account/referral" />, "Redeem a referral code, which lets you take part in bounties."],
               [<Endpoint method="GET" path="/v1/referral-codes" />, "The referral codes you have made, and their use."],
@@ -674,7 +674,7 @@ python -m agentbounty.attacker --api ${origin} \\
               [<code>404</code>, "No such bounty or attempt, or it is not yours. A wrong status token is also a 404."],
               [<code>409</code>, "Not allowed in the bounty's current state: editing a live config, attacking a paused bounty, activating a broken config."],
               [<code>422</code>, "The request is malformed: an undeclared slot, a transparent payout address, a secret that is too short."],
-              [<code>402</code>, "Not enough credits for this attack. Invite-only deployments."],
+              [<code>402</code>, "Not enough tokens for this attack. Invite-only deployments."],
               [<code>403</code>, "A cookie request from another site; or attacking before redeeming a referral code."],
               [<code>429</code>, "A limit was reached. Wait and try again."],
               [<code>503</code>, "The service cannot reach its database."],
@@ -758,8 +758,8 @@ uv run --env-file .env python -m agentbounty.workers.payment`}</Code>
               [<code>PAYOUT_MAX_ZATOSHI</code>, "Cap on a single payout. Required in production"],
               [<code>PAYOUT_DAILY_MAX_ZATOSHI</code>, "Cap on payouts in any 24 hours. Required in production"],
               [<code>FEE_RATE</code>, "The fee as a fraction of the reward. Default 0.1"],
-              [<code>INVITE_ONLY</code>, "true to require a referral code to join and credits to attack"],
-              [<code>STARTER_CREDITS</code>, "Credits a new account may spend in any 24 hours. Default 25"],
+              [<code>INVITE_ONLY</code>, "true to require a referral code to hunt and tokens to attack"],
+              [<code>STARTER_CREDITS</code>, "Tokens a new account may spend in any 24 hours. Default 25"],
               [<code>PROVEN_CREDITS</code>, "The same, once an account has a verified break. Default 200"],
               [<code>PUBLIC_URL</code>, "Where browsers reach the service, such as https://example.com"],
               [<code>GOOGLE_CLIENT_ID</code>, "An OAuth web client from the Google Cloud console. Turns on Google sign-in"],
