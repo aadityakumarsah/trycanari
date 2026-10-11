@@ -98,6 +98,7 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
         bio=sponsor.bio,
         can_hunt=not settings.invite_only or sponsor.referral_code is not None,
         is_ambassador=sponsor.is_ambassador,
+        is_admin=credits.is_admin(sponsor, settings),
         invite_only=settings.invite_only,
         verified_breaks=allowed.breaks,
         credits=CreditsOut(

@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agentbounty.api import agent_guide, google, health, public, session, spa, sponsor
+from agentbounty.api import admin, agent_guide, google, health, public, session, spa, sponsor
 from agentbounty.api.ratelimit import RateLimiter
 from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
@@ -91,6 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(public.router)
     app.include_router(session.router)
     app.include_router(google.router)
+    app.include_router(admin.router)
     app.include_router(agent_guide.router)
     # Last: it answers every path the routes above did not claim.
     spa.install(app)

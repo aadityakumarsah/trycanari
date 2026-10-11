@@ -21,6 +21,7 @@ from agentbounty.api.schemas import (
     BountyPublic,
     BreakOut,
     CanaryPublic,
+    InviteOut,
     PayoutOut,
     ReplyOut,
     StatsOut,
@@ -185,6 +186,15 @@ async def activity(request: Request, session: Transaction) -> ActivityOut:
         )
 
     return await cached(request, "activity", load)
+
+
+@router.get("/invites/{code}")
+async def invite(code: str, session: Transaction) -> InviteOut:
+    """What a referral code offers: who it is from and whether it has a use left."""
+    found = await credits.invite(session, code[:40])
+    if found is None:
+        raise HTTPException(404, "that invite does not exist")
+    return InviteOut(code=found.code, remaining=found.remaining, invited_by=found.invited_by)
 
 
 @router.get("/bounties/{bounty_id}")

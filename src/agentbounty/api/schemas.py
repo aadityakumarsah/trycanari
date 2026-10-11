@@ -94,6 +94,51 @@ class ReferralRedeem(Body):
     code: str = Field(min_length=1, max_length=40)
 
 
+class InviteOut(BaseModel):
+    code: str
+    remaining: int
+    invited_by: str | None
+
+
+class PersonOut(BaseModel):
+    """An account as an admin sees it."""
+
+    id: uuid.UUID
+    email: str
+    name: str | None
+    picture_url: str | None
+    github: str | None
+    company: str | None
+    is_admin: bool
+    # An owner named in the settings: an admin that cannot be unmade from here.
+    is_owner: bool
+    is_ambassador: bool
+    can_hunt: bool
+    referral_code: str | None
+    created_at: datetime
+
+
+class PersonUpdate(Body):
+    is_ambassador: bool | None = None
+    is_admin: bool | None = None
+    # Let them take part in bounties without a referral code.
+    can_hunt: Literal[True] | None = None
+
+
+class AdminCodeCreate(Body):
+    max_uses: StrictInt = Field(default=10, ge=1, le=10_000)
+    # The code itself; one is generated if left out.
+    code: str | None = Field(default=None, min_length=4, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
+
+
+class AdminCodeOut(BaseModel):
+    code: str
+    max_uses: int
+    used: int
+    owner_email: str | None
+    created_at: datetime
+
+
 class AccountOut(BaseModel):
     email: str
     name: str | None
@@ -110,6 +155,7 @@ class AccountOut(BaseModel):
     # has not redeemed a referral code yet.
     can_hunt: bool
     is_ambassador: bool
+    is_admin: bool
     # Whether attacks need an account and credits on this deployment.
     invite_only: bool
     verified_breaks: int

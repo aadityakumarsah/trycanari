@@ -2,6 +2,10 @@
 
     python -m agentbounty.admin code --uses 10          make a referral code
     python -m agentbounty.admin ambassador a@b.com      let an account hand out codes
+    python -m agentbounty.admin admin a@b.com           let an account run the platform
+
+Owners are named in ADMIN_EMAILS and need none of this: they are admins as soon as
+they sign in with Google, and do the rest from the Admin page.
 
 Ambassadors make their own codes from the dashboard. The first code, and the
 first ambassador, have to come from here.
@@ -32,6 +36,19 @@ async def make_code(uses: int, code: str | None) -> str:
         await engine.dispose()
 
 
+async def make_admin(email: str) -> str:
+    engine = create_engine(load_settings().database_url)
+    try:
+        async with create_session_factory(engine).begin() as session:
+            account = await session.scalar(select(Sponsor).where(Sponsor.email == email.lower()))
+            if account is None:
+                raise ServiceError(404, f"no account with the email {email}")
+            account.is_admin = True
+            return f"{account.email} is now an admin"
+    finally:
+        await engine.dispose()
+
+
 async def make_ambassador(email: str) -> str:
     engine = create_engine(load_settings().database_url)
     try:
@@ -53,12 +70,16 @@ def main() -> None:
     code.add_argument("--code", help="the code itself; one is generated if left out")
     ambassador = commands.add_parser("ambassador", help="let an account hand out codes")
     ambassador.add_argument("email")
+    admin = commands.add_parser("admin", help="let an account run the platform")
+    admin.add_argument("email")
     args = parser.parse_args()
     try:
         if args.command == "code":
             if args.uses < 1:
                 sys.exit("--uses must be at least 1")
             result = asyncio.run(make_code(args.uses, args.code))
+        elif args.command == "admin":
+            result = asyncio.run(make_admin(args.email))
         else:
             result = asyncio.run(make_ambassador(args.email))
     except ServiceError as error:

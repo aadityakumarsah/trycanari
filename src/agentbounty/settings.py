@@ -92,6 +92,11 @@ class Settings(BaseSettings):
     # allowance. This is what stops a stranger running up the model bill. Off, anyone may
     # attack without an account.
     invite_only: bool = False
+    # The owners: email addresses, separated by commas, whose accounts are always admins.
+    # It only counts for an account that signs in with Google, which is what proves the
+    # address is theirs; signing up with someone's email proves nothing.
+    admin_emails: str = ""
+
     # Credits an account may spend in any 24 hours: at first, and once it has a verified
     # break to its name.
     starter_credits: int = Field(default=25, ge=1)
@@ -190,6 +195,12 @@ class Settings(BaseSettings):
             if self.app_env == "production" and not self.public_url.startswith("https://"):
                 raise ValueError("PUBLIC_URL must be https when APP_ENV=production")
         return self
+
+    @property
+    def owners(self) -> frozenset[str]:
+        return frozenset(
+            email.strip().lower() for email in self.admin_emails.split(",") if email.strip()
+        )
 
     @property
     def google_sign_in(self) -> bool:

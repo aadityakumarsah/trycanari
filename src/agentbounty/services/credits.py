@@ -19,6 +19,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -159,11 +160,23 @@ async def redeem_for(session: AsyncSession, account: Sponsor, code: str | None) 
     await session.flush()
 
 
+def is_admin(account: Sponsor, settings: Settings) -> bool:
+    """Whether the account runs the platform: made an admin, or named as an owner in the
+    settings and proven to hold that address by signing in with Google."""
+    return account.is_admin or (account.google_sub is not None and account.email in settings.owners)
+
+
 async def create_code(
-    session: AsyncSession, owner: Sponsor | None, max_uses: int, code: str | None = None
+    session: AsyncSession,
+    owner: Sponsor | None,
+    max_uses: int,
+    code: str | None = None,
+    *,
+    unlimited: bool = False,
 ) -> ReferralCode:
-    """Make a code. With an owner it is an ambassador's; without, the operator's."""
-    if owner is not None:
+    """Make a code. An ambassador's are limited in number and size; an admin's, and the
+    operator's (no owner), are not."""
+    if owner is not None and not unlimited:
         if not owner.is_ambassador:
             raise ServiceError(403, "only ambassadors can make referral codes")
         if max_uses > MAX_USES_PER_CODE:
@@ -182,14 +195,52 @@ async def create_code(
     return referral
 
 
-async def codes_of(session: AsyncSession, owner: Sponsor) -> list[tuple[ReferralCode, int]]:
-    """An ambassador's codes, newest first, each with how many accounts joined with it."""
-    used = (
+def _used() -> Any:
+    return (
         select(func.count())
         .where(Sponsor.referral_code == ReferralCode.code)
         .correlate(ReferralCode)
         .scalar_subquery()
     )
+
+
+@dataclass(frozen=True)
+class Invite:
+    """What a referral code offers, as shown to whoever follows its link."""
+
+    code: str
+    remaining: int
+    invited_by: str | None
+
+
+async def invite(session: AsyncSession, code: str) -> Invite | None:
+    row = (
+        await session.execute(
+            select(ReferralCode, _used(), Sponsor.name)
+            .outerjoin(Sponsor, Sponsor.id == ReferralCode.owner_id)
+            .where(ReferralCode.code == normalise(code))
+        )
+    ).first()
+    if row is None:
+        return None
+    found, used, owner_name = row
+    return Invite(found.code, max(0, found.max_uses - int(used)), owner_name)
+
+
+async def all_codes(session: AsyncSession) -> list[tuple[ReferralCode, int, str | None]]:
+    """Every code, newest first, with its use and its owner's email."""
+    rows = await session.execute(
+        select(ReferralCode, _used(), Sponsor.email)
+        .outerjoin(Sponsor, Sponsor.id == ReferralCode.owner_id)
+        .order_by(ReferralCode.created_at.desc(), ReferralCode.id)
+        .limit(500)
+    )
+    return [(code, int(used), email) for code, used, email in rows]
+
+
+async def codes_of(session: AsyncSession, owner: Sponsor) -> list[tuple[ReferralCode, int]]:
+    """An ambassador's codes, newest first, each with how many accounts joined with it."""
+    used = _used()
     rows = await session.execute(
         select(ReferralCode, used)
         .where(ReferralCode.owner_id == owner.id)

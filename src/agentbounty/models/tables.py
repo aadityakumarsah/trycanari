@@ -65,6 +65,8 @@ class Sponsor(Base):
     location: Mapped[str | None] = mapped_column(Text)
     website: Mapped[str | None] = mapped_column(Text)
     bio: Mapped[str | None] = mapped_column(Text)
+    # Runs the platform: may make ambassadors, other admins and referral codes of any size.
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # May hand out referral codes.
     is_ambassador: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # The referral code the account has redeemed, which is what lets it take part in bounties.

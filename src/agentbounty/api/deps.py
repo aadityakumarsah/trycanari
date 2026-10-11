@@ -12,6 +12,7 @@ from agentbounty.api.session import session_identity, sponsor_of
 from agentbounty.db import get_transaction
 from agentbounty.models import Bounty, Sponsor
 from agentbounty.services import bounty as bounty_service
+from agentbounty.services import credits
 from agentbounty.services.crypto import Cipher
 from agentbounty.settings import Settings
 
@@ -58,6 +59,15 @@ async def current_sponsor(
     return sponsor
 
 
+async def current_admin(
+    request: Request, sponsor: Annotated[Sponsor, Depends(current_sponsor)]
+) -> Sponsor:
+    """An account that runs the platform. To anyone else the admin API does not exist."""
+    if not credits.is_admin(sponsor, request.app.state.settings):
+        raise HTTPException(404, "not found")
+    return sponsor
+
+
 async def maybe_sponsor(
     request: Request,
     session: Transaction,
@@ -85,5 +95,6 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 CipherDep = Annotated[Cipher, Depends(get_cipher)]
 SponsorDep = Annotated[Sponsor, Depends(current_sponsor)]
 MaybeSponsor = Annotated[Sponsor | None, Depends(maybe_sponsor)]
+AdminDep = Annotated[Sponsor, Depends(current_admin)]
 OwnBounty = Annotated[Bounty, Depends(own_bounty)]
 BearerToken = Annotated[str, Depends(bearer_token)]
