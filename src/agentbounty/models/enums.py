@@ -41,6 +41,8 @@ class DepositState(enum.StrEnum):
 
 class PayoutState(enum.StrEnum):
     PENDING = "pending"
+    # Handed to the wallet, result not yet recorded. Never sent again automatically.
+    SENDING = "sending"
     SENT = "sent"
     CONFIRMED = "confirmed"
     FAILED = "failed"

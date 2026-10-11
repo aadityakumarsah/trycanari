@@ -15,6 +15,7 @@ from agentbounty.api import health, public, sponsor
 from agentbounty.db import create_engine, create_session_factory
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
+from agentbounty.services.wallet import escrow_address
 from agentbounty.settings import Settings, load_settings
 
 
@@ -32,6 +33,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
     app.state.cipher = Cipher(settings.encryption_key.get_secret_value())
+    # Known from configuration, so this process can tell a sponsor where to deposit
+    # without holding a wallet. A missing or malformed address stops the app starting.
+    app.state.escrow_address = escrow_address(settings)
 
     @app.exception_handler(ServiceError)
     async def service_error(_: Request, exc: ServiceError) -> JSONResponse:

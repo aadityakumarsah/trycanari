@@ -7,6 +7,9 @@ x-app: &app
     MODEL_API_BASE: ${MODEL_API_BASE:-}
     MODEL_API_KEY: ${MODEL_API_KEY:-}
     WALLET_BACKEND: ${WALLET_BACKEND:-fake}
+    ESCROW_ADDRESS: ${ESCROW_ADDRESS:-}
+    PAYOUT_MAX_ZATOSHI: ${PAYOUT_MAX_ZATOSHI:-}
+    PAYOUT_DAILY_MAX_ZATOSHI: ${PAYOUT_DAILY_MAX_ZATOSHI:-}
     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
   depends_on:
     db:
@@ -44,10 +47,10 @@ services:
     <<: *app
     command: ["python", "-m", "agentbounty.workers.replay"]
 
-  # Placeholder command: the payment service is built in a later step.
+  # Matches deposits, pays findings, refunds closed bounties. The only service with a wallet.
   payment:
     <<: *app
-    command: ["sleep", "infinity"]
+    command: ["python", "-m", "agentbounty.workers.payment"]
 
 volumes:
   db-data:

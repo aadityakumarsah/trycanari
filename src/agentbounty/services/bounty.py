@@ -13,6 +13,7 @@ import secrets
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -32,6 +33,9 @@ from agentbounty.services import judge
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import EntryPoint, MockTool, TargetConfig
+from agentbounty.services.ledger import bounty_balance
+from agentbounty.services.payment import go_live_if_funded, required_balance
+from agentbounty.services.wallet import Network, validate_address
 
 # What each encrypted column is bound to (see Cipher.encrypt).
 SYSTEM_PROMPT = "target_configs.system_prompt"
@@ -370,9 +374,21 @@ async def activate(
     """Run the listing check, pin the working config and go live."""
     if bounty.state not in EDITABLE:
         raise ServiceError(409, f"the bounty is already {bounty.state}")
+    row = await _listable(session, cipher, bounty)
+    funded = await bounty_balance(session, bounty.id) >= required_balance(bounty)
+    if not (funded or allow_unfunded):
+        raise ServiceError(409, "the bounty must be funded before it can go live")
+    bounty.state = BountyState.LIVE
+    bounty.live_config_id = row.id
+    await session.flush()
+    return row
+
+
+async def _listable(session: AsyncSession, cipher: Cipher, bounty: Bounty) -> TargetConfigRow:
+    """The working config, if it passes the listing check and has not been broken."""
     row = await latest_config(session, bounty.id)
     if row is None:
-        raise ServiceError(409, "upload a config before activating")
+        raise ServiceError(409, "upload a config first")
     problems = listing_problems(await load_target(session, cipher, row))
     if problems:
         raise ServiceError(409, "listing check failed: " + "; ".join(problems))
@@ -383,9 +399,59 @@ async def activate(
     )
     if broken:
         raise ServiceError(409, "this config has been broken; upload a patched config first")
-    if not allow_unfunded:
-        raise ServiceError(409, "the bounty must be funded before it can go live")
-    bounty.state = BountyState.LIVE
-    bounty.live_config_id = row.id
-    await session.flush()
     return row
+
+
+async def fund(
+    session: AsyncSession,
+    cipher: Cipher,
+    bounty: Bounty,
+    refund_address: str,
+    network: Network,
+) -> int:
+    """Start funding: issue a one-time deposit code and wait for the deposit.
+
+    Returns the zatoshi still due. The listing check runs here, because the
+    payment process that later sets the bounty live cannot read the config.
+    Asking again while the deposit is awaited changes nothing and returns the
+    same code, so a sponsor who asks twice does not orphan a payment in flight.
+    """
+    if bounty.close_requested_at is not None or bounty.state is BountyState.CLOSED:
+        raise ServiceError(409, "the bounty is closed or closing")
+    if bounty.state is BountyState.LIVE:
+        raise ServiceError(409, "the bounty is already live")
+    if not validate_address(refund_address, network=network):
+        raise ServiceError(422, f"refund_address is not a shielded {network} address")
+    sponsor = await session.get_one(Sponsor, bounty.sponsor_id)
+    sponsor.refund_address = refund_address
+    if bounty.state is not BountyState.AWAITING_DEPOSIT:
+        await _listable(session, cipher, bounty)
+        bounty.deposit_code = "dep-" + secrets.token_hex(8)
+        bounty.state = BountyState.AWAITING_DEPOSIT
+    # Already covered, by an earlier overpayment say: no deposit to wait for.
+    await go_live_if_funded(session, bounty)
+    await session.flush()
+    return max(0, required_balance(bounty) - await bounty_balance(session, bounty.id))
+
+
+async def request_close(
+    session: AsyncSession, bounty: Bounty, refund_address: str | None, network: Network
+) -> None:
+    """Ask for the bounty to be closed and its unspent escrow refunded.
+
+    Nothing is paid here. The bounty stops taking attempts at once; the payment
+    process closes it and sends the refund once attempts already in flight have
+    been judged and any break among them paid.
+    """
+    if bounty.state is BountyState.CLOSED:
+        raise ServiceError(409, "the bounty is already closed")
+    sponsor = await session.get_one(Sponsor, bounty.sponsor_id)
+    if refund_address is not None:
+        if not validate_address(refund_address, network=network):
+            raise ServiceError(422, f"refund_address is not a shielded {network} address")
+        sponsor.refund_address = refund_address
+    if not sponsor.refund_address and await bounty_balance(session, bounty.id) > 0:
+        raise ServiceError(422, "a refund_address is needed to return the escrow")
+    if bounty.close_requested_at is None:
+        bounty.close_requested_at = datetime.now(UTC)
+    await session.flush()

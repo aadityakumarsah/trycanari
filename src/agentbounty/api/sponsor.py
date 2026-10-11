@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from agentbounty.api.deps import CipherDep, OwnBounty, SettingsDep, SponsorDep, Transaction
 from agentbounty.api.schemas import (
@@ -11,13 +11,17 @@ from agentbounty.api.schemas import (
     BountyCreated,
     CanaryIn,
     CanaryOut,
+    CloseIn,
+    CloseOut,
     ConfigIn,
     ConfigOut,
+    FundIn,
+    FundOut,
     SecretCanaryIn,
     SponsorCreate,
     SponsorCreated,
 )
-from agentbounty.models import CanaryType
+from agentbounty.models import BountyState, CanaryType
 from agentbounty.services import bounty as bounty_service
 from agentbounty.services.bounty import CanaryDefinition
 from agentbounty.services.errors import ServiceError
@@ -99,3 +103,42 @@ async def activate(
         session, cipher, bounty, allow_unfunded=settings.allow_unfunded_activation
     )
     return ActivateOut(state=bounty.state, config_hash=row.config_hash)
+
+
+@router.post("/bounties/{bounty_id}/fund")
+async def fund(
+    body: FundIn,
+    request: Request,
+    session: Transaction,
+    bounty: OwnBounty,
+    cipher: CipherDep,
+    settings: SettingsDep,
+) -> FundOut:
+    """Start funding. The bounty goes live when the deposit has confirmed.
+
+    This process never touches the wallet: it hands out the escrow address it
+    was configured with, and the payment process watches for the deposit.
+    """
+    due = await bounty_service.fund(
+        session, cipher, bounty, body.refund_address, settings.zcash_network
+    )
+    return FundOut(
+        state=bounty.state,
+        escrow_address=request.app.state.escrow_address,
+        deposit_code=bounty.deposit_code,
+        amount_due_zatoshi=due,
+        confirmations_required=settings.deposit_confirmations,
+    )
+
+
+@router.post("/bounties/{bounty_id}/close")
+async def close(
+    body: CloseIn, session: Transaction, bounty: OwnBounty, settings: SettingsDep
+) -> CloseOut:
+    """Stop taking attempts and ask for the unspent escrow back.
+
+    The payment process closes the bounty and sends the refund once attempts
+    already in flight have been judged and any break among them paid.
+    """
+    await bounty_service.request_close(session, bounty, body.refund_address, settings.zcash_network)
+    return CloseOut(state=bounty.state, closing=bounty.state is not BountyState.CLOSED)

@@ -528,6 +528,7 @@ def test_the_wallet_backend_follows_the_settings(settings: Settings) -> None:
             "zipher_cli_path": "/usr/local/bin/zipher-cli",
             "zipher_data_dir": "/wallets/escrow",
             "zipher_vault_pass": SecretStr("passphrase"),
+            "escrow_address": REAL_TESTNET_UNIFIED,
         }
     )
     wallet = make_wallet(zcash)

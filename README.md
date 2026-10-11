@@ -21,7 +21,8 @@ make down
 `docker compose run --rm api alembic upgrade head`.
 
 `db` is PostgreSQL 16 with a named volume. `api` starts only after `db` is healthy.
-`worker` replays queued attempts. `payment` idles for now; it is built in a later step.
+`worker` replays queued attempts. `payment` matches deposits, pays findings and sends
+refunds; it is the only service that holds a wallet.
 
 ### Tests and checks
 
@@ -50,6 +51,7 @@ set -a; . ./.env; set +a
 uv run alembic upgrade head
 uv run uvicorn agentbounty.app:create_app --factory --app-dir src
 PYTHONPATH=src uv run python -m agentbounty.workers.replay     # in a second terminal
+PYTHONPATH=src uv run python -m agentbounty.workers.payment    # in a third
 ```
 
 `--app-dir src` imports the package from the source tree. It is needed on macOS when the
@@ -73,6 +75,10 @@ to start, naming the variable, if a required one is missing or invalid.
 | `ZCASH_NETWORK` | app | `testnet` (default) or `mainnet` |
 | `ZIPHER_CLI_PATH`, `ZIPHER_DATA_DIR`, `ZIPHER_SERVER` | wallet | The zipher-cli binary, its wallet directory and the lightwalletd server. The first two are required when `WALLET_BACKEND=zcash` |
 | `ZIPHER_VAULT_PASS`, `ZIPHER_SEED` | wallet | What unlocks the seed for signing. Passed only to the signing step |
+| `ESCROW_ADDRESS` | app | The wallet's shielded address, which sponsors deposit to. Required when `WALLET_BACKEND=zcash` |
+| `PAYOUT_MAX_ZATOSHI`, `PAYOUT_DAILY_MAX_ZATOSHI` | payment | Caps on payouts to hunters, per payment and per rolling 24 hours. Required in production |
+| `DEPOSIT_CONFIRMATIONS`, `PAYMENT_POLL_SECONDS` | payment | Confirmations before a deposit is credited, and the polling interval. Defaults `3`, `30` |
+| `FAKE_WALLET_AUTOFUND` | payment | With the fake wallet, make awaited deposits arrive by themselves. Default `true` |
 | `FEE_RATE` | app | The platform fee as a fraction of the reward. Default `0.1` |
 | `WORKER_POLL_SECONDS`, `ATTEMPT_TIMEOUT_SECONDS`, `ATTEMPT_MAX_TRIES` | worker | Queue polling interval, how long a running attempt may go before its worker is taken for dead, and how many tries an attempt gets. Defaults `2`, `900`, `3` |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Compose | Credentials and database for the `db` service |
@@ -103,8 +109,42 @@ config becomes a finding and pauses the bounty; attempts of one bounty run in ar
 order, so that is the first one submitted. An attempt whose bounty is no longer live on
 the config it was bound to ends as `not_counted`.
 
-Until funding exists, a bounty can be activated without a deposit when `APP_ENV` is
-`development` or `test`. In `production`, activation is refused.
+## Money
+
+```
+POST /v1/bounties/{id}/fund     get the escrow address and a deposit code   (sponsor)
+POST /v1/bounties/{id}/close    stop taking attempts, ask for the refund    (sponsor)
+```
+
+The payment process is the only caller of the wallet. It serves no requests: it acts
+on rows the other processes wrote, so no request can ask it to pay.
+
+- **Funding.** `fund` runs the listing check, issues a one-time deposit code and puts
+  the bounty in `awaiting_deposit`. The sponsor sends reward plus fee to the escrow
+  address with the code as the memo. After `DEPOSIT_CONFIRMATIONS` the deposit is
+  entered in the ledger and, once the balance covers reward and fee, the bounty goes
+  live. A deposit whose memo matches no open bounty is recorded as `unmatched` and left
+  for a person. Crediting is idempotent on the transaction ID.
+- **Payouts.** For each verified finding without a payout: a payout row keyed by the
+  finding (unique in the database), then the checks (reward and fee within the bounty's
+  balance, the per-payment cap, the daily cap), then the send, then the ledger entries.
+  A rejected payout is rolled back whole and reconsidered on the next pass.
+- **Sending.** A row is committed as `sending` before the wallet is called and as `sent`
+  after. If the process dies in between, the row stays `sending` and is never sent
+  again automatically, because nobody can know whether the money left; the log says so
+  and a person decides. A send the wallet clearly refused goes back to `pending` and is
+  retried.
+- **Closing.** `close` stops new attempts at once. Once attempts already queued have been
+  judged and any break among them paid, the payment process enters a refund for the
+  remaining balance (one per bounty, unique in the database) and sends it to the
+  sponsor's refund address.
+
+With `WALLET_BACKEND=fake` there is no chain to pay on, so the payment process makes
+each awaited deposit arrive by itself (`FAKE_WALLET_AUTOFUND`). A local stack therefore
+runs the whole flow, from funding to payout, without any real money.
+
+A bounty can also be activated without a deposit (`POST .../activate`) when `APP_ENV` is
+`development` or `test`. In `production`, activation needs the escrow to be funded.
 
 ## The wallet
 
@@ -153,7 +193,7 @@ src/agentbounty/
   db.py          Async engine, session factory, get_session dependency
   api/           HTTP routes
   services/      bounty, attempts, judge, harness, model, wallet, crypto, ledger, payment
-  workers/       replay: the worker that turns attempts into verdicts
+  workers/       replay: turns attempts into verdicts. payment: the only holder of a wallet
   models/        Database models and enum types
   templates/     Jinja2 templates
 migrations/      Alembic environment and versions

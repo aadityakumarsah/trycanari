@@ -24,6 +24,7 @@ TABLES = {
     "deposits",
     "payouts",
     "ledger_entries",
+    "refunds",
 }
 ENUM_TYPES = {
     "bounty_state",

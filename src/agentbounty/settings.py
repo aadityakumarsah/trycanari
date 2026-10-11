@@ -44,6 +44,20 @@ class Settings(BaseSettings):
     zipher_vault_pass: SecretStr | None = None
     zipher_seed: SecretStr | None = None
 
+    # The shielded address sponsors deposit to: the wallet's own address. Required with
+    # WALLET_BACKEND=zcash; the fake wallet has a fixed address of its own.
+    escrow_address: str | None = None
+    # Confirmations a deposit needs before it is credited.
+    deposit_confirmations: int = Field(default=3, ge=1)
+    # Spending caps on payouts to hunters, in zatoshi: per payment, and per rolling
+    # 24 hours. Unset means no cap; both are required in production.
+    payout_max_zatoshi: int | None = Field(default=None, gt=0)
+    payout_daily_max_zatoshi: int | None = Field(default=None, gt=0)
+    payment_poll_seconds: float = Field(default=30.0, gt=0)
+    # With the fake wallet, the payment process makes each awaited deposit arrive by
+    # itself, so the whole flow runs locally without a chain.
+    fake_wallet_autofund: bool = True
+
     # The platform's fee, as a fraction of the reward.
     fee_rate: Decimal = Field(default=Decimal("0.1"), ge=0, le=1)
 
@@ -59,6 +73,9 @@ class Settings(BaseSettings):
         "zipher_data_dir",
         "zipher_server",
         "zipher_seed",
+        "escrow_address",
+        "payout_max_zatoshi",
+        "payout_daily_max_zatoshi",
         mode="before",
     )
     @classmethod
@@ -96,9 +113,18 @@ class Settings(BaseSettings):
     def _wallet_backend_is_usable(self) -> Self:
         if self.wallet_backend == "zcash" and not (self.zipher_cli_path and self.zipher_data_dir):
             raise ValueError("WALLET_BACKEND=zcash needs ZIPHER_CLI_PATH and ZIPHER_DATA_DIR")
+        if self.wallet_backend == "zcash" and not self.escrow_address:
+            raise ValueError("WALLET_BACKEND=zcash needs ESCROW_ADDRESS")
         # A fake wallet in production would record payouts that were never sent.
         if self.wallet_backend == "fake" and self.app_env == "production":
             raise ValueError("WALLET_BACKEND=fake is not allowed when APP_ENV=production")
+        if self.app_env == "production" and None in (
+            self.payout_max_zatoshi,
+            self.payout_daily_max_zatoshi,
+        ):
+            raise ValueError(
+                "APP_ENV=production needs PAYOUT_MAX_ZATOSHI and PAYOUT_DAILY_MAX_ZATOSHI"
+            )
         return self
 
     @property

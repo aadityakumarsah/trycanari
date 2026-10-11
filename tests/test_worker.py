@@ -76,6 +76,7 @@ async def test_only_the_first_hunter_to_break_a_config_is_paid(platform: Platfor
         "total_runs": 0,
         "canary": None,
         "replies": [],
+        "payout": None,
     }
     assert model.conversations == 5
     assert await count(platform, Finding) == 1
@@ -285,6 +286,7 @@ async def test_an_attempt_that_keeps_failing_ends_in_error(platform: Platform) -
         "total_runs": None,
         "canary": None,
         "replies": [],
+        "payout": None,
     }
     # The failed attempt does not block the queue behind it.
     assert (await attempt_row(platform, later)).state is AttemptState.ERROR

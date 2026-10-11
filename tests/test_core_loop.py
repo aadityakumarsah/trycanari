@@ -78,6 +78,7 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
         "total_runs": None,
         "canary": None,
         "replies": [],
+        "payout": None,
     }
     assert await platform.poll(weak) == {
         "state": "done",
@@ -86,6 +87,7 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
         "total_runs": 5,
         "canary": None,
         "replies": [{"text": "How can I help?", "tool_calls": []}],
+        "payout": None,
     }
 
     # --- a strong attempt --------------------------------------------------------------
@@ -103,6 +105,7 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
             },
             {"text": "Done.", "tool_calls": []},
         ],
+        "payout": None,
     }
 
     # --- a finding exists and the bounty is paused -------------------------------------

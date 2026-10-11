@@ -18,6 +18,8 @@ def environment(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     monkeypatch.setenv("WALLET_BACKEND", "fake")
     for optional in ("MODEL_API_BASE", "MODEL_API_KEY", "FEE_RATE", "ZCASH_NETWORK"):
         monkeypatch.delenv(optional, raising=False)
+    for optional in ("ESCROW_ADDRESS", "PAYOUT_MAX_ZATOSHI", "PAYOUT_DAILY_MAX_ZATOSHI"):
+        monkeypatch.delenv(optional, raising=False)
     for optional in ("ZIPHER_CLI_PATH", "ZIPHER_DATA_DIR", "ZIPHER_SERVER", "ZIPHER_SEED"):
         monkeypatch.delenv(optional, raising=False)
     return monkeypatch
@@ -83,7 +85,18 @@ def test_the_fake_model_is_refused_in_production(environment: pytest.MonkeyPatch
     environment.setenv("WALLET_BACKEND", "zcash")
     environment.setenv("ZIPHER_CLI_PATH", "/usr/local/bin/zipher-cli")
     environment.setenv("ZIPHER_DATA_DIR", "/wallets/escrow")
-    assert not load_settings().allow_unfunded_activation
+    environment.setenv("ESCROW_ADDRESS", "utest1escrow")
+    # Production must cap what the payment process can spend.
+    with pytest.raises(SettingsError, match="PAYOUT_MAX_ZATOSHI and PAYOUT_DAILY_MAX_ZATOSHI"):
+        load_settings()
+    environment.setenv("PAYOUT_MAX_ZATOSHI", "500000000")
+    environment.setenv("PAYOUT_DAILY_MAX_ZATOSHI", "2000000000")
+    settings = load_settings()
+    assert not settings.allow_unfunded_activation
+    assert (settings.payout_max_zatoshi, settings.payout_daily_max_zatoshi) == (
+        500_000_000,
+        2_000_000_000,
+    )
 
 
 def test_the_wallet_defaults_to_fake_and_zcash_needs_a_binary_and_a_wallet(
@@ -98,6 +111,9 @@ def test_the_wallet_defaults_to_fake_and_zcash_needs_a_binary_and_a_wallet(
         load_settings()
     environment.setenv("ZIPHER_CLI_PATH", "/usr/local/bin/zipher-cli")
     environment.setenv("ZIPHER_DATA_DIR", "/wallets/escrow")
+    with pytest.raises(SettingsError, match="needs ESCROW_ADDRESS"):
+        load_settings()
+    environment.setenv("ESCROW_ADDRESS", "utest1escrow")
     environment.setenv("ZIPHER_VAULT_PASS", "passphrase")
     environment.setenv("ZIPHER_SEED", "abandon ability able")
     settings = load_settings()

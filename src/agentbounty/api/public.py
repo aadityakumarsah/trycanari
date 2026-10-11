@@ -8,13 +8,14 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentbounty.api.deps import BearerToken, Transaction
+from agentbounty.api.deps import BearerToken, SettingsDep, Transaction
 from agentbounty.api.schemas import (
     AttemptAccepted,
     AttemptIn,
     AttemptStatusOut,
     BountyPublic,
     CanaryPublic,
+    PayoutOut,
     ReplyOut,
     ToolCallOut,
 )
@@ -36,7 +37,7 @@ async def _public(session: AsyncSession, bounty: Bounty) -> BountyPublic:
     return BountyPublic(
         id=bounty.id,
         state=bounty.state,
-        accepting_attempts=bounty.state is BountyState.LIVE,
+        accepting_attempts=bounty.state is BountyState.LIVE and bounty.close_requested_at is None,
         reward_zatoshi=bounty.reward_zatoshi,
         entry_points=[EntryPoint(slot) for slot in config.entry_points_json] if config else [],
         canaries=[CanaryPublic(type=c.type, public_label=c.public_label) for c in canaries],
@@ -48,7 +49,7 @@ async def list_bounties(session: Transaction) -> list[BountyPublic]:
     """Bounties that are live right now, oldest first."""
     live = await session.scalars(
         select(Bounty)
-        .where(Bounty.state == BountyState.LIVE)
+        .where(Bounty.state == BountyState.LIVE, Bounty.close_requested_at.is_(None))
         .order_by(Bounty.created_at, Bounty.id)
     )
     return [await _public(session, bounty) for bounty in live]
@@ -65,11 +66,11 @@ async def get_bounty(bounty_id: uuid.UUID, session: Transaction) -> BountyPublic
 
 @router.post("/bounties/{bounty_id}/attempts", status_code=202)
 async def submit_attempt(
-    bounty_id: uuid.UUID, body: AttemptIn, session: Transaction
+    bounty_id: uuid.UUID, body: AttemptIn, session: Transaction, settings: SettingsDep
 ) -> AttemptAccepted:
     fills = [SlotFill(fill.slot, fill.content) for fill in body.fills]
     attempt, token = await attempt_service.submit_attempt(
-        session, bounty_id, fills, body.payout_address
+        session, bounty_id, fills, body.payout_address, settings.zcash_network
     )
     return AttemptAccepted(attempt_id=attempt.id, status_token=token)
 
@@ -94,4 +95,11 @@ async def get_attempt(
             )
             for reply in status.replies
         ],
+        payout=None
+        if status.payout is None
+        else PayoutOut(
+            state=status.payout.state,
+            amount_zatoshi=status.payout.amount_zatoshi,
+            txid=status.payout.txid,
+        ),
     )

@@ -24,6 +24,7 @@ from agentbounty.models import (
     BountyState,
     Canary,
     Finding,
+    Payout,
     Run,
 )
 from agentbounty.models import TargetConfig as TargetConfigRow
@@ -37,6 +38,7 @@ from agentbounty.services.harness import (
     SlotFill,
     validate_fills,
 )
+from agentbounty.services.wallet import Network, validate_address
 
 Verdict = Literal["verified", "not_verified", "not_counted"]
 
@@ -45,7 +47,11 @@ Verdict = Literal["verified", "not_verified", "not_counted"]
 
 
 async def submit_attempt(
-    session: AsyncSession, bounty_id: uuid.UUID, fills: Sequence[SlotFill], payout_address: str
+    session: AsyncSession,
+    bounty_id: uuid.UUID,
+    fills: Sequence[SlotFill],
+    payout_address: str,
+    network: Network,
 ) -> tuple[Attempt, str]:
     """Queue an attempt against the bounty's live config. Returns it with its status token."""
     # A shared lock: submissions do not block each other, but none can slip past a pause.
@@ -56,6 +62,11 @@ async def submit_attempt(
         raise ServiceError(404, "bounty not found")
     if bounty.state is not BountyState.LIVE or bounty.live_config_id is None:
         raise ServiceError(409, f"the bounty is {bounty.state} and is not accepting attempts")
+    if bounty.close_requested_at is not None:
+        raise ServiceError(409, "the bounty is closing and is not accepting attempts")
+    # A reward can only ever be sent to a shielded address, so refuse anything else now.
+    if not validate_address(payout_address, network=network):
+        raise ServiceError(422, f"payout_address is not a shielded {network} address")
     config = await session.get_one(TargetConfigRow, bounty.live_config_id)
     try:
         validate_fills([EntryPoint(slot) for slot in config.entry_points_json], fills)
@@ -305,6 +316,8 @@ class AttemptStatus:
     canary: Canary | None = None
     # The assistant messages of one run: the one that tripped the canary, if any did.
     replies: tuple[dict[str, Any], ...] = ()
+    # The payout for a verified attempt, once the payment process has created it.
+    payout: Payout | None = None
 
 
 async def attempt_status(session: AsyncSession, attempt_id: uuid.UUID, token: str) -> AttemptStatus:
@@ -353,4 +366,7 @@ async def attempt_status(session: AsyncSession, attempt_id: uuid.UUID, token: st
         total_runs=len(runs),
         canary=await session.get(Canary, uuid.UUID(top)) if top else None,
         replies=replies,
+        payout=None
+        if finding is None
+        else await session.scalar(select(Payout).where(Payout.finding_id == finding.id)),
     )

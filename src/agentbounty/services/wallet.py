@@ -505,6 +505,21 @@ class ZcashWallet:
         return balance.sapling + balance.orchard
 
 
+def escrow_address(settings: Settings) -> str:
+    """The address sponsors deposit to. Raises ValueError if it is missing or malformed.
+
+    Read from the environment, not from the wallet, so that the API process can
+    tell a sponsor where to pay without ever holding a wallet.
+    """
+    if settings.escrow_address is None:
+        if settings.wallet_backend == "fake":
+            return FakeWallet(settings.zcash_network).address
+        raise ValueError("ESCROW_ADDRESS is not set")
+    if not validate_address(settings.escrow_address, network=settings.zcash_network):
+        raise ValueError(f"ESCROW_ADDRESS is not a shielded {settings.zcash_network} address")
+    return settings.escrow_address
+
+
 def make_wallet(settings: Settings) -> WalletBackend:
     """The wallet WALLET_BACKEND selects."""
     if settings.wallet_backend == "fake":

@@ -1,4 +1,4 @@
-"""The ten tables.
+"""The tables.
 
 Money is BIGINT zatoshi (1 ZEC = 100_000_000 zatoshi). No table stores a
 balance: a bounty's balance is the sum of its ledger entries.
@@ -73,6 +73,9 @@ class Bounty(Base):
     live_config_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("target_configs.id", use_alter=True)
     )
+    # Set when the sponsor asks to close. The bounty takes no new attempts from then on
+    # and becomes closed once the attempts already in flight have been judged and paid.
+    close_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_now()
 
 
@@ -202,6 +205,27 @@ class Payout(Base):
     finding_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("findings.id"))
     amount_zatoshi: Mapped[int] = mapped_column(BigInteger)
     fee_zatoshi: Mapped[int] = mapped_column(BigInteger)
+    to_address: Mapped[str] = mapped_column(Text)
+    txid: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[PayoutState] = mapped_column(
+        pg_enum(PayoutState, "payout_state"), default=PayoutState.PENDING, server_default="pending"
+    )
+    created_at: Mapped[datetime] = created_now()
+
+
+class Refund(Base):
+    """The unspent escrow going back to the sponsor when a bounty closes."""
+
+    __tablename__ = "refunds"
+    __table_args__ = (
+        # One refund per bounty, guaranteed here and not by application code.
+        UniqueConstraint("bounty_id"),
+        CheckConstraint("amount_zatoshi > 0", name="amount_positive"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"))
+    amount_zatoshi: Mapped[int] = mapped_column(BigInteger)
     to_address: Mapped[str] = mapped_column(Text)
     txid: Mapped[str | None] = mapped_column(Text)
     state: Mapped[PayoutState] = mapped_column(

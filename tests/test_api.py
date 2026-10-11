@@ -11,7 +11,16 @@ from pydantic import SecretStr
 from agentbounty.app import create_app
 from agentbounty.settings import Settings
 
-from .platform import DEMO_CONFIG, SECRET, SECRET_CANARY, STRONG, TOOL_CANARY, WEAK, Platform
+from .platform import (
+    DEMO_CONFIG,
+    HUNTER,
+    SECRET,
+    SECRET_CANARY,
+    STRONG,
+    TOOL_CANARY,
+    WEAK,
+    Platform,
+)
 
 
 async def test_sponsor_endpoints_need_the_owners_key(platform: Platform) -> None:
@@ -221,6 +230,9 @@ async def test_in_production_a_bounty_cannot_go_live_unfunded(service_settings: 
             "wallet_backend": "zcash",
             "zipher_cli_path": "/usr/local/bin/zipher-cli",
             "zipher_data_dir": "/wallets/escrow",
+            "escrow_address": HUNTER,
+            "payout_max_zatoshi": 10**9,
+            "payout_daily_max_zatoshi": 10**10,
         }
     )
     app = create_app(production)

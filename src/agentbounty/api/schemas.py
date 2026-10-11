@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-from agentbounty.models import AttemptState, BountyState, CanaryType
+from agentbounty.models import AttemptState, BountyState, CanaryType, PayoutState
 from agentbounty.services.harness import MAX_SLOT_CHARACTERS, EntryPoint
 from agentbounty.services.judge import Operator
 
@@ -99,6 +99,31 @@ class ActivateOut(BaseModel):
     config_hash: str
 
 
+class FundIn(Body):
+    # Where the unspent escrow goes when the bounty closes.
+    refund_address: str = Field(min_length=1, max_length=512)
+
+
+class FundOut(BaseModel):
+    state: BountyState
+    # Send the amount due to this address with the deposit code as the memo.
+    escrow_address: str
+    deposit_code: str
+    amount_due_zatoshi: int
+    # Confirmations the deposit needs before the bounty goes live.
+    confirmations_required: int
+
+
+class CloseIn(Body):
+    refund_address: str | None = Field(default=None, min_length=1, max_length=512)
+
+
+class CloseOut(BaseModel):
+    state: BountyState
+    # True until attempts in flight have finished and the refund has been entered.
+    closing: bool
+
+
 # --- public -----------------------------------------------------------------------------
 
 
@@ -142,6 +167,12 @@ class ReplyOut(BaseModel):
     tool_calls: list[ToolCallOut]
 
 
+class PayoutOut(BaseModel):
+    state: PayoutState
+    amount_zatoshi: int
+    txid: str | None
+
+
 class AttemptStatusOut(BaseModel):
     state: AttemptState
     # Set once the attempt is done. "not_counted": the bounty was no longer live on the
@@ -152,3 +183,5 @@ class AttemptStatusOut(BaseModel):
     canary: CanaryPublic | None = None
     # What the agent said and did in one run.
     replies: list[ReplyOut] = Field(default_factory=list)
+    # Set for a verified attempt once its payout has been created.
+    payout: PayoutOut | None = None
