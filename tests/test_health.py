@@ -13,10 +13,10 @@ async def test_health_is_ok_when_the_database_answers(client: httpx.AsyncClient)
     assert response.json() == {"status": "ok"}
 
 
-async def test_health_is_503_when_the_database_is_unreachable() -> None:
+async def test_health_is_503_when_the_database_is_unreachable(settings: Settings) -> None:
     # Port 1 on loopback refuses connections.
-    unreachable = Settings(
-        app_env="test", database_url="postgresql+asyncpg://nobody@127.0.0.1:1/none"
+    unreachable = settings.model_copy(
+        update={"database_url": "postgresql+asyncpg://nobody@127.0.0.1:1/none"}
     )
     async for client in client_for(unreachable):
         response = await client.get("/health")

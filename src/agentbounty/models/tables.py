@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Integer,
     LargeBinary,
@@ -46,6 +47,8 @@ class Sponsor(Base):
     email: Mapped[str] = mapped_column(Text, unique=True)
     # Unknown until the sponsor funds a bounty.
     refund_address: Mapped[str | None] = mapped_column(Text)
+    # SHA-256 of the sponsor's API key. The key itself is shown once and never stored.
+    api_key_hash: Mapped[str | None] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = created_now()
 
 
@@ -104,7 +107,8 @@ class Canary(Base):
     config_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("target_configs.id"), index=True)
     type: Mapped[CanaryType] = mapped_column(pg_enum(CanaryType, "canary_type"))
     secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
-    rule_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # none_as_null: a missing rule is SQL NULL, not the JSON value null.
+    rule_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     # Shown to hunters. The secret and the rule never are.
     public_label: Mapped[str] = mapped_column(Text)
 
@@ -124,8 +128,12 @@ class Attempt(Base):
         server_default="queued",
         index=True,
     )
+    # SHA-256 of the token the hunter reads the result with.
     status_token: Mapped[str] = mapped_column(Text, unique=True)
     submitted_at: Mapped[datetime] = created_now()
+    # When a worker last claimed the attempt, and how many times one has.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    tries: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
 
 
 class Run(Base):
@@ -143,11 +151,17 @@ class Run(Base):
 
 class Finding(Base):
     __tablename__ = "findings"
-    # An attempt is judged once, so it yields at most one finding.
-    __table_args__ = (UniqueConstraint("attempt_id"),)
+    __table_args__ = (
+        # An attempt is judged once, so it yields at most one finding.
+        UniqueConstraint("attempt_id"),
+        # One finding per hole: a config can be broken, and paid for, only once.
+        UniqueConstraint("bounty_id", "config_hash"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     attempt_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("attempts.id"))
+    bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"))
+    config_hash: Mapped[str] = mapped_column(Text)
     canary_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("canaries.id"), index=True)
     tripped_runs: Mapped[int] = mapped_column(Integer)
     state: Mapped[FindingState] = mapped_column(

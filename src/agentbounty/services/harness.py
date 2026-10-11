@@ -116,11 +116,16 @@ Attempt = Sequence[SlotFill]
 
 def validate_attempt(config: TargetConfig, attempt: Attempt) -> None:
     """Raise AttemptError unless the attempt fills only declared slots, each at most once."""
+    validate_fills(config.entry_points, attempt)
+
+
+def validate_fills(entry_points: Sequence[EntryPoint], attempt: Attempt) -> None:
+    """validate_attempt, for a caller that knows the entry points but not the whole config."""
     if not attempt:
         raise AttemptError("an attempt needs at least one fill")
     seen: set[EntryPoint] = set()
     for fill in attempt:
-        if fill.slot not in config.entry_points:
+        if fill.slot not in entry_points:
             raise AttemptError(f"'{fill.slot}' is not an entry point of this config")
         if fill.slot in seen:
             raise AttemptError(f"'{fill.slot}' is filled more than once")

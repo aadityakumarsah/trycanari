@@ -21,7 +21,7 @@ make down
 `docker compose run --rm api alembic upgrade head`.
 
 `db` is PostgreSQL 16 with a named volume. `api` starts only after `db` is healthy.
-`worker` and `payment` idle for now; they are built in later steps.
+`worker` replays queued attempts. `payment` idles for now; it is built in a later step.
 
 ### Tests and checks
 
@@ -47,7 +47,9 @@ Point `DATABASE_URL` at any PostgreSQL 16 database, then:
 ```sh
 uv sync
 set -a; . ./.env; set +a
+uv run alembic upgrade head
 uv run uvicorn agentbounty.app:create_app --factory --app-dir src
+PYTHONPATH=src uv run python -m agentbounty.workers.replay     # in a second terminal
 ```
 
 `--app-dir src` imports the package from the source tree. It is needed on macOS when the
@@ -64,9 +66,41 @@ to start, naming the variable, if a required one is missing or invalid.
 |---|---|---|
 | `APP_ENV` | app | `development`, `test` or `production` |
 | `DATABASE_URL` | app | `postgresql+asyncpg://user:password@host:port/database` |
-| `MODEL_API_BASE`, `MODEL_API_KEY` | app | OpenAI-compatible chat completions endpoint and its key, for real replays. Not needed with the fake model |
+| `ENCRYPTION_KEY` | app | 32 random bytes, base64. Encrypts system prompts, tool definitions and canary secrets |
+| `MODEL_BACKEND` | app | `fake` (deterministic, no key, refused in production) or `real` |
+| `MODEL_API_BASE`, `MODEL_API_KEY` | app | OpenAI-compatible chat completions endpoint and its key. Required when `MODEL_BACKEND=real` |
+| `FEE_RATE` | app | The platform fee as a fraction of the reward. Default `0.1` |
+| `WORKER_POLL_SECONDS`, `ATTEMPT_TIMEOUT_SECONDS`, `ATTEMPT_MAX_TRIES` | worker | Queue polling interval, how long a running attempt may go before its worker is taken for dead, and how many tries an attempt gets. Defaults `2`, `900`, `3` |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Compose | Credentials and database for the `db` service |
 | `DB_PORT`, `API_PORT` | Compose | Host ports for `db` and `api`, bound to 127.0.0.1 |
+
+## The core loop
+
+A sponsor signs up (`POST /v1/sponsors`, which returns an API key once), creates a
+draft bounty, uploads the agent's config, adds canaries and activates it. Hunters need
+no account: they list live bounties, submit an attempt with a payout address, and read
+the result with the status token they were given.
+
+```
+POST /v1/sponsors                      sign up, get an API key
+POST /v1/bounties                      create a draft                      (sponsor)
+PUT  /v1/bounties/{id}/config          upload the config, get its hash     (sponsor)
+POST /v1/bounties/{id}/canaries        add a canary                        (sponsor)
+POST /v1/bounties/{id}/activate        listing check, pin config, go live  (sponsor)
+GET  /v1/bounties, /v1/bounties/{id}   live bounties, labels only
+POST /v1/bounties/{id}/attempts        submit an attack
+GET  /v1/attempts/{id}                 state, verdict, one run's replies   (status token)
+```
+
+The `attempts` table is the queue. The worker claims the oldest runnable attempt,
+replays it five times against the config it was submitted against, judges every run,
+and writes the runs and the verdict in one transaction. The first verified break of a
+config becomes a finding and pauses the bounty; attempts of one bounty run in arrival
+order, so that is the first one submitted. An attempt whose bounty is no longer live on
+the config it was bound to ends as `not_counted`.
+
+Until funding exists, a bounty can be activated without a deposit when `APP_ENV` is
+`development` or `test`. In `production`, activation is refused.
 
 ## Layout
 
@@ -76,8 +110,8 @@ src/agentbounty/
   settings.py    Environment-driven settings
   db.py          Async engine, session factory, get_session dependency
   api/           HTTP routes
-  services/      bounty, judge, harness, model, ledger, payment
-  workers/       Background processes
+  services/      bounty, attempts, judge, harness, model, crypto, ledger, payment
+  workers/       replay: the worker that turns attempts into verdicts
   models/        Database models and enum types
   templates/     Jinja2 templates
 migrations/      Alembic environment and versions

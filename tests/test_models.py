@@ -73,7 +73,13 @@ async def make_finding(session: AsyncSession, bounty: Bounty) -> Finding:
     )
     session.add_all([canary, attempt])
     await session.flush()
-    finding = Finding(attempt_id=attempt.id, canary_id=canary.id, tripped_runs=3)
+    finding = Finding(
+        attempt_id=attempt.id,
+        bounty_id=bounty.id,
+        config_hash=config.config_hash,
+        canary_id=canary.id,
+        tripped_runs=3,
+    )
     session.add(finding)
     await session.flush()
     return finding

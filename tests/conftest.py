@@ -9,12 +9,16 @@ from pathlib import Path
 import httpx
 import pytest
 from alembic.config import Config
+from pydantic import SecretStr
 from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from agentbounty.app import create_app
+from agentbounty.services.crypto import generate_key
 from agentbounty.settings import Settings, load_settings
+
+from .platform import Platform
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -92,3 +96,36 @@ async def session(migrated_database_url: str) -> AsyncIterator[AsyncSession]:
             yield session
         await transaction.rollback()
     await engine.dispose()
+
+
+# --- the whole service, on a database of its own ----------------------------------------
+
+
+@pytest.fixture
+async def database_url(migrated_database_url: str) -> AsyncIterator[str]:
+    """A private copy of the migrated database, for tests that commit."""
+    server_url = load_settings().database_url
+    template = make_url(migrated_database_url).database
+    name = f"agentbounty_test_{secrets.token_hex(6)}"
+    await _admin(server_url, f'CREATE DATABASE "{name}" TEMPLATE "{template}"')
+    yield make_url(server_url).set(database=name).render_as_string(hide_password=False)
+    await _admin(server_url, f'DROP DATABASE "{name}" WITH (FORCE)')
+
+
+@pytest.fixture
+def service_settings(database_url: str) -> Settings:
+    return Settings(
+        app_env="test",
+        database_url=database_url,
+        encryption_key=SecretStr(generate_key()),
+        model_backend="fake",
+    )
+
+
+@pytest.fixture
+async def platform(service_settings: Settings) -> AsyncIterator[Platform]:
+    app = create_app(service_settings)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield Platform(app, client)
+    await app.state.engine.dispose()

@@ -2,6 +2,10 @@ x-app: &app
   build: .
   environment:
     APP_ENV: ${APP_ENV:?set APP_ENV in .env}
+    ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
+    MODEL_BACKEND: ${MODEL_BACKEND:?set MODEL_BACKEND in .env}
+    MODEL_API_BASE: ${MODEL_API_BASE:-}
+    MODEL_API_KEY: ${MODEL_API_KEY:-}
     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
   depends_on:
     db:
@@ -34,11 +38,12 @@ services:
       timeout: 5s
       retries: 5
 
-  # Placeholder commands: the replay worker and the payment service are built in later steps.
+  # Replays queued attempts. It has the model API and the encryption key, and no wallet.
   worker:
     <<: *app
-    command: ["sleep", "infinity"]
+    command: ["python", "-m", "agentbounty.workers.replay"]
 
+  # Placeholder command: the payment service is built in a later step.
   payment:
     <<: *app
     command: ["sleep", "infinity"]

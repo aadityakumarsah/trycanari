@@ -27,3 +27,11 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
     async with factory() as session:
         yield session
+
+
+async def get_transaction(request: Request) -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency: a session in a transaction that commits when the request
+    succeeds and rolls back if it raises."""
+    factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
+    async with factory.begin() as session:
+        yield session

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Literal
+import base64
+import binascii
+from decimal import Decimal
+from typing import Literal, Self
 
-from pydantic import Field, SecretStr, ValidationError, field_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ASYNC_DRIVER_PREFIX = "postgresql+asyncpg://"
+ENCRYPTION_KEY_BYTES = 32
 
 
 class SettingsError(RuntimeError):
@@ -20,11 +24,27 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"]
     # Holds the database password, so it is kept out of repr() and logs.
     database_url: str = Field(repr=False)
+    # 32 random bytes, base64. Encrypts system prompts, tool definitions and canary secrets.
+    encryption_key: SecretStr
 
-    # The model API used for real replays, in the OpenAI chat completions format.
-    # Both are unset when the deterministic FakeModel is used instead.
+    # "fake" is the deterministic FakeModel; "real" calls the API below.
+    model_backend: Literal["fake", "real"]
+    # An OpenAI-compatible chat completions endpoint and its key.
     model_api_base: str | None = None
     model_api_key: SecretStr | None = None
+
+    # The platform's fee, as a fraction of the reward.
+    fee_rate: Decimal = Field(default=Decimal("0.1"), ge=0, le=1)
+
+    worker_poll_seconds: float = Field(default=2.0, gt=0)
+    # A running attempt older than this is taken to belong to a dead worker and is retried.
+    attempt_timeout_seconds: float = Field(default=900.0, gt=0)
+    attempt_max_tries: int = Field(default=3, ge=1)
+
+    @field_validator("model_api_base", "model_api_key", mode="before")
+    @classmethod
+    def _empty_is_unset(cls, value: object) -> object:
+        return None if value == "" else value
 
     @field_validator("database_url")
     @classmethod
@@ -32,6 +52,31 @@ class Settings(BaseSettings):
         if not value.startswith(ASYNC_DRIVER_PREFIX):
             raise ValueError(f"must start with {ASYNC_DRIVER_PREFIX}")
         return value
+
+    @field_validator("encryption_key")
+    @classmethod
+    def _requires_a_256_bit_key(cls, value: SecretStr) -> SecretStr:
+        try:
+            key = base64.b64decode(value.get_secret_value(), validate=True)
+        except binascii.Error:
+            key = b""
+        if len(key) != ENCRYPTION_KEY_BYTES:
+            raise ValueError(f"must be {ENCRYPTION_KEY_BYTES} bytes, base64-encoded")
+        return value
+
+    @model_validator(mode="after")
+    def _model_backend_is_usable(self) -> Self:
+        if self.model_backend == "real" and not (self.model_api_base and self.model_api_key):
+            raise ValueError("MODEL_BACKEND=real needs MODEL_API_BASE and MODEL_API_KEY")
+        # FakeModel does whatever an attacker's message says, so every attack would be paid.
+        if self.model_backend == "fake" and self.app_env == "production":
+            raise ValueError("MODEL_BACKEND=fake is not allowed when APP_ENV=production")
+        return self
+
+    @property
+    def allow_unfunded_activation(self) -> bool:
+        """Outside production a bounty may go live without a deposit."""
+        return self.app_env != "production"
 
 
 def load_settings() -> Settings:
@@ -42,11 +87,12 @@ def load_settings() -> Settings:
         missing: list[str] = []
         invalid: list[str] = []
         for error in exc.errors(include_input=False, include_url=False):
-            name = str(error["loc"][0]).upper()
             if error["type"] == "missing":
-                missing.append(name)
+                missing.append(str(error["loc"][0]).upper())
+            elif error["loc"]:
+                invalid.append(f"{str(error['loc'][0]).upper()}: {error['msg']}")
             else:
-                invalid.append(f"{name}: {error['msg']}")
+                invalid.append(error["msg"])
         problems = []
         if missing:
             problems.append(f"missing required environment variable(s): {', '.join(missing)}")
