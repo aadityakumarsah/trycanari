@@ -142,6 +142,19 @@ class AdminCodeOut(BaseModel):
     created_at: datetime
 
 
+class AdminActionOut(BaseModel):
+    admin_email: str
+    action: str
+    target_email: str | None
+    detail: str | None
+    created_at: datetime
+
+
+class ActionsPage(BaseModel):
+    items: list[AdminActionOut]
+    total: int
+
+
 class PeoplePage(BaseModel):
     items: list[PersonOut]
     total: int
@@ -178,6 +191,8 @@ class AccountOut(BaseModel):
     can_hunt: bool
     is_ambassador: bool
     is_admin: bool
+    # The owner: the only one who can make or remove admins.
+    is_owner: bool
     # Whether attacks need an account and credits on this deployment.
     invite_only: bool
     verified_breaks: int
@@ -400,6 +415,17 @@ class RunOut(BaseModel):
     evidence: list[EvidenceOut]
 
 
+class HunterOut(BaseModel):
+    """Who broke the agent, as they describe themselves on their profile."""
+
+    name: str | None
+    picture_url: str | None
+    github: str | None
+    company: str | None
+    role: str | None
+    website: str | None
+
+
 class FindingOut(BaseModel):
     id: uuid.UUID
     state: str
@@ -411,6 +437,8 @@ class FindingOut(BaseModel):
     attack: list[FillIn]
     payout: PayoutOut | None
     runs: list[RunOut]
+    # Null when the attack was made without an account.
+    hunter: HunterOut | None = None
 
 
 class LedgerEntryOut(BaseModel):

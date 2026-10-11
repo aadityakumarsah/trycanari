@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="476 tests" src="https://img.shields.io/badge/tests-476%20passing-6ee7b7" />
+  <img alt="486 tests" src="https://img.shields.io/badge/tests-486%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Zcash" src="https://img.shields.io/badge/payouts-shielded%20ZEC-F4B728?logo=zcash&logoColor=black" />
@@ -48,8 +48,8 @@
 | Number | |
 |---:|---|
 | **35** | API endpoints |
-| **12** | database migrations |
-| **389** | Python tests |
+| **14** | database migrations |
+| **399** | Python tests |
 | **87** | web tests |
 | **~8,100** | lines of Python |
 | **~6,600** | lines of TypeScript |
@@ -201,8 +201,8 @@ of canary can be tripped.
 
 | Role | Can | How someone gets it |
 |---|---|---|
-| **Owner** | Everything an admin can; cannot be removed | Listed in `ADMIN_EMAILS`, and signed in with Google |
-| **Admin** | Make ambassadors and admins, grant or take back hunting access, make invites in bulk | An admin switches it on, on the Admin page |
+| **Owner** | Everything an admin can, and is the only one who makes or removes admins; cannot be removed | Listed in `ADMIN_EMAILS`, and signed in with Google |
+| **Admin** | Make ambassadors, grant or take back hunting access, make invites in bulk, read the admin log | The owner switches it on, on the Admin page |
 | **Ambassador** | Make single-use invite links (up to 25 unused at a time) and see which were used | An admin switches it on |
 | **Hunter** | Attack bounties, spending credits | Opens an invite link, or enters a referral code. Each works once |
 | **Sponsor** | List agents and fund bounties | Anyone with an account |
@@ -253,6 +253,7 @@ Everything comes from environment variables; `.env.example` lists them all with 
 | `ATTEMPTS_PER_ADDRESS_PER_HOUR` | 20 | Attacks per payout address |
 | `ATTEMPTS_PER_BOUNTY_PER_HOUR` | 60 | Attacks on one bounty |
 | `BOUNTY_DAILY_TOKEN_BUDGET` | 2,000,000 | Model tokens one bounty's replays may use in 24 hours |
+| `PLATFORM_DAILY_TOKEN_BUDGET` | 20,000,000 | The same for every bounty together: the ceiling on the model bill |
 | `FEE_RATE` | 0.1 | The platform's fee, charged only on a payout |
 | `PUBLIC_CACHE_SECONDS` | 5 | How long public pages are served from memory |
 
@@ -275,7 +276,7 @@ web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
 ├── src/components/   Flow · Transcript · AttemptStatus · ReferralGate · shared pieces
 └── cloudflare/       The Pages worker that proxies API paths
-migrations/versions/  0001 … 0012
+migrations/versions/  0001 … 0014
 tests/                One file per area; a scratch database per test
 docs/REFERENCE.md     The long version of everything on this page
 ```
@@ -284,7 +285,7 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 389 Python tests, each on its own scratch database
+make test         # 399 Python tests, each on its own scratch database
 make web-test     # 87 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
@@ -336,8 +337,6 @@ for anything sensitive.
   never funded.
 - **Payouts stop at "sent".** The three-method wallet interface cannot see an outgoing
   payment confirm.
-- **No site-wide token ceiling.** Limits are per bounty and per account, not across the
-  whole platform.
 - **CI is parked.** The workflow is at `ci/github-actions.yml`; copy it to
   `.github/workflows/ci.yml` to switch it on.
 - **No license yet.** All rights are reserved until one is added.

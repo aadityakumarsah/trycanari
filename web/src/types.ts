@@ -127,6 +127,7 @@ export interface Account {
   can_hunt: boolean;
   is_ambassador: boolean;
   is_admin: boolean;
+  is_owner: boolean;
   invite_only: boolean;
   verified_breaks: number;
   credits: Credits;
@@ -248,6 +249,23 @@ export interface Run {
   evidence: Evidence[];
 }
 
+export interface Hunter {
+  name: string | null;
+  picture_url: string | null;
+  github: string | null;
+  company: string | null;
+  role: string | null;
+  website: string | null;
+}
+
+export interface AdminAction {
+  admin_email: string;
+  action: string;
+  target_email: string | null;
+  detail: string | null;
+  created_at: string;
+}
+
 export interface Finding {
   id: string;
   state: "verified" | "paid";
@@ -258,6 +276,7 @@ export interface Finding {
   attack: { slot: EntryPoint; content: string }[];
   payout: PayoutInfo | null;
   runs: Run[];
+  hunter: Hunter | null;
 }
 
 export interface Ledger {

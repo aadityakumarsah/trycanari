@@ -56,6 +56,8 @@ class SubmissionLimits:
     per_bounty_per_hour: int | None = None
     # Model tokens a bounty's replays may use in a rolling 24 hours.
     bounty_daily_tokens: int | None = None
+    # The same, for every bounty together.
+    platform_daily_tokens: int | None = None
 
 
 async def _enforce_limits(
@@ -91,6 +93,17 @@ async def _enforce_limits(
         )
         if int(spent or 0) >= limits.bounty_daily_tokens:
             raise ServiceError(429, "this bounty's daily run budget is spent; try again later")
+    if limits.platform_daily_tokens is not None:
+        day_ago = datetime.now(UTC) - timedelta(days=1)
+        spent = await session.scalar(
+            select(func.coalesce(func.sum(Run.token_usage), 0))
+            .join(Attempt, Attempt.id == Run.attempt_id)
+            .where(Attempt.submitted_at > day_ago)
+        )
+        if int(spent or 0) >= limits.platform_daily_tokens:
+            raise ServiceError(
+                429, "the platform's daily run budget is spent; attacks reopen as it frees up"
+            )
 
 
 async def submit_attempt(

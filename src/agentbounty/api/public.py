@@ -245,6 +245,7 @@ async def submit_attempt(
             per_address_per_hour=settings.attempts_per_address_per_hour,
             per_bounty_per_hour=settings.attempts_per_bounty_per_hour,
             bounty_daily_tokens=settings.bounty_daily_token_budget,
+            platform_daily_tokens=settings.platform_daily_token_budget,
         ),
         account_id=account_id,
         charge=charge if settings.invite_only else None,

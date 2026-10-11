@@ -8,7 +8,7 @@ import { Icon } from "../components/Brand.tsx";
 import { Ago, Avatar, ErrorNote, Skeleton } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
 import { useToast } from "../toast.tsx";
-import type { AdminCode, Page, Person } from "../types.ts";
+import type { AdminAction, AdminCode, Page, Person } from "../types.ts";
 
 const PAGE = 25;
 
@@ -180,10 +180,10 @@ function People() {
                       on={person.is_admin}
                       locked={
                         person.is_owner
-                          ? "An owner is always an admin"
-                          : person.email === me?.email
-                            ? "You cannot remove your own admin access"
-                            : undefined
+                          ? "The owner is always an admin"
+                          : me?.is_owner
+                            ? undefined
+                            : "Only the owner can make or remove admins"
                       }
                       onChange={(next) =>
                         change(
@@ -330,13 +330,70 @@ function Codes() {
   );
 }
 
-const TABS = ["people", "codes"] as const;
+const WHAT: Record<string, string> = {
+  "is_admin=true": "made an admin",
+  "is_admin=false": "removed as an admin",
+  "is_ambassador=true": "made an ambassador",
+  "is_ambassador=false": "removed as an ambassador",
+  "hunting_granted=true": "given access to the bounties",
+  "hunting_granted=false": "had access to the bounties taken back",
+};
+
+/** What admins have done. It is written once and cannot be changed by anyone. */
+function Activity() {
+  const [offset, setOffset] = useState(0);
+  const address = `/v1/admin/actions?limit=${PAGE}&offset=${offset}`;
+  const log = useLoad((signal) => api<Page<AdminAction>>("GET", address, { signal }), address);
+  const list = log.data?.items ?? [];
+  const total = log.data?.total ?? 0;
+  return (
+    <section>
+      <ErrorNote>{log.error}</ErrorNote>
+      {!log.data && !log.error && <Skeleton lines={4} />}
+      {log.data && total === 0 && <p className="empty">Nothing has been done here yet.</p>}
+      {list.length > 0 && (
+        <ol className="feed log">
+          {list.map((item, index) => (
+            <li key={`${item.created_at}:${index}`}>
+              <span className="feed-icon">
+                <Icon name={item.action === "codes_created" ? "link" : "shield"} size={16} />
+              </span>
+              <span className="feed-main">
+                <span>
+                  {item.action === "codes_created" ? (
+                    <>
+                      <b>{item.admin_email}</b> created {item.detail}
+                    </>
+                  ) : (
+                    <>
+                      <b>{item.target_email ?? "Someone"}</b> was {WHAT[item.action] ?? item.action}
+                    </>
+                  )}
+                </span>
+                {item.action !== "codes_created" && <small>by {item.admin_email}</small>}
+              </span>
+              <span className="feed-side">
+                <small>
+                  <Ago iso={item.created_at} />
+                </small>
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+      <Pager offset={offset} total={total} onMove={setOffset} />
+    </section>
+  );
+}
+
+const TABS = ["people", "codes", "activity"] as const;
+const TAB_NAMES = { people: "People", codes: "Invites", activity: "Activity" } as const;
 
 /** The admin area. It is loaded only for an admin: nobody else's browser is sent this code. */
 export default function Admin() {
   const account = useAccount();
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") === "codes" ? "codes" : "people";
+  const tab = TABS.find((name) => name === params.get("tab")) ?? "people";
 
   if (!account.data) return account.error ? <ErrorNote>{account.error}</ErrorNote> : <Skeleton block lines={4} />;
   if (!account.data.is_admin) return <NotFound />;
@@ -363,11 +420,15 @@ export default function Admin() {
             className={tab === name ? "tab current" : "tab"}
             onClick={() => setParams(name === "people" ? {} : { tab: name }, { replace: true })}
           >
-            {name === "people" ? "People" : "Invites"}
+            {TAB_NAMES[name]}
           </button>
         ))}
       </div>
-      <div role="tabpanel">{tab === "people" ? <People /> : <Codes />}</div>
+      <div role="tabpanel">
+        {tab === "people" && <People />}
+        {tab === "codes" && <Codes />}
+        {tab === "activity" && <Activity />}
+      </div>
     </>
   );
 }

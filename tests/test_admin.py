@@ -39,6 +39,16 @@ async def promote(platform: Platform, email: str) -> None:
         await session.execute(update(Sponsor).where(Sponsor.email == email).values(is_admin=True))
 
 
+async def owner(platform: Platform) -> dict[str, str]:
+    """The owner: the address named in the settings, as an account Google vouches for."""
+    headers = await account(platform, OWNER)
+    async with platform.sessions.begin() as session:
+        await session.execute(
+            update(Sponsor).where(Sponsor.email == OWNER).values(google_sub="google-owner")
+        )
+    return headers
+
+
 async def test_the_admin_api_does_not_exist_for_anyone_else(club: Platform) -> None:
     someone = await account(club, "someone@example.com")
     for method, path in (
@@ -87,9 +97,8 @@ async def test_an_owner_is_an_admin_only_when_google_vouches_for_the_address(
         assert (mine["is_admin"], mine["is_owner"]) == (True, True)
 
 
-async def test_an_admin_makes_ambassadors_and_admins_and_grants_access(club: Platform) -> None:
-    boss = await account(club, "boss@example.com")
-    await promote(club, "boss@example.com")
+async def test_the_owner_makes_ambassadors_and_admins_and_grants_access(club: Platform) -> None:
+    boss = await owner(club)
     friend = await account(club, "friend@example.com")
     await club.client.patch("/v1/account", headers=friend, json={"name": "Grace Hopper"})
 
@@ -101,10 +110,7 @@ async def test_an_admin_makes_ambassadors_and_admins_and_grants_access(club: Pla
 
     everyone = await listed()
     assert everyone["total"] == 2
-    assert [person["email"] for person in everyone["items"]] == [
-        "friend@example.com",
-        "boss@example.com",
-    ]
+    assert [person["email"] for person in everyone["items"]] == ["friend@example.com", OWNER]
     (grace,) = (await listed(q="grace"))["items"]
     assert (grace["is_ambassador"], grace["is_admin"], grace["can_hunt"]) == (False, False, False)
     # Search text is only ever text: a wildcard matches nothing by itself.
@@ -113,11 +119,7 @@ async def test_an_admin_makes_ambassadors_and_admins_and_grants_access(club: Pla
     # Pages.
     first = await listed(limit=1)
     second = await listed(limit=1, offset=1)
-    assert (first["total"], len(first["items"]), second["items"][0]["email"]) == (
-        2,
-        1,
-        "boss@example.com",
-    )
+    assert (first["total"], len(first["items"]), second["items"][0]["email"]) == (2, 1, OWNER)
     for bad in ({"limit": 0}, {"limit": 101}, {"offset": -1}):
         refused = await club.client.get("/v1/admin/people", headers=boss, params=bad)
         assert refused.status_code == 422, bad
@@ -152,13 +154,11 @@ async def test_an_admin_makes_ambassadors_and_admins_and_grants_access(club: Pla
     assert (await change(grace, is_admin=False)).json()["is_admin"] is False
     assert (await club.client.get("/v1/admin/people", headers=friend)).status_code == 404
 
-    # An admin cannot lock themselves out, and a missing account is said to be missing.
-    me = next(person for person in everyone["items"] if person["email"] == "boss@example.com")
-    locked = await change(me, is_admin=False)
-    assert (locked.status_code, locked.json()["detail"]) == (
-        409,
-        "you cannot remove your own admin access",
-    )
+    # The owner cannot be unmade from here: asking changes nothing.
+    me = next(person for person in everyone["items"] if person["email"] == OWNER)
+    assert (me["is_owner"], me["is_admin"]) == (True, True)
+    still = (await change(me, is_admin=False)).json()
+    assert (still["is_owner"], still["is_admin"]) == (True, True)
     gone = await change({"id": "00000000-0000-0000-0000-000000000000"}, is_admin=True)
     assert gone.status_code == 404
     assert (await change(grace, anything="else")).status_code == 422
@@ -180,6 +180,59 @@ async def test_an_admin_makes_ambassadors_and_admins_and_grants_access(club: Pla
         with pytest.raises(DBAPIError, match="append-only"):
             async with club.sessions.begin() as session:
                 await session.execute(text(statement))
+
+    # The owner can read the log back, newest first, with who did what to whom.
+    log = (await club.client.get("/v1/admin/actions", headers=boss, params={"limit": 2})).json()
+    assert log["total"] == 6
+    assert log["items"][0] == {
+        "admin_email": OWNER,
+        "action": "is_admin=false",
+        "target_email": "friend@example.com",
+        "detail": "friend@example.com",
+        "created_at": log["items"][0]["created_at"],
+    }
+    assert (await club.client.get("/v1/admin/actions", headers=friend)).status_code == 404
+
+
+async def test_only_the_owner_decides_who_is_an_admin(club: Platform) -> None:
+    boss = await owner(club)
+    deputy = await account(club, "deputy@example.com")
+    await account(club, "other@example.com")
+    people = (await club.client.get("/v1/admin/people", headers=boss)).json()["items"]
+    ids = {person["email"]: person["id"] for person in people}
+
+    async def change(by: dict[str, str], email: str, **values: Any) -> httpx.Response:
+        return await club.client.patch(f"/v1/admin/people/{ids[email]}", headers=by, json=values)
+
+    assert (await change(boss, "deputy@example.com", is_admin=True)).json()["is_admin"] is True
+    mine = (await club.client.get("/v1/account", headers=deputy)).json()
+    assert (mine["is_admin"], mine["is_owner"]) == (True, False)
+    assert (await club.client.get("/v1/account", headers=boss)).json()["is_owner"] is True
+
+    # An admin does everything else, but not this: not for others, the owner, or themselves.
+    assert (await change(deputy, "other@example.com", is_ambassador=True)).status_code == 200
+    assert (await change(deputy, "other@example.com", hunting_granted=True)).status_code == 200
+    for email, value in (
+        ("other@example.com", True),
+        ("deputy@example.com", False),
+        (OWNER, True),
+    ):
+        refused = await change(deputy, email, is_admin=value)
+        assert (refused.status_code, refused.json()["detail"]) == (
+            403,
+            "only the owner can make or remove admins",
+        ), email
+    # Asking for what is already so is not a change, so it is not refused.
+    assert (await change(deputy, "other@example.com", is_admin=False)).status_code == 200
+    # Nothing an admin sent alongside a refused change was applied.
+    mixed = await change(deputy, "other@example.com", is_admin=True, is_ambassador=False)
+    assert mixed.status_code == 403
+    listed = (await club.client.get("/v1/admin/people", headers=boss, params={"q": "other"})).json()
+    assert listed["items"][0]["is_ambassador"] is True
+
+    # The owner takes it back, and the deputy is out at once.
+    assert (await change(boss, "deputy@example.com", is_admin=False)).json()["is_admin"] is False
+    assert (await club.client.get("/v1/admin/people", headers=deputy)).status_code == 404
 
 
 async def test_an_admin_makes_single_use_codes_and_an_invite_link_grants_access(

@@ -2,12 +2,14 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { NotFound } from "../App.tsx";
+import { pictureOf } from "../account.tsx";
 import { api } from "../api.ts";
 import { Transcript } from "../components/Transcript.tsx";
-import { Ago, Badge, Copyable, ErrorNote, Skeleton, when, words } from "../components/ui.tsx";
+import { Icon } from "../components/Brand.tsx";
+import { Ago, Avatar, Badge, Copyable, ErrorNote, Skeleton, when, words } from "../components/ui.tsx";
 import { useAction, useInterval, useLoad } from "../hooks.ts";
 import { formatZec } from "../money.ts";
-import type { AttemptActivity, EntryPoint, Finding, Ledger, SponsorBountyDetail } from "../types.ts";
+import type { AttemptActivity, EntryPoint, Finding, Hunter, Ledger, SponsorBountyDetail } from "../types.ts";
 
 interface Everything {
   bounty: SponsorBountyDetail;
@@ -402,6 +404,33 @@ function CanarySection({ bounty, act }: Props) {
   );
 }
 
+/** Who made the winning attack, as they describe themselves on their profile. */
+function HunterCard({ hunter }: { hunter: Hunter }) {
+  const line = [hunter.role, hunter.company].filter(Boolean).join(" at ");
+  return (
+    <div className="hunter-card">
+      <Avatar name={hunter.name} picture={pictureOf(hunter)} size={44} />
+      <div>
+        <p className="eyebrow">Found by</p>
+        <b>{hunter.name ?? "A hunter who has not added a name"}</b>
+        {line && <small>{line}</small>}
+      </div>
+      <span className="hunter-links">
+        {hunter.github && (
+          <a href={`https://github.com/${hunter.github}`} target="_blank" rel="noreferrer">
+            <Icon name="github" size={15} /> {hunter.github}
+          </a>
+        )}
+        {hunter.website && (
+          <a href={hunter.website} target="_blank" rel="noreferrer">
+            <Icon name="globe" size={15} /> Website
+          </a>
+        )}
+      </span>
+    </div>
+  );
+}
+
 function Findings({ findings }: { findings: Finding[] }) {
   return (
     <section>
@@ -420,6 +449,7 @@ function Findings({ findings }: { findings: Finding[] }) {
               </>
             )}
           </p>
+          {finding.hunter && <HunterCard hunter={finding.hunter} />}
           <h4>The attack</h4>
           {finding.attack.map((fill) => (
             <div key={fill.slot}>

@@ -106,3 +106,70 @@ async def test_public_answers_are_served_from_memory_for_a_few_seconds(
         await platform.submit(bounty_id, WEAK, expect=409)
         platform.app.state.public_cache.clear()
         assert (await client.get(f"/v1/bounties/{bounty_id}")).json()["state"] == "paused"
+
+
+async def test_a_sponsor_sees_who_broke_their_agent_when_it_was_an_account(
+    platform: Platform,
+) -> None:
+    sponsor = await platform.sponsor()
+    bounty_id = await sponsor.funded(platform)
+    hunter = await platform.sponsor("hunter@example.com")
+    await hunter.call(
+        "PATCH",
+        "/v1/account",
+        json={"name": "Ada Lovelace", "github": "ada", "company": "Engines", "role": "Engineer"},
+    )
+    from .platform import HUNTER
+
+    body = {"payout_address": HUNTER, "fills": [{"slot": "user_message", "content": STRONG}]}
+    accepted = await hunter.call("POST", f"/v1/bounties/{bounty_id}/attempts", 202, json=body)
+    assert (await platform.poll(accepted))["verdict"] == "verified"
+
+    (finding,) = await sponsor.call("GET", f"/v1/bounties/{bounty_id}/findings")
+    assert finding["hunter"] == {
+        "name": "Ada Lovelace",
+        "picture_url": None,
+        "github": "ada",
+        "company": "Engines",
+        "role": "Engineer",
+        "website": None,
+    }
+    # Their email and their key are not part of it.
+    assert "hunter@example.com" not in str(finding["hunter"])
+
+
+async def test_an_attack_made_without_an_account_names_nobody(platform: Platform) -> None:
+    sponsor = await platform.sponsor()
+    bounty_id = await sponsor.funded(platform)
+    assert (await platform.poll(await platform.submit(bounty_id, STRONG)))["verdict"] == "verified"
+    (finding,) = await sponsor.call("GET", f"/v1/bounties/{bounty_id}/findings")
+    assert finding["hunter"] is None
+
+
+async def test_the_platform_as_a_whole_has_a_daily_token_ceiling(
+    service_settings: Settings,
+) -> None:
+    settings = service_settings.model_copy(update={"platform_daily_token_budget": 1})
+    async with platform_on(settings) as platform:
+        first = await (await platform.sponsor("a@example.com")).live()
+        second = await (await platform.sponsor("b@example.com")).live()
+        # Nothing has run yet, so the first attack is taken; once it has run, the ceiling
+        # is reached for every bounty, not only the one that was attacked.
+        await platform.poll(await platform.submit(first, WEAK))
+        refused = await platform.client.post(
+            f"/v1/bounties/{second}/attempts",
+            json={
+                "payout_address": (await _address()),
+                "fills": [{"slot": "user_message", "content": WEAK}],
+            },
+        )
+        assert (refused.status_code, refused.json()["detail"]) == (
+            429,
+            "the platform's daily run budget is spent; attacks reopen as it frees up",
+        )
+
+
+async def _address() -> str:
+    from .platform import HUNTER
+
+    return HUNTER

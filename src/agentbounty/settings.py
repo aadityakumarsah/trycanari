@@ -111,6 +111,11 @@ class Settings(BaseSettings):
     # the database work a busy page would cause. 0 switches the cache off.
     public_cache_seconds: float = Field(default=5.0, ge=0)
 
+    # Model tokens all replays together may use in a rolling 24 hours: the ceiling on the
+    # whole platform's model bill, whatever the number of bounties and accounts. Once
+    # spent, no bounty takes attempts until some of that spend ages out.
+    platform_daily_token_budget: int = Field(default=20_000_000, ge=1)
+
     worker_poll_seconds: float = Field(default=2.0, gt=0)
     # A running attempt older than this is taken to belong to a dead worker and is retried.
     attempt_timeout_seconds: float = Field(default=900.0, gt=0)

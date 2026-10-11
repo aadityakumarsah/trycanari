@@ -131,10 +131,15 @@ def can_hunt(account: Sponsor, settings: Settings) -> bool:
     return not settings.invite_only or account.referral_code is not None or account.hunting_granted
 
 
+def is_owner(account: Sponsor, settings: Settings) -> bool:
+    """Whether the account is an owner: named in the settings, and proven to hold that
+    address by signing in with Google. Only an owner decides who else is an admin."""
+    return account.google_sub is not None and account.email in settings.owners
+
+
 def is_admin(account: Sponsor, settings: Settings) -> bool:
-    """Whether the account runs the platform: made an admin, or named as an owner in the
-    settings and proven to hold that address by signing in with Google."""
-    return account.is_admin or (account.google_sub is not None and account.email in settings.owners)
+    """Whether the account runs the platform: an owner, or made an admin by one."""
+    return account.is_admin or is_owner(account, settings)
 
 
 def new_code() -> str:

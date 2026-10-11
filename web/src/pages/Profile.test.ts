@@ -20,6 +20,7 @@ const account: Account = {
   can_hunt: true,
   is_ambassador: false,
   is_admin: false,
+  is_owner: false,
   invite_only: true,
   verified_breaks: 0,
   credits: { balance: 25, cap: 25, window_hours: 24, tier: "Starter", next_tier: "Proven", next_cap: 200, costs: [] },

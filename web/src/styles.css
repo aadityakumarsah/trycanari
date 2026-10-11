@@ -1090,3 +1090,30 @@ table.people td { vertical-align: middle; white-space: nowrap; }
 /* The page's arrival animation ends by making everything visible, which would hold the
    save bar on screen for good. The bar comes and goes by itself. */
 .page > .save-bar { animation: none; }
+
+/* who found a break, and the admin log */
+.hunter-card { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 14px 0 18px; padding: 14px 16px; border: 1px solid #6ee7b740; border-radius: 10px; background: var(--accent-bg); }
+.hunter-card .avatar { display: grid; place-items: center; width: 44px; height: 44px; font-size: 17px; }
+.hunter-card img.avatar { display: block; }
+.hunter-card > div { display: flex; flex-direction: column; flex: 1; min-width: 160px; }
+.hunter-card .eyebrow { margin: 0; color: var(--accent); }
+.hunter-card b { font: 500 15px/22px var(--display); }
+.hunter-card small { color: var(--muted); font-size: 13px; line-height: 18px; }
+.hunter-links { display: flex; gap: 14px; flex-wrap: wrap; }
+.hunter-links a { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-size: 13.500px; text-decoration: none; }
+.hunter-links a:hover { text-decoration: underline; }
+.feed.log .feed-main > span { color: #d4d4d4; font-size: 14px; line-height: 21px; }
+.feed.log b { color: var(--foreground); font-weight: 500; overflow-wrap: anywhere; }
+
+/* On a touch screen everything that can be pressed is big enough to press. */
+@media (pointer: coarse) {
+  .page button:not(.switch):not(.icon-button):not(.photo-change):not(.text-button), .page .button, .btn-nav, .btn-attack, .btn-hero { min-height: 44px; }
+  .page button.text-button, .text-button { padding: 10px 8px; }
+  .page button.switch { width: 48px; height: 28px; }
+  .page button.switch i { width: 22px; height: 22px; }
+  .page button.switch.on i { transform: translateX(20px); }
+  .page button.icon-button { width: 40px; height: 40px; }
+  .nav-link, .drop-menu a, .drop-menu button, .docs-nav a, .tabs .tab { min-height: 44px; }
+  .page .tabs .tab { min-height: 46px; }
+  .mode button { height: 36px; }
+}

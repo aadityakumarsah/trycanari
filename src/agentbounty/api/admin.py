@@ -15,10 +15,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from agentbounty.api.deps import AdminDep, SettingsDep, Transaction
 from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import (
+    ActionsPage,
+    AdminActionOut,
     AdminCodeCreate,
     AdminCodeOut,
     CodesPage,
@@ -45,7 +48,7 @@ Offset = Annotated[int, Query(ge=0, le=1_000_000)]
 
 
 def _person(account: Sponsor, settings: Settings) -> PersonOut:
-    owner = account.google_sub is not None and account.email in settings.owners
+    owner = credits.is_owner(account, settings)
     return PersonOut(
         id=account.id,
         email=account.email,
@@ -134,9 +137,11 @@ async def update_person(
     )
     if account is None:
         raise HTTPException(404, "no such account")
-    if body.is_admin is False and account.id == admin.id:
-        # Otherwise the last admin could lock everyone out, themselves included.
-        raise HTTPException(409, "you cannot remove your own admin access")
+    # Who runs the platform is the owner's decision alone. An admin can do everything else
+    # here, but cannot make another admin or unmake one.
+    changes_admin = body.is_admin is not None and body.is_admin != account.is_admin
+    if changes_admin and not credits.is_owner(admin, settings):
+        raise HTTPException(403, "only the owner can make or remove admins")
     for field in ("is_ambassador", "is_admin", "hunting_granted"):
         value = getattr(body, field)
         if value is not None and value != getattr(account, field):
@@ -144,6 +149,37 @@ async def update_person(
             record(session, admin, f"{field}={str(value).lower()}", account, account.email)
     await session.flush()
     return _person(account, settings)
+
+
+@router.get("/actions")
+async def actions(
+    session: Transaction, _: AdminDep, limit: Limit = 50, offset: Offset = 0
+) -> ActionsPage:
+    """A page of what admins have done, newest first. The log cannot be edited."""
+    by = aliased(Sponsor)
+    to = aliased(Sponsor)
+    total = await session.scalar(select(func.count()).select_from(AdminAction))
+    rows = await session.execute(
+        select(AdminAction, by.email, to.email)
+        .join(by, by.id == AdminAction.admin_id)
+        .outerjoin(to, to.id == AdminAction.target_id)
+        .order_by(AdminAction.created_at.desc(), AdminAction.id)
+        .limit(limit)
+        .offset(offset)
+    )
+    return ActionsPage(
+        items=[
+            AdminActionOut(
+                admin_email=admin_email,
+                action=action.action,
+                target_email=target_email,
+                detail=action.detail,
+                created_at=action.created_at,
+            )
+            for action, admin_email, target_email in rows
+        ],
+        total=int(total or 0),
+    )
 
 
 @router.get("/referral-codes")

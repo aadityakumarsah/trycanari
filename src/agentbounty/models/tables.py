@@ -186,6 +186,7 @@ class Attempt(Base):
         Index("ix_attempts_account_submitted", "account_id", "submitted_at"),
         Index("ix_attempts_bounty_submitted", "bounty_id", "submitted_at"),
         Index("ix_attempts_address_submitted", "payout_address", "submitted_at"),
+        Index("ix_attempts_submitted_at", "submitted_at"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()

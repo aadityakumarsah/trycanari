@@ -34,6 +34,7 @@ from agentbounty.api.schemas import (
     FindingOut,
     FundIn,
     FundOut,
+    HunterOut,
     LedgerEntryOut,
     LedgerOut,
     MessageOut,
@@ -59,6 +60,7 @@ from agentbounty.models import (
     Canary,
     CanaryType,
     Finding,
+    Sponsor,
 )
 from agentbounty.services import bounty as bounty_service
 from agentbounty.services import credits, pictures, rearm, reports
@@ -103,6 +105,7 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
         can_hunt=credits.can_hunt(sponsor, settings),
         is_ambassador=sponsor.is_ambassador,
         is_admin=credits.is_admin(sponsor, settings),
+        is_owner=credits.is_owner(sponsor, settings),
         invite_only=settings.invite_only,
         verified_breaks=allowed.breaks,
         credits=CreditsOut(
@@ -446,8 +449,27 @@ async def findings(session: Transaction, bounty: OwnBounty, cipher: CipherDep) -
             return None
         return CanaryPublic(type=canary.type, public_label=canary.public_label)
 
+    found = await reports.findings_report(session, cipher, bounty)
+    # Who made each winning attack, for those made by an account. Their profile is theirs
+    # to fill in, and what they put there is what the sponsor is shown.
+    hunters: dict[Any, HunterOut] = {}
+    attempt_ids = [report.finding.attempt_id for report in found]
+    if attempt_ids:
+        for attempt_id, who in await session.execute(
+            select(Attempt.id, Sponsor)
+            .join(Sponsor, Sponsor.id == Attempt.account_id)
+            .where(Attempt.id.in_(attempt_ids))
+        ):
+            hunters[attempt_id] = HunterOut(
+                name=who.name,
+                picture_url=who.uploaded_picture_url or who.picture_url,
+                github=who.github,
+                company=who.company,
+                role=who.role,
+                website=who.website,
+            )
     out = []
-    for report in await reports.findings_report(session, cipher, bounty):
+    for report in found:
         payout = report.payout
         out.append(
             FindingOut(
@@ -482,6 +504,7 @@ async def findings(session: Transaction, bounty: OwnBounty, cipher: CipherDep) -
                     )
                     for run in report.runs
                 ],
+                hunter=hunters.get(report.finding.attempt_id),
             )
         )
     return out
