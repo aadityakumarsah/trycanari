@@ -224,7 +224,7 @@ origin and nothing extra to deploy.
 
 ```sh
 make web-build       # bun install, then build into src/agentbounty/static/app
-make web-dev         # hot-reloading pages on :5173, /v1 proxied to the API on :8000
+make web-dev         # rebuild on every save; reload the page the API serves
 make web-test        # bun test: components, the API client, money formatting
 make web-typecheck   # tsc --noEmit, strict
 make check           # everything CI runs, Python and web

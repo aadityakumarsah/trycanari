@@ -1,40 +1,38 @@
-// Development server: hot-reloading pages on :5173, with /v1 proxied to the API.
-import index from "./index.html";
+// Development: rebuild the app whenever a source file changes.
+//
+// The API process serves the build (and never caches the page), so there is one
+// origin in development exactly as in production: run the API, run this, and
+// reload the browser after a save.
+import { watch } from "node:fs";
 
-const api = process.env.API_URL ?? "http://127.0.0.1:8000";
+let running = false;
+let again = false;
 
-function proxy(request: Request): Promise<Response> {
-  const url = new URL(request.url);
-  const headers = new Headers(request.headers);
-  // The API checks that cookie-authenticated requests come from its own origin.
-  // In development the page is served from here, so present it as the API's own.
-  if (headers.has("origin")) headers.set("origin", api);
-  headers.delete("host");
-  return fetch(`${api}${url.pathname}${url.search}`, {
-    method: request.method,
-    headers,
-    body: request.body,
-    redirect: "manual",
+async function build(): Promise<void> {
+  if (running) {
+    again = true;
+    return;
+  }
+  running = true;
+  const started = performance.now();
+  const child = Bun.spawn(["bun", "run", "build.ts"], { stdout: "ignore", stderr: "inherit" });
+  const code = await child.exited;
+  const took = Math.round(performance.now() - started);
+  console.log(code === 0 ? `built in ${took} ms` : `build failed (exit ${code})`);
+  running = false;
+  if (again) {
+    again = false;
+    await build();
+  }
+}
+
+await build();
+let timer: ReturnType<typeof setTimeout> | undefined;
+// public/ is left out: copying it into the build stirs it, and the build would loop.
+for (const path of ["src", "index.html"]) {
+  watch(path, { recursive: true }, () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => void build(), 80);
   });
 }
-
-function fromPublic(request: Request): Response {
-  return new Response(Bun.file(`./public${new URL(request.url).pathname.replace(/^\/app/, "")}`));
-}
-
-const server = Bun.serve({
-  port: Number(process.env.PORT ?? 5173),
-  development: true,
-  routes: {
-    "/v1/*": proxy,
-    "/health": proxy,
-    "/agent.md": proxy,
-    "/api-docs": proxy,
-    "/openapi.json": proxy,
-    // In a build these are copied next to the bundle; here they are served from public/.
-    "/app/fonts/*": fromPublic,
-    "/app/brand/*": fromPublic,
-    "/*": index,
-  },
-});
-console.log(`web app on ${server.url} (API: ${api})`);
+console.log("watching web/src for changes; reload the page the API serves");

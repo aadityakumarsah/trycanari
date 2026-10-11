@@ -47,7 +47,7 @@ web-install:
 web-build: web-install
 	cd web && bun run build
 
-# Hot-reloading pages on :5173, with /v1 proxied to the API (API_URL, default :8000).
+# Rebuilds the app on every save. The API serves the build, so reload its page.
 web-dev: web-install
 	cd web && bun run dev
 
