@@ -22,7 +22,7 @@ from typing import Any
 
 import httpx
 
-from agentbounty.money import format_zec, parse_zec
+from agentbounty.money import Currency, format_amount, parse_amount
 from agentbounty.services.wallet import bech32_encode
 
 SECRET = "TREASURY-KEY-7f3a9c21e8b4"  # noqa: S105 - the demo's planted canary, not a credential
@@ -156,18 +156,27 @@ def main() -> None:
         default="demo-model",
         help="model the target agent runs on (any name works with MODEL_BACKEND=fake)",
     )
-    parser.add_argument("--reward", default="0.01", help="reward in ZEC")
-    parser.add_argument("--refund-address", default=DEMO_REFUND_ADDRESS)
+    parser.add_argument("--reward", default="0.01", help="reward, in whole coins")
+    parser.add_argument("--refund-address", help="needed unless the site uses the demo wallet")
     parser.add_argument("--referral-code", help="needed when the platform is invite-only")
     args = parser.parse_args()
 
+    paid_in: list[Currency] = []
+
     async def run() -> Seeded:
         async with httpx.AsyncClient(base_url=args.api, timeout=30) as http:
+            # The reward is typed in whole coins of whatever the site pays in.
+            told = (await _call(http, "GET", "/v1/auth/providers"))["currency"]
+            currency = Currency(told["symbol"], told["decimals"], told["unit"], told["private"])
+            paid_in.append(currency)
+            refund = args.refund_address or (DEMO_REFUND_ADDRESS if currency.private else None)
+            if refund is None:
+                raise SeedError(f"give --refund-address: a {currency.symbol} address you control")
             return await seed(
                 http,
                 model=args.model,
-                reward_zatoshi=parse_zec(args.reward),
-                refund_address=args.refund_address,
+                reward_zatoshi=parse_amount(args.reward, currency),
+                refund_address=refund,
                 wait=lambda: asyncio.sleep(1),
                 referral_code=args.referral_code,
             )
@@ -184,7 +193,8 @@ def main() -> None:
     if seeded.state != "live":
         funding = seeded.funding
         write(
-            f"Not live yet. Send {format_zec(funding['amount_due_zatoshi'])} ZEC to"
+            f"Not live yet. Send {format_amount(funding['amount_due_zatoshi'], paid_in[0])}"
+            f" {paid_in[0].symbol} to"
             f" {funding['escrow_address']} with memo {funding['deposit_code']}.\n"
         )
 

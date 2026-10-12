@@ -361,7 +361,7 @@ export function Dashboard() {
                   <Badge state={bounty.closing ? "closing" : bounty.state} />
                 </span>
                 <span className="row-reward">
-                  {formatZec(bounty.reward_zatoshi)} <small>ZEC reward</small>
+                  {formatZec(bounty.reward_zatoshi)} <small>{sym()} reward</small>
                 </span>
                 <span className="row-escrow">
                   <small>

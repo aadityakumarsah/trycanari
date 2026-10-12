@@ -274,6 +274,9 @@ async def test_on_solana_the_site_speaks_sol_and_takes_solana_addresses(site: Pl
     await sponsor.call(
         "POST", f"/v1/bounties/{draft}/fund", 422, json={"refund_address": "utest1qqqq"}
     )
+    # A reward too small for the network to deliver to a new wallet is refused up front.
+    dust = await sponsor.call("POST", "/v1/bounties", 422, json={"reward_zatoshi": 999_999})
+    assert dust["detail"] == "the reward must be at least 0.001 SOL"
     guide = (await site.client.get("/agent.md")).text
     assert "locks a reward in SOL." in guide
     assert "must be a Solana address" in guide

@@ -21,6 +21,8 @@ class Currency:
     unit: str
     # Whether payments hide who paid whom, and how much.
     private: bool
+    # The smallest reward that can be paid out at all, in smallest units.
+    minimum: int = 1
 
     @property
     def per_whole(self) -> int:
@@ -29,7 +31,9 @@ class Currency:
 
 
 ZEC = Currency(symbol="ZEC", decimals=8, unit="zatoshi", private=True)
-SOL = Currency(symbol="SOL", decimals=9, unit="lamports", private=False)
+# On Solana an account holding less than the rent-exempt minimum (about 0.00089 SOL) cannot
+# exist, so a smaller payment to a wallet that is new would be refused by the network.
+SOL = Currency(symbol="SOL", decimals=9, unit="lamports", private=False, minimum=1_000_000)
 
 ZATOSHI_PER_ZEC = ZEC.per_whole
 

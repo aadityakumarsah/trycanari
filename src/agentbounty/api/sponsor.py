@@ -62,6 +62,7 @@ from agentbounty.models import (
     Finding,
     Sponsor,
 )
+from agentbounty.money import format_amount
 from agentbounty.services import bounty as bounty_service
 from agentbounty.services import credits, pictures, rearm, reports
 from agentbounty.services.bounty import CanaryDefinition
@@ -233,6 +234,10 @@ async def create_referral_codes(
 async def create_bounty(
     body: BountyCreate, session: Transaction, sponsor: SponsorDep, settings: SettingsDep
 ) -> BountyCreated:
+    currency = settings.currency
+    if body.reward_zatoshi < currency.minimum:
+        least = format_amount(currency.minimum, currency)
+        raise ServiceError(422, f"the reward must be at least {least} {currency.symbol}")
     bounty = await bounty_service.create_bounty(
         session, sponsor, body.reward_zatoshi, settings.fee_rate, body.title, body.description
     )
