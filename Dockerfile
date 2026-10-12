@@ -24,4 +24,7 @@ RUN pip install --no-cache-dir . \
 
 USER app
 EXPOSE 8000
-CMD ["uvicorn", "agentbounty.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# By default the one container is the whole backend: it brings the database up to date,
+# then runs the API, the replay worker and the payment process together. A host that runs
+# them as separate services (docker-compose.yml, fly.toml) names each command itself.
+CMD ["./deploy/run-all.sh"]
