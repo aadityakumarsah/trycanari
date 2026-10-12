@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { accountChanged, completeness, pictureOf, PROFILE_FIELDS, useAccount } from "../account.tsx";
 import { api, upload } from "../api.ts";
+import { useConfirm } from "../confirm.tsx";
 import { Icon, type IconName } from "../components/Brand.tsx";
 import { ReferralGate } from "../components/ReferralGate.tsx";
 import { Avatar, ErrorNote, Skeleton } from "../components/ui.tsx";
@@ -259,10 +260,16 @@ function Input({
 function ApiKey() {
   const [key, setKey] = useState("");
   const minting = useAction();
+  const confirm = useConfirm();
   const toast = useToast();
 
   async function mint() {
-    if (!window.confirm("Make a new API key? Any key this account already has will stop working at once.")) return;
+    const sure = await confirm({
+      title: "Make a new API key?",
+      body: "Any key this account already has will stop working at once.",
+      confirm: "Make a new key",
+    });
+    if (!sure) return;
     await minting.run(async () => {
       const made = await api<{ api_key: string }>("POST", "/v1/account/api-key");
       setKey(made.api_key);

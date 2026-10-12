@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { NotFound } from "../App.tsx";
 import { pictureOf } from "../account.tsx";
 import { api } from "../api.ts";
+import { useConfirm } from "../confirm.tsx";
 import { Transcript } from "../components/Transcript.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { WalletFunding } from "../components/WalletFunding.tsx";
@@ -70,6 +71,7 @@ function ActionForm({
 
 function Actions({ bounty, act, broken }: Props & { broken: boolean }) {
   const open = bounty.state !== "closed" && !bounty.closing;
+  const confirm = useConfirm();
   return (
     <section>
       <h2>Actions</h2>
@@ -81,9 +83,14 @@ function Actions({ bounty, act, broken }: Props & { broken: boolean }) {
         {open && (
           <ActionForm
             submit={async () => {
-              if (confirm("Close this bounty and refund the unspent escrow? This cannot be undone.")) {
-                await act("close", { refund_address: bounty.refund_address });
-              }
+              const sure = await confirm({
+                title: "Close this bounty?",
+                body: "It stops taking attacks and the unspent escrow is refunded to your address. This cannot be undone.",
+                confirm: "Close and refund",
+                cancel: "Keep it open",
+                danger: true,
+              });
+              if (sure) await act("close", { refund_address: bounty.refund_address });
             }}
             label="Close and refund"
             className="danger"

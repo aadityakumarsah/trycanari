@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, ApiError, messageOf } from "../api.ts";
+import { useConfirm } from "../confirm.tsx";
 import {
   forgetAllAttempts,
   forgetAttempt,
@@ -102,6 +103,7 @@ export function AttemptRow({ attempt, showBounty = true }: { attempt: SavedAttem
 
 export function MyAttempts() {
   const attempts = useSavedAttempts();
+  const confirm = useConfirm();
   const won = attempts.filter((attempt) => attempt.outcome === "verified").length;
   const pending = attempts.filter((attempt) => !attempt.outcome).length;
 
@@ -142,10 +144,15 @@ export function MyAttempts() {
             <button
               type="button"
               className="secondary"
-              onClick={() => {
-                if (window.confirm("Forget every attempt remembered by this browser? Their results can no longer be read.")) {
-                  forgetAllAttempts();
-                }
+              onClick={async () => {
+                const sure = await confirm({
+                  title: "Forget every attempt?",
+                  body: "This browser will stop remembering them, and their results can no longer be read.",
+                  confirm: "Forget all",
+                  cancel: "Keep them",
+                  danger: true,
+                });
+                if (sure) forgetAllAttempts();
               }}
             >
               Forget all

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App.tsx";
+import { ConfirmProvider } from "./confirm.tsx";
 import { SessionProvider } from "./session.tsx";
 import { ToastProvider } from "./toast.tsx";
 
@@ -14,7 +15,9 @@ createRoot(root).render(
     <BrowserRouter>
       <SessionProvider>
         <ToastProvider>
-          <App />
+          <ConfirmProvider>
+            <App />
+          </ConfirmProvider>
         </ToastProvider>
       </SessionProvider>
     </BrowserRouter>
