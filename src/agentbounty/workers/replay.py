@@ -12,7 +12,7 @@ import asyncio
 import contextlib
 import logging
 import signal
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import timedelta
 from typing import Any
 
@@ -23,7 +23,7 @@ from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
 from agentbounty.models import Attempt
 from agentbounty.models import TargetConfig as TargetConfigRow
-from agentbounty.services import attempts, endpoint, playbook, rearm, scan
+from agentbounty.services import attempts, endpoint, playbook, provider, rearm, scan
 from agentbounty.services.bounty import LoadedTarget, load_target
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.harness import (
@@ -34,7 +34,15 @@ from agentbounty.services.harness import (
     run_attempt,
 )
 from agentbounty.services.judge import RUNS_PER_ATTEMPT, TRIP_THRESHOLD
-from agentbounty.services.model import FakeModel, ModelClient, RealModel
+from agentbounty.services.model import (
+    ChatMessage,
+    FakeModel,
+    ModelClient,
+    ModelParams,
+    ModelResponse,
+    RealModel,
+    ToolSpec,
+)
 from agentbounty.settings import Settings, load_settings
 
 logger = logging.getLogger(__name__)
@@ -58,6 +66,49 @@ async def model_for(
         yield model
     finally:
         await model.aclose()
+
+
+class PlatformModel:
+    """The platform's model, which the owner can change while the worker runs.
+
+    It answers with the provider set in the admin page when there is one, and with the
+    one the worker started on otherwise. `refresh` looks for a change.
+    """
+
+    def __init__(self, default: ModelClient) -> None:
+        self._default = default
+        self._chosen: RealModel | None = None
+        self._signature: tuple[str, str] | None = None
+
+    @property
+    def provider(self) -> str:
+        return self._signature[0] if self._signature else "the server's settings"
+
+    async def refresh(
+        self, sessions: SessionFactory, cipher: Cipher, connect: endpoint.Connector
+    ) -> bool:
+        """Follow what the owner has set. True when the model in use changed."""
+        async with sessions() as session:
+            chosen = await provider.stored(session, cipher)
+        signature = (chosen.base, chosen.key) if chosen else None
+        if signature == self._signature:
+            return False
+        previous, self._chosen = self._chosen, connect(*signature) if signature else None
+        self._signature = signature
+        if previous is not None:
+            await previous.aclose()
+        return True
+
+    async def complete(
+        self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec], params: ModelParams
+    ) -> ModelResponse:
+        return await (self._chosen or self._default).complete(messages, tools, params)
+
+    async def aclose(self) -> None:
+        if self._chosen is not None:
+            await self._chosen.aclose()
+        if isinstance(self._default, RealModel):
+            await self._default.aclose()
 
 
 def make_model(settings: Settings) -> ModelClient:
@@ -336,13 +387,16 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     engine = create_engine(settings.database_url)
     sessions = create_session_factory(engine)
     cipher = Cipher(settings.secret_encryption_key.get_secret_value())
-    model = make_model(settings)
     own = endpoint.connector(settings)
+    model = PlatformModel(make_model(settings))
     stale_after = timedelta(seconds=settings.attempt_timeout_seconds)
     logger.info("replay worker started (model backend: %s)", settings.model_backend)
     try:
         while not stop.is_set():
             try:
+                # Cheap, and it is what lets the owner change provider without a restart.
+                if await model.refresh(sessions, cipher, own):
+                    logger.info("model provider is now %s", model.provider)
                 async with sessions.begin() as session:
                     await attempts.requeue_stale(
                         session, older_than=stale_after, max_tries=settings.attempt_max_tries
@@ -358,8 +412,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=settings.worker_poll_seconds)
     finally:
-        if isinstance(model, RealModel):
-            await model.aclose()
+        await model.aclose()
         await engine.dispose()
 
 

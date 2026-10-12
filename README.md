@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="570 tests" src="https://img.shields.io/badge/tests-570%20passing-6ee7b7" />
+  <img alt="578 tests" src="https://img.shields.io/badge/tests-578%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -50,9 +50,9 @@
 
 | Number | |
 |---:|---|
-| **47** | API endpoints |
-| **17** | database migrations |
-| **467** | Python tests |
+| **51** | API endpoints |
+| **18** | database migrations |
+| **475** | Python tests |
 | **103** | web tests |
 | **~9,700** | lines of Python |
 | **~7,900** | lines of TypeScript |
@@ -145,6 +145,7 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 - Invite-only hunting with referral codes
 - Credits: a rolling 24-hour allowance per account
 - Admin page: people, roles, codes
+- The owner can change the model provider and its key from the admin page, with no redeploy
 - Rate limits and a daily token budget
 - Append-only ledger and payment audit
 - Secrets and transcripts encrypted at rest
@@ -323,7 +324,7 @@ web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
 ├── src/components/   Flow · Transcript · AttemptStatus · ReferralGate · shared pieces
 └── cloudflare/       The Pages worker that proxies API paths
-migrations/versions/  0001 … 0017
+migrations/versions/  0001 … 0018
 tests/                One file per area; a scratch database per test
 docs/REFERENCE.md     The long version of everything on this page
 ```
@@ -332,7 +333,7 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 467 Python tests, each on its own scratch database
+make test         # 475 Python tests, each on its own scratch database
 make web-test     # 103 web tests
 make lint         # ruff
 make typecheck    # mypy --strict

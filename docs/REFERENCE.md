@@ -370,6 +370,16 @@ refused. Redirects are not followed and proxy settings in the environment are ig
 `ALLOW_PRIVATE_MODEL_ENDPOINTS=true` lifts this for trying a model server on your own
 machine; never set it on a deployment.
 
+### Changing the platform's provider
+
+`MODEL_API_BASE` and `MODEL_API_KEY` are the provider the service starts on. The owner can
+set another on the admin page's Model tab (`GET`, `PUT`, `DELETE /v1/admin/model`, and
+`POST /v1/admin/model/test` to try one first). It is stored encrypted in
+`platform_settings` and wins over the environment until it is reset. The replay worker
+looks for a change on every pass, so a switch takes effect within seconds and nothing is
+restarted. Only an owner (`ADMIN_EMAILS`) can see or change it; the address is checked the
+same way a sponsor's endpoint is.
+
 A paused bounty is resumed with `activate`. Pausing is refused while attempts are queued
 or running, because it would make them not count.
 

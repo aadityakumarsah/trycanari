@@ -110,6 +110,17 @@ class AdminAction(Base):
     created_at: Mapped[datetime] = created_now()
 
 
+class PlatformSetting(Base):
+    """A setting the owner changes while the service runs. The value is ciphertext."""
+
+    __tablename__ = "platform_settings"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    value_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"))
+    updated_at: Mapped[datetime] = created_now()
+
+
 class Bounty(Base):
     __tablename__ = "bounties"
     __table_args__ = (

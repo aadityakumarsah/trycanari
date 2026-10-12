@@ -1420,3 +1420,10 @@ table.people td { vertical-align: middle; white-space: nowrap; }
   .tl-dashed path { animation: none; }
   .tl-route, .tl-stop { transition: none; }
 }
+
+/* ============ admin: model provider ============ */
+.provider-form { max-width: 640px; margin-top: 18px; }
+.provider-form .tool-add { margin: 0 0 18px; }
+.page .chip.on { border-color: var(--accent); background: var(--accent-bg); color: var(--foreground); }
+.provider-reset { margin-top: 14px; }
+.page .provider-reset .link { color: var(--accent); }

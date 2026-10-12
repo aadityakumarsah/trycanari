@@ -278,6 +278,40 @@ class ModelsOut(BaseModel):
     models: list[str]
 
 
+class ProviderOut(BaseModel):
+    """The platform's model provider, as the owner sees it. Never the key itself."""
+
+    # "admin": set in the admin page. "environment": from the server's own settings.
+    # "none": the built-in test model.
+    source: Literal["admin", "environment", "none"]
+    api_base: str | None
+    key_hint: str | None
+    updated_at: datetime | None = None
+    # Model names open bounties run on this provider.
+    models_in_use: list[str]
+
+
+class ProviderIn(Body):
+    api_base: str = Field(min_length=1, max_length=300)
+    # May be left out to keep the key already saved for this address.
+    api_key: SecretStr | None = Field(default=None, min_length=1, max_length=500)
+
+
+class ProviderTestIn(ProviderIn):
+    # A model to send one short message to. Without one, the provider is only asked
+    # which models it offers.
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class ProviderTestOut(BaseModel):
+    ok: bool
+    detail: str
+    milliseconds: int
+    models: list[str]
+    # Models open bounties run on that this provider does not list.
+    missing_models: list[str]
+
+
 class ConfigOut(BaseModel):
     version: int
     config_hash: str

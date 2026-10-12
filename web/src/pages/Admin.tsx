@@ -3,12 +3,13 @@ import { useSearchParams } from "react-router-dom";
 
 import { NotFound } from "../App.tsx";
 import { inviteLink, pictureOf, useAccount } from "../account.tsx";
-import { api } from "../api.ts";
+import { api, messageOf } from "../api.ts";
 import { Icon } from "../components/Brand.tsx";
 import { Ago, Avatar, ErrorNote, Skeleton } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
 import { useToast } from "../toast.tsx";
-import type { AdminAction, AdminCode, Page, Person } from "../types.ts";
+import { useConfirm } from "../confirm.tsx";
+import type { AdminAction, AdminCode, Page, Person, ProviderSetting, ProviderTest } from "../types.ts";
 
 const PAGE = 25;
 
@@ -364,6 +365,12 @@ function Activity() {
                     <>
                       <b>{item.admin_email}</b> created {item.detail}
                     </>
+                  ) : item.action === "model_provider=set" ? (
+                    <>
+                      The model provider was changed to <b>{item.detail}</b>
+                    </>
+                  ) : item.action === "model_provider=reset" ? (
+                    <>The model provider went back to the server's settings</>
                   ) : (
                     <>
                       <b>{item.target_email ?? "Someone"}</b> was {WHAT[item.action] ?? item.action}
@@ -386,14 +393,253 @@ function Activity() {
   );
 }
 
-const TABS = ["people", "codes", "activity"] as const;
-const TAB_NAMES = { people: "People", codes: "Invites", activity: "Activity" } as const;
+/** Providers that speak the OpenAI chat API, with the address each one uses. */
+const PROVIDERS: [string, string][] = [
+  ["Groq", "https://api.groq.com/openai/v1"],
+  ["OpenRouter", "https://openrouter.ai/api/v1"],
+  ["OpenAI", "https://api.openai.com/v1"],
+  ["Together", "https://api.together.xyz/v1"],
+];
+
+const SOURCE = {
+  admin: "Set here, by you",
+  environment: "From the server's settings",
+  none: "Built-in test model",
+} as const;
+
+/** Which model provider every agent runs on, and the key it is called with. Owner only. */
+function Provider() {
+  const setting = useLoad((signal) => api<ProviderSetting>("GET", "/v1/admin/model", { signal }), "provider");
+  const [base, setBase] = useState("");
+  const [key, setKey] = useState("");
+  const [model, setModel] = useState("");
+  const [tested, setTested] = useState<ProviderTest | null>(null);
+  const [testing, setTesting] = useState(false);
+  const saving = useAction();
+  const toast = useToast();
+  const confirm = useConfirm();
+
+  const current = setting.data;
+  // Start from the address in use, so changing only the key is one field.
+  useEffect(() => {
+    if (current?.api_base) setBase((typed) => typed || (current.api_base ?? ""));
+  }, [current?.api_base]);
+
+  if (!current) return setting.error ? <ErrorNote>{setting.error}</ErrorNote> : <Skeleton block lines={4} />;
+
+  const address = base.trim();
+  // The saved key goes on being used while the address it belongs to is unchanged.
+  const keyKept = current.source !== "none" && address === current.api_base;
+  const ready = Boolean(address) && (Boolean(key) || keyKept);
+  const body = { api_base: address, ...(key ? { api_key: key } : {}) };
+
+  function changed() {
+    setTested(null);
+    saving.clear();
+  }
+
+  async function test() {
+    setTesting(true);
+    setTested(null);
+    try {
+      const wanted = model.trim();
+      setTested(await api<ProviderTest>("POST", "/v1/admin/model/test", { body: wanted ? { ...body, model: wanted } : body }));
+    } catch (caught) {
+      setTested({ ok: false, detail: messageOf(caught) || "The test could not be run.", milliseconds: 0, models: [], missing_models: [] });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    const lacking = tested?.missing_models ?? [];
+    const sure = await confirm({
+      title: "Switch the model provider?",
+      body: lacking.length
+        ? `Every agent without its own endpoint will run here from now on. This provider does not list ${lacking.join(", ")}, which open bounties use: their attacks will fail until those bounties change model.`
+        : "Every agent without its own endpoint will run here from now on, on this key. It takes effect within a few seconds.",
+      confirm: "Switch provider",
+      danger: lacking.length > 0,
+    });
+    if (!sure) return;
+    await saving.run(async () => {
+      await api<ProviderSetting>("PUT", "/v1/admin/model", { body });
+      setKey("");
+      setTested(null);
+      await setting.reload();
+      toast("Model provider changed.");
+    });
+  }
+
+  async function reset() {
+    const sure = await confirm({
+      title: "Go back to the server's settings?",
+      body: "The provider and key set here are removed, and the ones in the server's own settings are used again.",
+      confirm: "Use the server's settings",
+    });
+    if (!sure) return;
+    await saving.run(async () => {
+      await api<ProviderSetting>("DELETE", "/v1/admin/model");
+      setBase("");
+      setKey("");
+      setTested(null);
+      await setting.reload();
+      toast("Back to the server's settings.");
+    });
+  }
+
+  return (
+    <>
+      <section>
+        <h2>Model provider in use</h2>
+        <dl className="facts">
+          <div>
+            <dt>Provider</dt>
+            <dd>{current.api_base ? new URL(current.api_base).hostname : "None"}</dd>
+          </div>
+          <div>
+            <dt>Key</dt>
+            <dd>
+              <code>{current.key_hint ?? "none"}</code>
+            </dd>
+          </div>
+          <div>
+            <dt>Chosen</dt>
+            <dd>{SOURCE[current.source]}</dd>
+          </div>
+          <div>
+            <dt>Models open bounties use</dt>
+            <dd>{current.models_in_use.length ? current.models_in_use.join(", ") : "None yet"}</dd>
+          </div>
+        </dl>
+        {current.source === "admin" && (
+          <p className="muted provider-reset">
+            {current.updated_at && (
+              <>
+                Changed <Ago iso={current.updated_at} />.{" "}
+              </>
+            )}
+            <button type="button" className="link" disabled={saving.busy} onClick={() => void reset()}>
+              Go back to the server's settings
+            </button>
+          </p>
+        )}
+      </section>
+
+      <section>
+        <h2>Change provider or key</h2>
+        <p className="muted">
+          Any provider that speaks the OpenAI chat API works. Agents with their own endpoint are not affected. The
+          key is stored encrypted and never shown again.
+        </p>
+        <form className="provider-form" onSubmit={(event) => void save(event)}>
+          <div className="tool-add">
+            <span className="muted small">Start from:</span>
+            {PROVIDERS.map(([name, url]) => (
+              <button
+                key={name}
+                type="button"
+                className={address === url ? "chip on" : "chip"}
+                onClick={() => {
+                  setBase(url);
+                  changed();
+                }}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+          <label>
+            API address
+            <input
+              required
+              type="url"
+              spellCheck={false}
+              className="code"
+              placeholder="https://api.provider.com/v1"
+              value={base}
+              onChange={(event) => {
+                setBase(event.target.value);
+                changed();
+              }}
+            />
+          </label>
+          <label>
+            API key
+            <input
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              className="code"
+              required={!keyKept}
+              placeholder={keyKept ? `Saved (${current.key_hint}). Leave blank to keep it` : "The provider's secret key"}
+              value={key}
+              onChange={(event) => {
+                setKey(event.target.value);
+                changed();
+              }}
+            />
+          </label>
+          <div className="field-block">
+            <label htmlFor="provider-model">A model to try (optional)</label>
+            <span className="with-button">
+              <input
+                id="provider-model"
+                spellCheck={false}
+                className="code"
+                list="provider-models"
+                placeholder="Leave blank to only list the models"
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+              />
+              <button type="button" className="secondary" disabled={testing || !ready} onClick={() => void test()}>
+                {testing ? "Testing…" : "Test"}
+              </button>
+            </span>
+            <datalist id="provider-models">
+              {(tested?.models ?? []).map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          </div>
+          {tested && (
+            <p className={tested.ok ? "test-line good" : "test-line bad"} role="status">
+              <Icon name={tested.ok ? "check" : "ban"} size={16} />
+              <span>
+                {tested.ok ? "It works. " : "It did not work. "}
+                {tested.detail}
+                {tested.ok && tested.models.length > 0 && ` ${tested.models.length} models available.`}
+              </span>
+            </p>
+          )}
+          {tested && tested.missing_models.length > 0 && (
+            <p className="test-line bad" role="alert">
+              <Icon name="ban" size={16} />
+              <span>
+                Open bounties use <b>{tested.missing_models.join(", ")}</b>, which this provider does not list.
+                Their attacks will fail after the switch until those bounties change model.
+              </span>
+            </p>
+          )}
+          <ErrorNote>{saving.error}</ErrorNote>
+          <button disabled={saving.busy || !ready}>{saving.busy ? "Saving…" : "Save and switch"}</button>
+        </form>
+      </section>
+    </>
+  );
+}
+
+const TABS = ["people", "codes", "activity", "model"] as const;
+const TAB_NAMES = { people: "People", codes: "Invites", activity: "Activity", model: "Model" } as const;
 
 /** The admin area. It is loaded only for an admin: nobody else's browser is sent this code. */
 export default function Admin() {
   const account = useAccount();
   const [params, setParams] = useSearchParams();
-  const tab = TABS.find((name) => name === params.get("tab")) ?? "people";
+  // Where every agent runs is the owner's decision alone, so only the owner sees that tab.
+  const tabs = TABS.filter((name) => name !== "model" || account.data?.is_owner);
+  const tab = tabs.find((name) => name === params.get("tab")) ?? "people";
 
   if (!account.data) return account.error ? <ErrorNote>{account.error}</ErrorNote> : <Skeleton block lines={4} />;
   if (!account.data.is_admin) return <NotFound />;
@@ -411,7 +657,7 @@ export default function Admin() {
         and are logged.
       </p>
       <div className="tabs" role="tablist" aria-label="Admin">
-        {TABS.map((name) => (
+        {tabs.map((name) => (
           <button
             key={name}
             type="button"
@@ -428,6 +674,7 @@ export default function Admin() {
         {tab === "people" && <People />}
         {tab === "codes" && <Codes />}
         {tab === "activity" && <Activity />}
+        {tab === "model" && <Provider />}
       </div>
     </>
   );

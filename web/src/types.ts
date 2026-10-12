@@ -221,6 +221,18 @@ export interface ModelTest {
   models: string[];
 }
 
+export interface ProviderSetting {
+  source: "admin" | "environment" | "none";
+  api_base: string | null;
+  key_hint: string | null;
+  updated_at: string | null;
+  models_in_use: string[];
+}
+
+export interface ProviderTest extends ModelTest {
+  missing_models: string[];
+}
+
 export interface PlatformModels {
   provider: string | null;
   models: string[];

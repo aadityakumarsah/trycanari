@@ -14,6 +14,7 @@ from agentbounty.models import Base
 from .conftest import alembic_config, scratch_database
 
 TABLES = {
+    "platform_settings",
     "scans",
     "admin_actions",
     "referral_codes",

@@ -73,7 +73,16 @@ from agentbounty.models import (
 )
 from agentbounty.money import format_amount
 from agentbounty.services import bounty as bounty_service
-from agentbounty.services import credits, endpoint, pictures, playbook, rearm, reports, scan
+from agentbounty.services import (
+    credits,
+    endpoint,
+    pictures,
+    playbook,
+    provider,
+    rearm,
+    reports,
+    scan,
+)
 from agentbounty.services.bounty import CanaryDefinition
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
@@ -271,24 +280,36 @@ async def _endpoint(base: str | None, settings: Settings) -> str | None:
     return normal
 
 
+def platform_model(request: Request, using: provider.Provider) -> RealModel:
+    """A client for the platform's provider. One the owner set in the admin page is a
+    URL typed by a person, so it is opened the guarded way."""
+    if using.source == "admin":
+        opened: RealModel = request.app.state.model_connector(using.base, using.key)
+        return opened
+    client = httpx.AsyncClient(transport=request.app.state.model_transport, timeout=30)
+    return RealModel(using.base, using.key, client=client)
+
+
 @router.get("/models")
-async def platform_models(request: Request, settings: SettingsDep, _: SponsorDep) -> ModelsOut:
+async def platform_models(
+    request: Request, session: Transaction, cipher: CipherDep, settings: SettingsDep, _: SponsorDep
+) -> ModelsOut:
     """The models the platform's own provider offers, for the quick-start choice."""
-    if settings.model_backend != "real" or not settings.model_api_base:
+    using = await provider.current(session, cipher, settings)
+    if using is None:
         return ModelsOut(provider=None, models=[])
     kept = request.app.state.models_listed
-    if kept is None or kept[0] < time.monotonic():
-        key = settings.model_api_key.get_secret_value() if settings.model_api_key else ""
-        client = httpx.AsyncClient(transport=request.app.state.model_transport, timeout=15)
-        provider = RealModel(settings.model_api_base, key, client=client)
+    # Kept per provider address: a change of provider must not show the old one's list.
+    if kept is None or kept[0] < time.monotonic() or kept[1] != using.base:
+        model = platform_model(request, using)
         try:
-            names = await provider.models()
+            names = await model.models()
         finally:
-            await provider.aclose()
+            await model.aclose()
         # A list that could not be read is asked for again soon; a good one is kept longer.
-        kept = (time.monotonic() + (MODELS_KEPT_SECONDS if names else 30), names)
+        kept = (time.monotonic() + (MODELS_KEPT_SECONDS if names else 30), using.base, names)
         request.app.state.models_listed = kept
-    return ModelsOut(provider=urlsplit(settings.model_api_base).hostname, models=kept[1])
+    return ModelsOut(provider=urlsplit(using.base).hostname, models=kept[2])
 
 
 @router.post("/bounties/{bounty_id}/model-test", dependencies=[Depends(limit_by_client)])
@@ -304,16 +325,15 @@ async def test_model(
     a config is saved. Without an endpoint it asks the platform's provider."""
     base = await _endpoint(body.endpoint_base, settings)
     if base is None:
-        if settings.model_backend != "real" or not settings.model_api_base:
+        using = await provider.current(session, cipher, settings)
+        if using is None:
             return ModelTestOut(
                 ok=True,
                 detail="This deployment runs a built-in test model, which answers to any name.",
                 milliseconds=0,
                 models=[],
             )
-        key = settings.model_api_key.get_secret_value() if settings.model_api_key else ""
-        client = httpx.AsyncClient(transport=request.app.state.model_transport, timeout=30)
-        model = RealModel(settings.model_api_base, key, client=client)
+        model = platform_model(request, using)
     else:
         own_key = body.endpoint_key.get_secret_value() if body.endpoint_key else None
         if own_key is None:
