@@ -9,7 +9,7 @@ import { Ago, Avatar, ErrorNote, Skeleton } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
 import { useToast } from "../toast.tsx";
 import { useConfirm } from "../confirm.tsx";
-import type { AdminAction, AdminCode, Page, Person, ProviderSetting, ProviderTest } from "../types.ts";
+import type { AdminAction, AdminCode, CodeKind, Page, Person, ProviderSetting, ProviderTest } from "../types.ts";
 
 const PAGE = 25;
 
@@ -123,6 +123,7 @@ function People() {
                 <th>Person</th>
                 <th>Joined</th>
                 <th>Can hunt</th>
+                <th>Can sponsor</th>
                 <th>Ambassador</th>
                 <th>Admin</th>
               </tr>
@@ -158,6 +159,26 @@ function People() {
                           person,
                           { hunting_granted: next },
                           next ? `${who(person)} can hunt now` : `${who(person)} can no longer hunt`,
+                        )
+                      }
+                    />
+                  </td>
+                  <td>
+                    <Toggle
+                      label={`Let ${who(person)} list agents`}
+                      on={person.can_sponsor}
+                      locked={
+                        person.sponsor_code
+                          ? "Joined with a sponsor invite, which cannot be taken back"
+                          : person.is_admin
+                            ? "An admin can always list agents"
+                            : undefined
+                      }
+                      onChange={(next) =>
+                        change(
+                          person,
+                          { sponsoring_granted: next },
+                          next ? `${who(person)} can list agents now` : `${who(person)} can no longer list agents`,
                         )
                       }
                     />
@@ -212,6 +233,7 @@ function Codes() {
   const codes = useLoad((signal) => api<Page<AdminCode>>("GET", address, { signal }), address);
   const [count, setCount] = useState("1");
   const [custom, setCustom] = useState("");
+  const [kind, setKind] = useState<CodeKind>("hunter");
   const making = useAction();
   const toast = useToast();
   const many = Number(count) > 1;
@@ -219,7 +241,7 @@ function Codes() {
   async function make(event: FormEvent) {
     event.preventDefault();
     await making.run(async () => {
-      const body = { count: Number(count), ...(custom.trim() && !many ? { code: custom.trim() } : {}) };
+      const body = { kind, count: Number(count), ...(custom.trim() && !many ? { code: custom.trim() } : {}) };
       const made = await api<AdminCode[]>("POST", "/v1/admin/referral-codes", { body });
       await navigator.clipboard.writeText(made.map((item) => inviteLink(item.code)).join("\n")).catch(() => undefined);
       setCustom("");
@@ -236,8 +258,18 @@ function Codes() {
       <form className="panel code-maker" onSubmit={(event) => void make(event)}>
         <div>
           <h2>New invites</h2>
-          <p className="muted">Each invite link lets one person take part in bounties, and works once.</p>
+          <p className="muted">
+            Each invite link works once. A hunter invite lets one person attack. A sponsor invite lets one person
+            list agents, and attack too.
+          </p>
         </div>
+        <label>
+          For a
+          <select value={kind} onChange={(event) => setKind(event.target.value as CodeKind)}>
+            <option value="hunter">Hunter</option>
+            <option value="sponsor">Sponsor</option>
+          </select>
+        </label>
         <label>
           How many
           <input
@@ -283,6 +315,7 @@ function Codes() {
               <thead>
                 <tr>
                   <th>Code</th>
+                  <th>For a</th>
                   <th>Status</th>
                   <th>Made by</th>
                   <th>Created</th>
@@ -294,6 +327,9 @@ function Codes() {
                   <tr key={code.code} className={code.used_by ? "spent" : undefined}>
                     <td>
                       <code className="code-chip">{code.code}</code>
+                    </td>
+                    <td>
+                      <span className={`kind-chip ${code.kind}`}>{code.kind}</span>
                     </td>
                     <td>
                       {code.used_by ? (
@@ -338,6 +374,8 @@ const WHAT: Record<string, string> = {
   "is_ambassador=false": "removed as an ambassador",
   "hunting_granted=true": "given access to the bounties",
   "hunting_granted=false": "had access to the bounties taken back",
+  "sponsoring_granted=true": "allowed to list agents",
+  "sponsoring_granted=false": "no longer allowed to list agents",
 };
 
 /** What admins have done. It is written once and cannot be changed by anyone. */

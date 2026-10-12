@@ -18,6 +18,7 @@ const account: Account = {
   website: null,
   bio: null,
   can_hunt: true,
+  can_sponsor: false,
   is_ambassador: false,
   is_admin: false,
   is_owner: false,

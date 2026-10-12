@@ -208,10 +208,18 @@ async def test_both_sides_are_emailed_once_about_a_break_and_about_the_payout(
     to_sponsor = by_address["sponsor@example.com"]
     assert to_sponsor.subject == "Ada Hunter broke your agent: Untitled agent"
     assert "https://bounty.example/dashboard/b/" in to_sponsor.text
+    # The sponsor is told who, what tripped, and how: the attack is theirs to read.
+    assert "Broken by: Ada Hunter (github.com/ada)" in to_sponsor.text
+    assert "Canary tripped: unapproved_transfer" in to_sponsor.text
+    assert "Replays tripped: 5 of 5" in to_sponsor.text
+    assert f"The attack, user message:\n{STRONG}" in to_sponsor.text
+    assert "transfer_funds" in to_sponsor.html
     to_hunter = by_address["hunter@example.com"]
     assert to_hunter.subject == "Verified: you broke Untitled agent"
     assert "payout of 0.01 ZEC" in to_hunter.text
     assert "https://bounty.example/attempts" in to_hunter.html
+    assert f"Paid to: {HUNTER}" in to_hunter.text
+    assert "The attack" not in to_hunter.text
     # Nothing is sent twice.
     assert await notify.send_pending(platform.sessions, outbox, settings) == 0
 
@@ -286,7 +294,7 @@ def test_an_email_escapes_what_people_typed() -> None:
     assert "&lt;b&gt;Eve&lt;/b&gt;" in email.html
     assert "Hi Sam, " in email.text
     assert "Amount: 2.5 ZEC" in email.text
-    assert 'href="https://bounty.example/dashboard/b/b1"' in email.html
+    assert 'href="https://bounty.example/dashboard/b/b1?tab=findings"' in email.html
 
 
 async def test_cloudflare_is_sent_the_email_and_its_refusals_are_told_apart() -> None:

@@ -18,8 +18,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 
-from agentbounty.models import Attempt, Bounty, Finding, Notification, Payout, Sponsor
-from agentbounty.services import mail
+from agentbounty.models import Attempt, Bounty, Canary, Finding, Notification, Payout, Sponsor
+from agentbounty.services import judge, mail
 from agentbounty.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -213,6 +213,9 @@ async def _claim(
                 continue
             bounty = await session.get_one(Bounty, note.bounty_id)
             actor = await session.get(Sponsor, note.actor_id) if note.actor_id else None
+            finding = await session.get_one(Finding, note.finding_id)
+            attempt = await session.get_one(Attempt, finding.attempt_id)
+            canary = await session.get_one(Canary, finding.canary_id)
             note.email_state = "sending"
             note.email_tries += 1
             event = mail.Event(
@@ -223,6 +226,12 @@ async def _claim(
                 actor_name=actor.name if actor else None,
                 amount=note.amount_zatoshi,
                 txid=note.txid,
+                canary=canary.public_label,
+                tripped_runs=finding.tripped_runs,
+                total_runs=judge.RUNS_PER_ATTEMPT,
+                actor_github=actor.github if actor else None,
+                payout_address=attempt.payout_address,
+                attack=tuple((fill["slot"], fill["content"]) for fill in attempt.payload_json),
             )
             email = mail.compose(event, recipient.email, settings.currency, settings.public_url)
             return note.id, email

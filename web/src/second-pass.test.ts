@@ -19,6 +19,7 @@ function bounty(over: Partial<BountyPublic>): BountyPublic {
     id: "b",
     title: "Agent",
     description: "",
+    sponsor: null,
     state: "live",
     accepting_attempts: true,
     reward_zatoshi: 1,

@@ -146,6 +146,15 @@ class Event:
     actor_name: str | None
     amount: int | None
     txid: str | None
+    # What broke: the canary's public label, and in how many of how many replays.
+    canary: str | None = None
+    tripped_runs: int | None = None
+    total_runs: int = 5
+    # The hunter's GitHub name, for the sponsor. And where the reward goes, for the hunter.
+    actor_github: str | None = None
+    payout_address: str | None = None
+    # The attack as the hunter sent it, for the sponsor it now belongs to: (slot, text).
+    attack: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -181,8 +190,8 @@ def _copy(event: Event, currency: Currency) -> _Copy:
                 " the evidence are on the bounty's page. Patch the agent, run the re-arm"
                 " check, and reopen it."
             ),
-            link=sponsor_page,
-            link_label="See the attack",
+            link=f"{sponsor_page}?tab=findings",
+            link_label="See every transcript and the evidence",
         )
     if event.kind == "reward_paid":
         return _Copy(
@@ -262,19 +271,56 @@ sponsor or attacked on trycanari.</td></tr>
 """
 
 
+SLOT_NAMES = {"user_message": "User message", "document": "Document"}
+# An email shows the start of a long attack. All of it is on the bounty's page.
+ATTACK_SHOWN = 1_500
+
+
+def _excerpt(text: str) -> str:
+    if len(text) <= ATTACK_SHOWN:
+        return text
+    more = len(text) - ATTACK_SHOWN
+    return f"{text[:ATTACK_SHOWN]}\n[... {more:,} more characters on the bounty's page]"
+
+
 def compose(event: Event, to: str, currency: Currency, public_url: str | None) -> Email:
     """The email for one notification. Everything a person typed is escaped in the HTML."""
     copy = _copy(event, currency)
     link = f"{(public_url or '').rstrip('/')}{copy.link}"
     greeting = f"Hi {event.recipient_name.split()[0]}, " if event.recipient_name else ""
+    for_sponsor = event.kind in ("bounty_broken", "reward_paid")
     facts = [("Bounty", event.bounty_title)]
+    if for_sponsor:
+        who = event.actor_name or "A hunter with no account"
+        if event.actor_github:
+            who += f" (github.com/{event.actor_github})"
+        facts.append(("Broken by", who))
+    if event.canary:
+        facts.append(("Canary tripped", event.canary))
+    if event.tripped_runs is not None:
+        facts.append(("Replays tripped", f"{event.tripped_runs} of {event.total_runs}"))
     if event.amount is not None:
         facts.append(("Amount", f"{format_amount(event.amount, currency)} {currency.symbol}"))
+    if event.payout_address and not for_sponsor:
+        facts.append(("Paid to", event.payout_address))
     if event.txid:
         facts.append(("Transaction", event.txid))
     lines = [f"{greeting}{copy.body}", ""]
     lines += [f"{name}: {value}" for name, value in facts]
+    # How it was done is the sponsor's to read, and only in the email about the break.
+    attack = event.attack if event.kind == "bounty_broken" else ()
+    shown = [(SLOT_NAMES.get(slot, slot), _excerpt(text)) for slot, text in attack]
+    for slot, text in shown:
+        lines += ["", f"The attack, {slot.lower()}:", text]
     lines += ["", f"{copy.link_label}: {link}"]
+    attack_html = "".join(
+        '<p style="margin:16px 0 6px;font-size:12px;font-weight:600;letter-spacing:.04em;'
+        f'text-transform:uppercase;color:#77808c">The attack: {html.escape(slot)}</p>'
+        '<pre style="margin:0;padding:12px;border:1px solid #e3e6ea;border-radius:8px;'
+        "background:#f7f8fa;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;"
+        f'white-space:pre-wrap;word-break:break-word;color:#14171c">{html.escape(text)}</pre>'
+        for slot, text in shown
+    )
     rows = "".join(
         '<tr><td style="padding:6px 12px 6px 0;font-size:13px;color:#77808c;'
         f'vertical-align:top">{html.escape(name)}</td>'
@@ -291,7 +337,8 @@ def compose(event: Event, to: str, currency: Currency, public_url: str | None) -
             headline=html.escape(copy.headline),
             greeting=html.escape(greeting),
             body=html.escape(copy.body),
-            facts=f'<table role="presentation" cellpadding="0" cellspacing="0">{rows}</table>',
+            facts=f'<table role="presentation" cellpadding="0" cellspacing="0">{rows}</table>'
+            + attack_html,
             link=html.escape(link, quote=True),
             link_label=html.escape(copy.link_label),
         ),

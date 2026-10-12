@@ -4,12 +4,26 @@ import { accountChanged, rememberedReferral } from "../account.tsx";
 import { api } from "../api.ts";
 import { useAction } from "../hooks.ts";
 import { useToast } from "../toast.tsx";
-import type { Account } from "../types.ts";
+import type { Account, CodeKind } from "../types.ts";
 import { Icon } from "./Brand.tsx";
 import { ErrorNote } from "./ui.tsx";
 
-/** Where someone with an account, but no referral code yet, enters one to start hunting. */
-export function ReferralGate({ compact = false }: { compact?: boolean }) {
+const COPY = {
+  hunter: {
+    title: "Enter your referral code to start hunting",
+    body: "Your account and profile are ready. Taking part in bounties is by invitation, because every attack is replayed five times against a real model. Got a code? Enter it once and you are in.",
+    button: "Unlock hunting",
+  },
+  sponsor: {
+    title: "Enter a sponsor code to list an agent",
+    body: "Listing an agent is by invitation. A sponsor code lets you list agents, lock rewards and read every break of them, and it lets you hunt too. Got one? Enter it once.",
+    button: "Unlock sponsoring",
+  },
+} as const;
+
+/** Where someone with an account, but no code of the kind yet, enters one: a referral
+ * code to start hunting, or a sponsor code to list agents. */
+export function ReferralGate({ compact = false, kind = "hunter" }: { compact?: boolean; kind?: CodeKind }) {
   const [code, setCode] = useState(rememberedReferral);
   const redeeming = useAction();
   const toast = useToast();
@@ -17,10 +31,12 @@ export function ReferralGate({ compact = false }: { compact?: boolean }) {
   async function redeem(event: FormEvent) {
     event.preventDefault();
     const done = await redeeming.run(async () => {
-      await api<Account>("POST", "/v1/account/referral", { body: { code: code.trim() } });
+      const now = await api<Account>("POST", "/v1/account/referral", { body: { code: code.trim() } });
       accountChanged();
+      setCode("");
+      toast(now.can_sponsor ? "Code accepted. You can list agents and hunt now." : "Code accepted. You can hunt now.");
     });
-    if (done) toast("Referral code accepted. You can hunt now.");
+    void done;
   }
 
   return (
@@ -28,24 +44,21 @@ export function ReferralGate({ compact = false }: { compact?: boolean }) {
       <span className="gate-icon">
         <Icon name="key" size={20} />
       </span>
-      <h2>Enter your referral code to start hunting</h2>
-      <p className="muted">
-        Your account and profile are ready. Taking part in bounties is by invitation, because every attack is
-        replayed five times against a real model. Got a code? Enter it once and you are in.
-      </p>
+      <h2>{COPY[kind].title}</h2>
+      <p className="muted">{COPY[kind].body}</p>
       <form className="referral-form" onSubmit={(event) => void redeem(event)}>
         <input
           className="code"
           required
           autoComplete="off"
           spellCheck={false}
-          aria-label="Referral code"
+          aria-label={kind === "sponsor" ? "Sponsor code" : "Referral code"}
           placeholder="XXXX-XXXX"
           value={code}
           onChange={(event) => setCode(event.target.value.toUpperCase())}
         />
         <button className="accent" disabled={redeeming.busy || !code.trim()}>
-          {redeeming.busy ? "Checking…" : "Unlock hunting"}
+          {redeeming.busy ? "Checking…" : COPY[kind].button}
         </button>
       </form>
       <ErrorNote>{redeeming.error}</ErrorNote>

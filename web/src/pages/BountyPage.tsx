@@ -7,6 +7,7 @@ import { api } from "../api.ts";
 import { saveAttempt, savedPayoutAddress, savePayoutAddress } from "../attempts.ts";
 import { AttemptTracker } from "../components/AttemptStatus.tsx";
 import { BrokenBy } from "../components/BrokenBy.tsx";
+import { SponsoredBy } from "../components/SponsoredBy.tsx";
 import { ReferralGate } from "../components/ReferralGate.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { Code } from "../components/Code.tsx";
@@ -356,6 +357,11 @@ function Sidebar({ bounty, account, cost }: { bounty: BountyPublic; account: Acc
       </div>
 
       <div className="panel">
+        <p className="label">Sponsored by</p>
+        <SponsoredBy sponsor={bounty.sponsor} full />
+      </div>
+
+      <div className="panel">
         <p className="label">You control</p>
         <ul className="plain">
           {bounty.entry_points.map((entry) => (
@@ -470,7 +476,8 @@ export function BountyPage() {
         <h1>
           {data.title} <Badge state={data.state} />
         </h1>
-        {data.description && <p className="lede">{data.description}</p>}
+        <SponsoredBy sponsor={data.sponsor} />
+        {data.description && <p className="lede bounty-desc">{data.description}</p>}
       </header>
 
       <div className="bounty-layout">

@@ -52,6 +52,14 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
         {
             "id": bounty_id,
             **listing_text,
+            # A sponsor who put nothing on their profile is shown as nobody in particular.
+            "sponsor": {
+                "name": None,
+                "picture_url": None,
+                "github": None,
+                "company": None,
+                "website": None,
+            },
             "state": "live",
             "accepting_attempts": True,
             "reward_zatoshi": 250_000_000,

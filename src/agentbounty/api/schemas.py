@@ -102,8 +102,13 @@ class ReferralRedeem(Body):
     code: str = Field(min_length=1, max_length=40)
 
 
+CodeKind = Literal["hunter", "sponsor"]
+
+
 class InviteOut(BaseModel):
     code: str
+    # What it lets its account do: "hunter" to attack, "sponsor" to list agents and attack.
+    kind: CodeKind = "hunter"
     # False once someone has used it. A code works once.
     available: bool
     invited_by: str | None
@@ -124,7 +129,10 @@ class PersonOut(BaseModel):
     is_ambassador: bool
     can_hunt: bool
     hunting_granted: bool
+    can_sponsor: bool
+    sponsoring_granted: bool
     referral_code: str | None
+    sponsor_code: str | None
     created_at: datetime
 
 
@@ -133,9 +141,13 @@ class PersonUpdate(Body):
     is_admin: bool | None = None
     # Let them take part in bounties without a referral code, or take that back.
     hunting_granted: bool | None = None
+    # Let them list agents without a sponsor code, or take that back.
+    sponsoring_granted: bool | None = None
 
 
 class AdminCodeCreate(Body):
+    # Who the codes are for: a hunter, or a sponsor (who may also hunt).
+    kind: CodeKind = "hunter"
     # How many single-use codes to make.
     count: StrictInt = Field(default=1, ge=1, le=500)
     # The code itself, when making one; otherwise they are generated.
@@ -144,6 +156,7 @@ class AdminCodeCreate(Body):
 
 class AdminCodeOut(BaseModel):
     code: str
+    kind: CodeKind = "hunter"
     # Who used it, or null while it is still good.
     used_by: str | None
     owner_email: str | None
@@ -197,6 +210,9 @@ class AccountOut(BaseModel):
     # Whether the account may attack: always, unless the platform is invite-only and it
     # has not redeemed a referral code yet.
     can_hunt: bool
+    # Whether the account may list an agent: always, unless the platform is invite-only
+    # and it has not redeemed a sponsor code yet.
+    can_sponsor: bool
     is_ambassador: bool
     is_admin: bool
     # The owner: the only one who can make or remove admins.
@@ -579,10 +595,21 @@ class BreakerOut(BaseModel):
     verified_at: datetime
 
 
+class SponsorPublic(BaseModel):
+    """Who lists a bounty, as they describe themselves on their profile."""
+
+    name: str | None
+    picture_url: str | None
+    github: str | None
+    company: str | None
+    website: str | None
+
+
 class BountyPublic(BaseModel):
     id: uuid.UUID
     title: str
     description: str
+    sponsor: SponsorPublic | None = None
     state: BountyState
     accepting_attempts: bool
     reward_zatoshi: int

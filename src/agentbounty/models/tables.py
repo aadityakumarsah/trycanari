@@ -79,6 +79,11 @@ class Sponsor(Base):
     referral_code: Mapped[str | None] = mapped_column(Text, unique=True)
     # Let in by an admin, without a code.
     hunting_granted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # A sponsor code the account has redeemed, which lets it list agents and attack them.
+    # Kept apart from referral_code so that a hunter invited to sponsor later holds both.
+    sponsor_code: Mapped[str | None] = mapped_column(Text, unique=True)
+    # Let list agents by an admin, without a code.
+    sponsoring_granted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # Made only to try the platform out. Shown to no one: not on the leaderboard, and not
     # in the admin's list of people. Set in the database, never through the API.
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
@@ -90,10 +95,15 @@ class ReferralCode(Base):
     not stored here: it is used when an account holds it."""
 
     __tablename__ = "referral_codes"
-    __table_args__ = (Index("ix_referral_codes_created_at", "created_at"),)
+    __table_args__ = (
+        Index("ix_referral_codes_created_at", "created_at"),
+        CheckConstraint("kind IN ('hunter', 'sponsor')", name="kind_known"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     code: Mapped[str] = mapped_column(Text, unique=True)
+    # What it lets its account do: "hunter" to attack, "sponsor" to list agents and attack.
+    kind: Mapped[str] = mapped_column(Text, default="hunter", server_default="hunter")
     # The ambassador who made it. A code made by the operator has no owner.
     owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"), index=True)
     created_at: Mapped[datetime] = created_now()

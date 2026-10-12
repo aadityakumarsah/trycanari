@@ -28,6 +28,7 @@ from agentbounty.api.schemas import (
     PayoutOut,
     ReplyOut,
     RunSummaryOut,
+    SponsorPublic,
     StatsOut,
     ToolCallOut,
 )
@@ -92,13 +93,14 @@ async def public_views(
     """
     rows = (
         await session.execute(
-            select(Bounty, _count_of(Attempt.bounty_id), _count_of(Finding.bounty_id))
+            select(Bounty, _count_of(Attempt.bounty_id), _count_of(Finding.bounty_id), Sponsor)
+            .join(Sponsor, Sponsor.id == Bounty.sponsor_id)
             .where(where, Bounty.deleted_at.is_(None))
             .order_by(*(order or (Bounty.created_at, Bounty.id)))
             .limit(limit)
         )
     ).all()
-    config_ids = [bounty.live_config_id for bounty, _, _ in rows if bounty.live_config_id]
+    config_ids = [bounty.live_config_id for bounty, *_ in rows if bounty.live_config_id]
     entry_points: dict[uuid.UUID, list[str]] = {}
     canaries: dict[uuid.UUID, list[CanaryPublic]] = {}
     if config_ids:
@@ -115,7 +117,7 @@ async def public_views(
         ):
             canaries.setdefault(config_id, []).append(CanaryPublic(type=kind, public_label=label))
     broken_by: dict[uuid.UUID, list[BreakerOut]] = {}
-    broken = [bounty.id for bounty, _, breaks in rows if breaks]
+    broken = [bounty.id for bounty, _, breaks, _ in rows if breaks]
     if broken:
         # Who a hunter is, is what they chose to put on their profile, as on the
         # leaderboard. The attack itself stays the sponsor's.
@@ -153,6 +155,14 @@ async def public_views(
             id=bounty.id,
             title=bounty.title,
             description=bounty.description,
+            # Who lists it is what they chose to put on their profile, as for hunters.
+            sponsor=SponsorPublic(
+                name=owner.name,
+                picture_url=owner.uploaded_picture_url or owner.picture_url,
+                github=owner.github,
+                company=owner.company,
+                website=owner.website,
+            ),
             state=bounty.state,
             accepting_attempts=bounty.state is BountyState.LIVE
             and bounty.close_requested_at is None,
@@ -167,7 +177,7 @@ async def public_views(
             broken_by=broken_by.get(bounty.id, []),
             created_at=bounty.created_at,
         )
-        for bounty, attempts, breaks in rows
+        for bounty, attempts, breaks, owner in rows
     ]
 
 
@@ -359,7 +369,12 @@ async def invite(code: str, session: Transaction) -> InviteOut:
     found = await credits.invite(session, code[:40])
     if found is None:
         raise HTTPException(404, "that invite does not exist")
-    return InviteOut(code=found.code, available=found.available, invited_by=found.invited_by)
+    return InviteOut(
+        code=found.code,
+        kind=found.kind,  # type: ignore[arg-type]
+        available=found.available,
+        invited_by=found.invited_by,
+    )
 
 
 @router.get("/bounties/{bounty_id}")

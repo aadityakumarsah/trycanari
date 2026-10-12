@@ -17,6 +17,8 @@ export interface BountyPublic {
   id: string;
   title: string;
   description: string;
+  /** Who lists it, as they describe themselves on their profile. */
+  sponsor: SponsorPublic | null;
   state: BountyState;
   accepting_attempts: boolean;
   reward_zatoshi: number;
@@ -28,6 +30,17 @@ export interface BountyPublic {
   broken_by: Breaker[];
   created_at: string;
 }
+
+export interface SponsorPublic {
+  name: string | null;
+  picture_url: string | null;
+  github: string | null;
+  company: string | null;
+  website: string | null;
+}
+
+/** What an invite lets its account do: attack, or list agents and attack. */
+export type CodeKind = "hunter" | "sponsor";
 
 /** Who broke a bounty: what the hunter chose to show on their profile. Never the attack. */
 export interface Breaker {
@@ -169,6 +182,8 @@ export interface Account {
   website: string | null;
   bio: string | null;
   can_hunt: boolean;
+  /** Whether the account may list an agent. */
+  can_sponsor: boolean;
   is_ambassador: boolean;
   is_admin: boolean;
   is_owner: boolean;
@@ -179,6 +194,7 @@ export interface Account {
 
 export interface Invite {
   code: string;
+  kind: CodeKind;
   available: boolean;
   invited_by: string | null;
 }
@@ -200,12 +216,16 @@ export interface Person {
   is_ambassador: boolean;
   can_hunt: boolean;
   hunting_granted: boolean;
+  can_sponsor: boolean;
+  sponsoring_granted: boolean;
   referral_code: string | null;
+  sponsor_code: string | null;
   created_at: string;
 }
 
 export interface AdminCode {
   code: string;
+  kind: CodeKind;
   used_by: string | null;
   owner_email: string | null;
   created_at: string;

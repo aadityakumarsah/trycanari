@@ -67,7 +67,10 @@ def _person(account: Sponsor, settings: Settings) -> PersonOut:
         is_ambassador=account.is_ambassador,
         can_hunt=credits.can_hunt(account, settings),
         hunting_granted=account.hunting_granted,
+        can_sponsor=credits.can_sponsor(account, settings),
+        sponsoring_granted=account.sponsoring_granted,
         referral_code=account.referral_code,
+        sponsor_code=account.sponsor_code,
         created_at=account.created_at,
     )
 
@@ -149,7 +152,7 @@ async def update_person(
     changes_admin = body.is_admin is not None and body.is_admin != account.is_admin
     if changes_admin and not credits.is_owner(admin, settings):
         raise HTTPException(403, "only the owner can make or remove admins")
-    for field in ("is_ambassador", "is_admin", "hunting_granted"):
+    for field in ("is_ambassador", "is_admin", "hunting_granted", "sponsoring_granted"):
         value = getattr(body, field)
         if value is not None and value != getattr(account, field):
             setattr(account, field, value)
@@ -199,6 +202,7 @@ async def referral_codes(
         items=[
             AdminCodeOut(
                 code=line.code.code,
+                kind=line.code.kind,  # type: ignore[arg-type]
                 used_by=line.used_by,
                 owner_email=line.owner_email,
                 created_at=line.code.created_at,
@@ -214,13 +218,19 @@ async def create_referral_codes(
     body: AdminCodeCreate, session: Transaction, admin: AdminDep
 ) -> list[AdminCodeOut]:
     """Make single-use referral codes: many at once, or one of the admin's choosing."""
-    made = await credits.create_codes(session, admin, body.count, body.code, unlimited=True)
+    made = await credits.create_codes(
+        session, admin, body.count, body.code, unlimited=True, kind=body.kind
+    )
     for code in made:
         await session.refresh(code)
-    record(session, admin, "codes_created", None, f"{len(made)} code(s)")
+    record(session, admin, "codes_created", None, f"{len(made)} {body.kind} code(s)")
     return [
         AdminCodeOut(
-            code=code.code, used_by=None, owner_email=admin.email, created_at=code.created_at
+            code=code.code,
+            kind=body.kind,
+            used_by=None,
+            owner_email=admin.email,
+            created_at=code.created_at,
         )
         for code in made
     ]

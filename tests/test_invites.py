@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from agentbounty.models import Attempt, AttemptState, Sponsor
 from agentbounty.services import credits
+from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import EntryPoint, SlotFill
 from agentbounty.settings import Settings
 
@@ -30,11 +31,17 @@ async def club(service_settings: Settings) -> AsyncIterator[Platform]:
         yield platform
 
 
-async def operator_code(platform: Platform, code: str | None = None) -> str:
+async def operator_code(
+    platform: Platform, code: str | None = None, kind: str = credits.HUNTER
+) -> str:
     """A fresh single-use code, as the operator would make one."""
     async with platform.sessions.begin() as session:
-        (made,) = await credits.create_codes(session, None, 1, code)
+        (made,) = await credits.create_codes(session, None, 1, code, kind=kind)
         return made.code
+
+
+async def sponsor_code(platform: Platform) -> str:
+    return await operator_code(platform, kind=credits.SPONSOR)
 
 
 async def join(platform: Platform, email: str, code: str | None) -> httpx.Response:
@@ -163,7 +170,7 @@ async def test_without_invite_only_nothing_changes(platform: Platform) -> None:
 
 async def test_an_attack_needs_an_account_and_spends_its_credits(club: Platform) -> None:
     code = await operator_code(club)
-    sponsor = await member(club, "sponsor@example.com", await operator_code(club))
+    sponsor = await member(club, "sponsor@example.com", await sponsor_code(club))
     hunter = await member(club, "hunter@example.com", await operator_code(club))
     from .platform import Sponsor as SponsorClient
 
@@ -231,7 +238,7 @@ async def test_the_allowance_refills_and_forgives_what_the_platform_failed(
     from .platform import Sponsor as SponsorClient
 
     bounty_id = await SponsorClient(
-        club.client, await member(club, "sponsor@example.com", await operator_code(club))
+        club.client, await member(club, "sponsor@example.com", await sponsor_code(club))
     ).live()
     for _ in range(3):
         assert (await attack(club, bounty_id, hunter)).status_code == 202
@@ -266,7 +273,7 @@ async def test_a_verified_break_raises_the_allowance(club: Platform) -> None:
     from .platform import Sponsor as SponsorClient
 
     sponsor = SponsorClient(
-        club.client, await member(club, "sponsor@example.com", await operator_code(club))
+        club.client, await member(club, "sponsor@example.com", await sponsor_code(club))
     )
     bounty_id = await sponsor.funded(club)
     accepted = await attack(club, bounty_id, hunter, STRONG)
@@ -489,3 +496,84 @@ async def test_an_account_has_a_name_and_a_picture(service_settings: Settings) -
         account = await sponsor.call("GET", "/v1/account")
         assert (account["name"], account["picture_url"]) == (None, None)
         assert account["google_linked"] is False
+
+
+# --- two kinds of invite ------------------------------------------------------------------
+
+
+async def test_a_hunter_code_lets_an_account_attack_and_a_sponsor_code_list_agents_too(
+    club: Platform,
+) -> None:
+    from .platform import Sponsor as SponsorClient
+
+    async def access(headers: dict[str, str]) -> tuple[bool, bool]:
+        told = (await club.client.get("/v1/account", headers=headers)).json()
+        return told["can_hunt"], told["can_sponsor"]
+
+    listing = {"reward_zatoshi": 1_000_000}
+    nobody = await member_without_code(club, "nobody@example.com")
+    assert await access(nobody) == (False, False)
+    refused = await club.client.post("/v1/bounties", headers=nobody, json=listing)
+    assert refused.status_code == 403
+    assert "sponsor invite" in refused.json()["detail"]
+
+    hunter = await member(club, "hunter@example.com", await operator_code(club))
+    assert await access(hunter) == (True, False)
+    assert (await club.client.post("/v1/bounties", headers=hunter, json=listing)).status_code == 403
+
+    # A sponsor code at sign-up opens both doors.
+    code = await sponsor_code(club)
+    shown = (await club.client.get(f"/v1/invites/{code}")).json()
+    assert (shown["kind"], shown["available"]) == ("sponsor", True)
+    sponsor = await member(club, "sponsor@example.com", code)
+    assert await access(sponsor) == (True, True)
+    bounty_id = await SponsorClient(club.client, sponsor).live()
+    assert (await attack(club, bounty_id, sponsor)).status_code == 202
+    assert (await club.client.get(f"/v1/invites/{code}")).json()["available"] is False
+
+    # Someone who joined to hunt can be invited to sponsor later, and both codes stay used.
+    upgrade = await sponsor_code(club)
+    redeemed = await club.client.post(
+        "/v1/account/referral", headers=hunter, json={"code": upgrade}
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    assert await access(hunter) == (True, True)
+    assert (await club.client.post("/v1/bounties", headers=hunter, json=listing)).status_code == 201
+    again = await club.client.post(
+        "/v1/account/referral", headers=hunter, json={"code": await sponsor_code(club)}
+    )
+    assert again.status_code == 409
+    taken = await club.client.post("/v1/account/referral", headers=nobody, json={"code": upgrade})
+    assert taken.status_code == 403
+
+
+async def test_only_an_admin_makes_sponsor_codes_and_may_let_someone_sponsor(
+    club: Platform,
+) -> None:
+    async with club.sessions.begin() as session:
+        ambassador = Sponsor(email="amb@example.com", is_ambassador=True)
+        session.add(ambassador)
+        await session.flush()
+        with pytest.raises(ServiceError, match="only an admin"):
+            await credits.create_codes(session, ambassador, 1, kind=credits.SPONSOR)
+        (made,) = await credits.create_codes(
+            session, ambassador, 1, kind=credits.SPONSOR, unlimited=True
+        )
+        assert made.kind == "sponsor"
+
+    # Without a code: an admin's say-so is enough, and it can be taken back.
+    someone = await member_without_code(club, "someone@example.com")
+    settings: Settings = club.app.state.settings
+    async with club.sessions.begin() as session:
+        row = await session.scalar(select(Sponsor).where(Sponsor.email == "someone@example.com"))
+        assert row is not None
+        assert credits.can_sponsor(row, settings) is False
+        row.sponsoring_granted = True
+    told = (await club.client.get("/v1/account", headers=someone)).json()
+    assert (told["can_hunt"], told["can_sponsor"]) == (False, True)
+
+
+async def member_without_code(platform: Platform, email: str) -> dict[str, str]:
+    joined = await join(platform, email, None)
+    assert joined.status_code == 201, joined.text
+    return {"Authorization": f"Bearer {joined.json()['api_key']}"}

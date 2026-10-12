@@ -26,11 +26,11 @@ from agentbounty.services.errors import ServiceError
 from agentbounty.settings import load_settings
 
 
-async def make_codes(count: int, code: str | None) -> str:
+async def make_codes(count: int, code: str | None, kind: str = credits.HUNTER) -> str:
     engine = create_engine(load_settings().database_url)
     try:
         async with create_session_factory(engine).begin() as session:
-            made = await credits.create_codes(session, None, count, code)
+            made = await credits.create_codes(session, None, count, code, kind=kind)
             return "\n".join(item.code for item in made)
     finally:
         await engine.dispose()
@@ -68,6 +68,12 @@ def main() -> None:
     code = commands.add_parser("code", help="make single-use referral codes")
     code.add_argument("--count", type=int, default=1, help="how many single-use codes to make")
     code.add_argument("--code", help="the code itself, when making one")
+    code.add_argument(
+        "--kind",
+        choices=[credits.HUNTER, credits.SPONSOR],
+        default=credits.HUNTER,
+        help="who the codes are for: a hunter, or a sponsor (who may also hunt)",
+    )
     ambassador = commands.add_parser("ambassador", help="let an account hand out codes")
     ambassador.add_argument("email")
     admin = commands.add_parser("admin", help="let an account run the platform")
@@ -75,7 +81,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         if args.command == "code":
-            result = asyncio.run(make_codes(args.count, args.code))
+            result = asyncio.run(make_codes(args.count, args.code, args.kind))
         elif args.command == "admin":
             result = asyncio.run(make_admin(args.email))
         else:

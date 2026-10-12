@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentbounty.models import Attempt, AttemptState, Finding, ReferralCode, Sponsor
@@ -37,6 +37,9 @@ COSTS: tuple[tuple[int, int], ...] = ((2_000, 1), (8_000, 2), (40_000, 4))
 # An ambassador may hold this many unused codes at a time, so a stolen ambassador
 # account cannot mint invitations without end.
 MAX_UNUSED_PER_AMBASSADOR = 25
+# The two kinds of referral code.
+HUNTER = "hunter"
+SPONSOR = "sponsor"
 # Easy to read aloud and type: no 0/O or 1/I/L.
 _ALPHABET = "".join(sorted(set(string.ascii_uppercase + string.digits) - set("0O1IL")))
 
@@ -128,7 +131,23 @@ async def charge(
 def can_hunt(account: Sponsor, settings: Settings) -> bool:
     """Whether the account may attack: always, unless the platform is invite-only and it
     has neither redeemed a code nor been let in by an admin."""
-    return not settings.invite_only or account.referral_code is not None or account.hunting_granted
+    return (
+        not settings.invite_only
+        or account.referral_code is not None
+        or account.sponsor_code is not None
+        or account.hunting_granted
+    )
+
+
+def can_sponsor(account: Sponsor, settings: Settings) -> bool:
+    """Whether the account may list an agent: always, unless the platform is invite-only
+    and it has neither redeemed a sponsor code nor been let in by an admin."""
+    return (
+        not settings.invite_only
+        or account.sponsor_code is not None
+        or account.sponsoring_granted
+        or is_admin(account, settings)
+    )
 
 
 def is_owner(account: Sponsor, settings: Settings) -> bool:
@@ -154,15 +173,21 @@ def _holder() -> Any:
     """The email of the account that used a code, or NULL while it is unused."""
     return (
         select(Sponsor.email)
-        .where(Sponsor.referral_code == ReferralCode.code)
+        .where(_held_by_account())
         .correlate(ReferralCode)
+        .limit(1)
         .scalar_subquery()
     )
 
 
-async def redeem(session: AsyncSession, code: str | None) -> str:
-    """Check a referral code exists and is unused, and hold it until this transaction
-    ends so that no two people take it. Returns the code as stored."""
+def _held_by_account() -> Any:
+    """An account holds this code, in whichever column its kind goes."""
+    return or_(
+        Sponsor.referral_code == ReferralCode.code, Sponsor.sponsor_code == ReferralCode.code
+    )
+
+
+async def _unused(session: AsyncSession, code: str | None) -> ReferralCode:
     if not code or not code.strip():
         raise ServiceError(422, "enter a referral code")
     found = await session.scalar(
@@ -170,16 +195,52 @@ async def redeem(session: AsyncSession, code: str | None) -> str:
     )
     if found is None:
         raise ServiceError(403, "that referral code is not valid")
-    if await session.scalar(select(Sponsor.id).where(Sponsor.referral_code == found.code)):
+    taken = await session.scalar(
+        select(Sponsor.id).where(
+            or_(Sponsor.referral_code == found.code, Sponsor.sponsor_code == found.code)
+        )
+    )
+    if taken:
         raise ServiceError(403, "that referral code has already been used")
-    return found.code
+    return found
+
+
+async def redeem(session: AsyncSession, code: str | None) -> str:
+    """Check a referral code exists and is unused, and hold it until this transaction
+    ends so that no two people take it. Returns the code as stored."""
+    return (await _unused(session, code)).code
+
+
+async def settle(session: AsyncSession, account: Sponsor) -> None:
+    """Put the code a new account joined with where its kind belongs: a sponsor code is
+    held as one. An account is made holding its code as a plain referral code."""
+    if account.referral_code is None:
+        return
+    kind = await session.scalar(
+        select(ReferralCode.kind).where(ReferralCode.code == account.referral_code)
+    )
+    if kind == SPONSOR:
+        account.sponsor_code, account.referral_code = account.referral_code, None
+        await session.flush()
 
 
 async def redeem_for(session: AsyncSession, account: Sponsor, code: str | None) -> None:
-    """Let an account take part in bounties, using up a referral code."""
-    if account.referral_code is not None or account.hunting_granted:
-        raise ServiceError(409, "you already have access to the bounties")
-    account.referral_code = await redeem(session, code)
+    """Use up a referral code for an account: a hunter code to take part in bounties, a
+    sponsor code to list agents as well. Someone who hunts already may still redeem a
+    sponsor code."""
+    found = await _unused(session, code)
+    if found.kind == SPONSOR:
+        if account.sponsor_code is not None or account.sponsoring_granted:
+            raise ServiceError(409, "you can already list agents")
+        account.sponsor_code = found.code
+    else:
+        if (
+            account.referral_code is not None
+            or account.sponsor_code is not None
+            or account.hunting_granted
+        ):
+            raise ServiceError(409, "you already have access to the bounties")
+        account.referral_code = found.code
     await session.flush()
 
 
@@ -190,9 +251,13 @@ async def create_codes(
     code: str | None = None,
     *,
     unlimited: bool = False,
+    kind: str = HUNTER,
 ) -> list[ReferralCode]:
-    """Make single-use codes. An ambassador may hold only so many unused ones at a time;
-    an admin, and the operator (no owner), may make as many as they ask for."""
+    """Make single-use codes. An ambassador may hold only so many unused ones at a time,
+    and makes hunter codes only; an admin, and the operator (no owner), may make as many
+    as they ask for, of either kind."""
+    if kind not in (HUNTER, SPONSOR):
+        raise ServiceError(422, "a code is for a hunter or for a sponsor")
     if count < 1:
         raise ServiceError(422, "make at least one code")
     if code is not None and count != 1:
@@ -200,6 +265,8 @@ async def create_codes(
     if owner is not None and not unlimited:
         if not owner.is_ambassador:
             raise ServiceError(403, "only ambassadors can make referral codes")
+        if kind == SPONSOR:
+            raise ServiceError(403, "only an admin can make sponsor codes")
         # Counted with the ambassador's row held, so two requests cannot both fit under it.
         await session.execute(select(Sponsor.id).where(Sponsor.id == owner.id).with_for_update())
         unused = await session.scalar(
@@ -223,7 +290,10 @@ async def create_codes(
         # Astronomically unlikely to collide; top up rather than assume.
         while len(values) < count:
             values = list({*values, new_code()})
-    made = [ReferralCode(code=value, owner_id=owner.id if owner else None) for value in values]
+    made = [
+        ReferralCode(code=value, owner_id=owner.id if owner else None, kind=kind)
+        for value in values
+    ]
     session.add_all(made)
     await session.flush()
     return made
@@ -236,6 +306,7 @@ class Invite:
     code: str
     available: bool
     invited_by: str | None
+    kind: str = HUNTER
 
 
 async def invite(session: AsyncSession, code: str) -> Invite | None:
@@ -249,7 +320,7 @@ async def invite(session: AsyncSession, code: str) -> Invite | None:
     if row is None:
         return None
     found, holder, owner_name = row
-    return Invite(found.code, holder is None, owner_name)
+    return Invite(found.code, holder is None, owner_name, found.kind)
 
 
 @dataclass(frozen=True)

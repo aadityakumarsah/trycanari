@@ -524,6 +524,18 @@ no longer published, so there is no newer version to move to.
 `INVITE_ONLY=true` bounds what replays can cost. Anyone may make an account. To attack,
 an account needs access: a referral code it has redeemed, or a grant from an admin.
 
+A referral code has a kind. A `hunter` code lets its account attack. A `sponsor` code lets
+its account list agents (`POST /v1/bounties` answers 403 without one) and attack too. An
+account holds a sponsor code in a column of its own, so someone who joined to hunt can
+redeem one later and both codes stay used. Admins make codes of either kind and can let an
+account sponsor without one; ambassadors make hunter codes only. `GET /v1/account` says
+`can_hunt` and `can_sponsor`. Accounts that had listed an agent before sponsor codes
+existed kept the right to.
+
+A bounty's public view names its `sponsor` as they describe themselves on their profile:
+name, picture, GitHub, company and website. The email a sponsor gets about a break names
+the hunter, the canary and how many replays tripped, and carries the attack itself.
+
 - A code admits one account. It is used when an account holds it, and a unique constraint
   on that column makes a second use impossible whatever two requests do at once.
 - Each attack costs 1, 2 or 4 tokens by its length (up to 2,000 characters, up to 8,000,

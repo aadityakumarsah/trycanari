@@ -5,6 +5,7 @@ import { pictureOf } from "../account.tsx";
 import { api } from "../api.ts";
 import { Icon, type IconName } from "../components/Brand.tsx";
 import { BrokenBy } from "../components/BrokenBy.tsx";
+import { SponsoredBy } from "../components/SponsoredBy.tsx";
 import { AttackTimeline } from "../components/AttackTimeline.tsx";
 import { Flow } from "../components/Flow.tsx";
 import { WalkingMascot } from "../components/WalkingMascot.tsx";
@@ -129,7 +130,8 @@ function BountyCard({ bounty, over = false }: { bounty: BountyPublic; over?: boo
         <h3>
           <Link to={`/b/${bounty.id}`}>{bounty.title}</Link>
         </h3>
-        {bounty.description && <p className="muted">{bounty.description}</p>}
+        <SponsoredBy sponsor={bounty.sponsor} />
+        {bounty.description && <p className="muted card-desc">{bounty.description}</p>}
       </div>
       <div>
         <p className="label">You control</p>

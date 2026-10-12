@@ -306,6 +306,7 @@ async def callback(
         except ServiceError:
             raise SignInError("google_email_taken", "the email belongs to a key account") from None
         # Kept in step with Google on every sign-in. A name the person chose here stays.
+        await credits.settle(session, sponsor)
         sponsor.name = sponsor.name or who.name
         sponsor.picture_url = who.picture_url
     except SignInError as failure:

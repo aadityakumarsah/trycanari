@@ -300,7 +300,8 @@ export function Dashboard() {
       )}
       {account?.is_ambassador && <Referrals />}
 
-      <section className="create">
+      {account && !account.can_sponsor && <ReferralGate compact kind="sponsor" />}
+      <section className={account && !account.can_sponsor ? "create locked" : "create"}>
         <div className="create-earn">
           <p className="eyebrow">You pay</p>
           <b>Only for proof</b>
@@ -310,7 +311,13 @@ export function Dashboard() {
           <p className="muted">Plant canaries, lock a reward, and let hunters red-team it for you.</p>
         </div>
         <div className="create-action">
-          <button type="button" className="accent" onClick={() => setAdding(true)} disabled={adding}>
+          <button
+            type="button"
+            className="accent"
+            onClick={() => setAdding(true)}
+            disabled={adding || account?.can_sponsor === false}
+            title={account?.can_sponsor === false ? "Listing an agent needs a sponsor code" : undefined}
+          >
             Start listing <Icon name="chevron" size={15} />
           </button>
           <Link to="/docs#sponsors">Need help? Read the guide</Link>
@@ -345,9 +352,11 @@ export function Dashboard() {
       {bounties.data?.length === 0 && !adding && (
         <div className="empty">
           <p>You have not listed an agent yet.</p>
-          <button type="button" className="text-button" onClick={() => setAdding(true)}>
-            List your first agent
-          </button>
+          {account?.can_sponsor !== false && (
+            <button type="button" className="text-button" onClick={() => setAdding(true)}>
+              List your first agent
+            </button>
+          )}
         </div>
       )}
 

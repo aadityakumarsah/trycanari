@@ -4,6 +4,7 @@ import type { Hunt, Notification } from "../types.ts";
 import { hunterName } from "./BrokenBy.tsx";
 import { isMoving, matching, payoutStage } from "./Hunts.tsx";
 import { describe } from "./Notifications.tsx";
+import { sponsorName } from "./SponsoredBy.tsx";
 
 const HUNT: Hunt = {
   id: "a1",
@@ -79,7 +80,7 @@ group("a notification", () => {
     const said = describe(note);
     expect(said.title).toBe("Ada Hunter broke Treasury agent");
     expect(said.detail).toContain("2.5 ZEC");
-    expect(said.to).toBe("/dashboard/b/b1");
+    expect(said.to).toBe("/dashboard/b/b1?tab=findings");
     expect(describe({ ...note, actor: null }).title).toBe("A hunter broke Treasury agent");
   });
 
@@ -94,4 +95,29 @@ test("a hunter is called by their name, then their handle, then nothing", () => 
   expect(hunterName({ name: "Ada Hunter", github: "ada" })).toBe("Ada Hunter");
   expect(hunterName({ name: null, github: "ada" })).toBe("@ada");
   expect(hunterName({ name: null, github: null })).toBe("Anonymous hunter");
+});
+
+test("a sponsor is called by name, then company, then handle, then nothing", () => {
+  const nobody = { name: null, picture_url: null, github: null, company: null, website: null };
+  expect(sponsorName({ ...nobody, name: "trycanari", company: "Meridian" })).toBe("trycanari");
+  expect(sponsorName({ ...nobody, company: "Meridian" })).toBe("Meridian");
+  expect(sponsorName({ ...nobody, github: "ada" })).toBe("@ada");
+  expect(sponsorName(nobody)).toBe("A private sponsor");
+  expect(sponsorName(null)).toBe("A private sponsor");
+});
+
+test("a sponsor's break opens on the findings, where the attack is", () => {
+  const note: Notification = {
+    id: "n1",
+    kind: "bounty_broken",
+    bounty_id: "b1",
+    bounty_title: "Treasury agent",
+    actor: null,
+    amount_zatoshi: 1,
+    txid: null,
+    read: false,
+    created_at: "2026-10-01T00:00:00Z",
+  };
+  expect(describe(note).to).toBe("/dashboard/b/b1?tab=findings");
+  expect(describe({ ...note, kind: "reward_paid" }).to).toBe("/dashboard/b/b1?tab=ledger");
 });

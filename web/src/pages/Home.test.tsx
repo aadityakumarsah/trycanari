@@ -7,6 +7,7 @@ const BOUNTY: BountyPublic = {
   id: "b1",
   title: "Treasury agent",
   description: "",
+  sponsor: null,
   state: "closed",
   accepting_attempts: false,
   reward_zatoshi: 1_000_000,

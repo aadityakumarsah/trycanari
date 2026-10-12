@@ -372,13 +372,16 @@ export function Docs() {
             Every attack is replayed five times against a real model, which costs real money. So hunting is by
             invitation, and each account has a daily allowance of tokens to spend on attacks.
           </p>
-          <h3>Anyone can join; hunting needs a referral code</h3>
+          <h3>Anyone can join; hunting and sponsoring need an invite</h3>
           <p>
-            Making an account and filling in your <Link to="/profile">profile</Link> is open to everyone, and so is
-            listing an agent. Taking part in bounties is by invitation: you enter a referral code once, on the
-            dashboard or on any bounty page, and from then on you can attack. Codes are handed out by the
-            platform and by <strong>ambassadors</strong>, and each one is for one person. If you arrive through
-            an invite link, the code is applied for you as you join.
+            Making an account and filling in your <Link to="/profile">profile</Link> is open to everyone. What you
+            can do after that depends on the invite you redeem, and there are two kinds. A{" "}
+            <strong>hunter invite</strong> lets you attack bounties. A <strong>sponsor invite</strong> lets you list
+            agents, lock rewards and read every break of them, and it lets you attack as well. You enter a code
+            once, on the dashboard or on any bounty page, and if you arrive through an invite link it is applied
+            for you as you join. Someone who joined to hunt can redeem a sponsor invite later. Hunter invites
+            are handed out by the platform and by <strong>ambassadors</strong>; sponsor invites by the platform.
+            Each one is for one person.
           </p>
           <h3>Attacking spends tokens</h3>
           <p>

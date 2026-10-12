@@ -250,6 +250,7 @@ async def test_an_admin_makes_single_use_codes_and_an_invite_link_grants_access(
     assert named.json() == [
         {
             "code": "LAUNCH-DAY",
+            "kind": "hunter",
             "used_by": None,
             "owner_email": "boss@example.com",
             "created_at": named.json()[0]["created_at"],
@@ -266,7 +267,12 @@ async def test_an_admin_makes_single_use_codes_and_an_invite_link_grants_access(
 
     # What the link shows to whoever follows it, signed in or not.
     shown = await club.client.get("/v1/invites/launch-day")
-    assert shown.json() == {"code": "LAUNCH-DAY", "available": True, "invited_by": "The Boss"}
+    assert shown.json() == {
+        "code": "LAUNCH-DAY",
+        "kind": "hunter",
+        "available": True,
+        "invited_by": "The Boss",
+    }
     assert (await club.client.get("/v1/invites/NOPE-NOPE")).status_code == 404
 
     # Someone follows it and joins: they can hunt at once, and the link is spent.

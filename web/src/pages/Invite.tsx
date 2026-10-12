@@ -33,8 +33,9 @@ export function InvitePage() {
       accountChanged();
     });
     if (done) {
-      toast("You are in. Pick a bounty.");
-      navigate("/#bounties");
+      const sponsor = invite.data?.kind === "sponsor";
+      toast(sponsor ? "You are in. List your first agent." : "You are in. Pick a bounty.");
+      navigate(sponsor ? "/dashboard" : "/#bounties");
     }
   }
 
@@ -54,7 +55,10 @@ export function InvitePage() {
   }
   if (!invite.data) return invite.error ? <ErrorNote>{invite.error}</ErrorNote> : <Skeleton block lines={3} />;
 
-  const { available, invited_by: from } = invite.data;
+  const { available, invited_by: from, kind } = invite.data;
+  const sponsoring = kind === "sponsor";
+  // What this invite would add is already theirs.
+  const has = sponsoring ? account?.can_sponsor : account?.can_hunt;
   const signedIn = session?.signed_in === true;
   const start = `/v1/auth/google/start?code=${encodeURIComponent(invite.data.code)}`;
 
@@ -64,32 +68,34 @@ export function InvitePage() {
         <img src="/app/brand/mascot.png" alt="" width={58} height={50} />
       </span>
       <p className="eyebrow">{from ? `${from} invited you` : "You are invited"}</p>
-      <h1>Hunt on trycanari</h1>
+      <p className="invite-kind">{sponsoring ? "Sponsor invite" : "Hunter invite"}</p>
+      <h1>{sponsoring ? "List your agent on trycanari" : "Hunt on trycanari"}</h1>
       <p className="lede">
-        Break AI agents, trip their canaries, and get paid automatically in {paidIn()}. This invite opens
-        the bounties to you.
+        {sponsoring
+          ? `Plant canaries in your AI agent, lock a reward in ${paidIn()}, and pay only for attacks that provably work. This invite lets you list agents, read every break of them, and hunt as well.`
+          : `Break AI agents, trip their canaries, and get paid automatically in ${paidIn()}. This invite opens the bounties to you.`}
       </p>
       <p className="invite-code">
         <code>{invite.data.code}</code>
         <span>{available ? "Good for one person" : "Already used"}</span>
       </p>
 
-      {!available && !account?.can_hunt ? (
+      {!available && !has ? (
         <p className="notice">
           This invite has already been used. Each one works once: ask whoever sent it for a fresh one.
         </p>
-      ) : signedIn && account?.can_hunt ? (
+      ) : signedIn && has ? (
         <>
-          <p className="done">You already have access to the bounties.</p>
-          <Link className="button accent" to="/#bounties">
-            See the live bounties <Icon name="chevron" size={15} />
+          <p className="done">{sponsoring ? "You can already list agents." : "You already have access to the bounties."}</p>
+          <Link className="button accent" to={sponsoring ? "/dashboard" : "/#bounties"}>
+            {sponsoring ? "Go to your dashboard" : "See the live bounties"} <Icon name="chevron" size={15} />
           </Link>
         </>
       ) : signedIn ? (
         <>
           <ErrorNote>{accepting.error}</ErrorNote>
           <button type="button" className="accent big" disabled={accepting.busy} onClick={() => void accept()}>
-            {accepting.busy ? "Opening the bounties…" : "Accept the invite"}
+            {accepting.busy ? "One moment…" : "Accept the invite"}
           </button>
         </>
       ) : (

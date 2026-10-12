@@ -121,6 +121,7 @@ async def create_sponsor(
     given = body.referral_code and body.referral_code.strip()
     code = await credits.redeem(session, given) if settings.invite_only and given else None
     sponsor, api_key = await bounty_service.create_sponsor(session, body.email, code)
+    await credits.settle(session, sponsor)
     return SponsorCreated(sponsor_id=sponsor.id, api_key=api_key)
 
 
@@ -142,6 +143,7 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
         website=sponsor.website,
         bio=sponsor.bio,
         can_hunt=credits.can_hunt(sponsor, settings),
+        can_sponsor=credits.can_sponsor(sponsor, settings),
         is_ambassador=sponsor.is_ambassador,
         is_admin=credits.is_admin(sponsor, settings),
         is_owner=credits.is_owner(sponsor, settings),
@@ -221,7 +223,8 @@ async def remove_picture(
 async def redeem_referral(
     body: ReferralRedeem, session: Transaction, sponsor: SponsorDep, settings: SettingsDep
 ) -> AccountOut:
-    """Redeem a referral code, which lets the account take part in bounties."""
+    """Redeem a referral code: a hunter code lets the account take part in bounties, a
+    sponsor code lets it list agents as well."""
     await credits.redeem_for(session, sponsor, body.code)
     return await account(session, sponsor, settings)
 
@@ -372,6 +375,8 @@ async def create_referral_codes(
 async def create_bounty(
     body: BountyCreate, session: Transaction, sponsor: SponsorDep, settings: SettingsDep
 ) -> BountyCreated:
+    if not credits.can_sponsor(sponsor, settings):
+        raise ServiceError(403, "listing an agent needs a sponsor invite: enter a sponsor code")
     currency = settings.currency
     if body.reward_zatoshi < currency.minimum:
         least = format_amount(currency.minimum, currency)

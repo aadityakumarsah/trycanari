@@ -31,7 +31,7 @@ export function describe(note: Notification): Told {
         tone: "alert",
         title: `${hunter} broke ${note.bounty_title}`,
         detail: `Verified in at least 3 of 5 replays. The bounty is paused and ${amount} is being paid out.`,
-        to: dashboard,
+        to: `${dashboard}?tab=findings`,
       };
     case "reward_paid":
       return {
@@ -39,7 +39,7 @@ export function describe(note: Notification): Told {
         tone: "good",
         title: `${amount} paid for ${note.bounty_title}`,
         detail: `Sent to ${note.actor?.name ?? "the hunter"} from the bounty's escrow.`,
-        to: dashboard,
+        to: `${dashboard}?tab=ledger`,
       };
     case "break_verified":
       return {

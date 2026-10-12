@@ -9,9 +9,11 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentbounty.app import create_app
+from agentbounty.models import Sponsor as SponsorRow
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.harness import DEFAULT_LIMITS, SandboxLimits
 from agentbounty.services.model import GUARD_SENTENCE, FakeModel, ModelClient, call_directive
@@ -159,6 +161,11 @@ class Platform:
     async def sponsor(self, email: str = "team@example.com") -> Sponsor:
         response = await self.client.post("/v1/sponsors", json={"email": email})
         assert response.status_code == 201, response.text
+        # A sponsor: where the platform is invite-only, one an admin has let list agents.
+        async with self.sessions.begin() as session:
+            await session.execute(
+                update(SponsorRow).where(SponsorRow.email == email).values(sponsoring_granted=True)
+            )
         return Sponsor(self.client, {"Authorization": f"Bearer {response.json()['api_key']}"})
 
     async def submit(
