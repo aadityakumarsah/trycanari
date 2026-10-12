@@ -173,3 +173,36 @@ async def _address() -> str:
     from .platform import HUNTER
 
     return HUNTER
+
+
+async def test_the_leaderboard_ranks_hunters_who_broke_something_from_an_account(
+    platform: Platform,
+) -> None:
+    assert (await platform.client.get("/v1/leaderboard")).json() == []
+    sponsor = await platform.sponsor()
+    hunter = await platform.sponsor("hunter@example.com")
+    await hunter.call("PATCH", "/v1/account", json={"name": "Ada Lovelace", "github": "ada"})
+    from .platform import HUNTER
+
+    for _ in range(2):
+        bounty_id = await sponsor.funded(platform)
+        body = {"payout_address": HUNTER, "fills": [{"slot": "user_message", "content": STRONG}]}
+        accepted = await hunter.call("POST", f"/v1/bounties/{bounty_id}/attempts", 202, json=body)
+        assert (await platform.poll(accepted))["verdict"] == "verified"
+        await platform.payments.tick()
+    # A break made without an account, and an account that broke nothing, are not on it.
+    anonymous = await sponsor.funded(platform)
+    await platform.poll(await platform.submit(anonymous, STRONG))
+
+    (leader,) = (await platform.client.get("/v1/leaderboard")).json()
+    assert leader == {
+        "name": "Ada Lovelace",
+        "picture_url": None,
+        "github": "ada",
+        "company": None,
+        "breaks": 2,
+        "earned_zatoshi": 2 * REWARD,
+        "last_break_at": leader["last_break_at"],
+    }
+    # Their email is not part of it.
+    assert "hunter@example.com" not in str(leader)

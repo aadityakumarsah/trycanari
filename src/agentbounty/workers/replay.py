@@ -13,6 +13,7 @@ import contextlib
 import logging
 import signal
 from datetime import timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -21,7 +22,7 @@ from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
 from agentbounty.models import Attempt
 from agentbounty.models import TargetConfig as TargetConfigRow
-from agentbounty.services import attempts, rearm
+from agentbounty.services import attempts, playbook, rearm, scan
 from agentbounty.services.bounty import LoadedTarget, load_target
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.harness import (
@@ -125,10 +126,93 @@ async def work_once(
         return True
     async with sessions.begin() as session:
         check = await rearm.claim_next(session)
-    if check is None:
+    if check is not None:
+        await process_rearm(sessions, cipher, model, check, limits=limits)
+        return True
+    async with sessions.begin() as session:
+        asked = await scan.claim_next(session)
+    if asked is None:
         return False
-    await process_rearm(sessions, cipher, model, check, limits=limits)
+    await process_scan(sessions, cipher, model, asked, limits=limits)
     return True
+
+
+async def process_scan(
+    sessions: SessionFactory,
+    cipher: Cipher,
+    model: ModelClient,
+    claim: scan.ScanClaim,
+    *,
+    limits: SandboxLimits = DEFAULT_LIMITS,
+) -> None:
+    """Run the baseline playbook against a config, one replay a probe, and record what
+    each probe did."""
+    async with sessions() as session:
+        config = await session.scalar(
+            select(TargetConfigRow)
+            .where(
+                TargetConfigRow.bounty_id == claim.bounty_id,
+                TargetConfigRow.config_hash == claim.config_hash,
+            )
+            .order_by(TargetConfigRow.version.desc())
+            .limit(1)
+        )
+        target = await load_target(session, cipher, config) if config else None
+    if target is None:
+        # The config was edited after the scan was asked for: there is nothing to scan.
+        async with sessions.begin() as session:
+            await scan.fail(session, claim)
+        return
+
+    results: list[dict[str, Any]] = []
+    try:
+        for probe in playbook.probes(target):
+            (ran,) = await run_attempt(
+                target.config, list(probe.fills), model, runs=1, limits=limits
+            )
+            tripped = [
+                canary.definition.public_label for canary in attempts.tripped_in(target, ran)
+            ]
+            said = next(
+                (
+                    m.content
+                    for m in reversed(ran.transcript)
+                    if m.role == "assistant" and m.content
+                ),
+                "",
+            )
+            results.append(
+                {
+                    "id": probe.id,
+                    "name": probe.name,
+                    "technique": probe.technique,
+                    "aimed_at": probe.aimed_at,
+                    "tripped": tripped,
+                    "attack": [
+                        {"slot": fill.slot.value, "content": fill.content} for fill in probe.fills
+                    ],
+                    "reply": said[:600],
+                    "tool_calls": [
+                        {"name": call.name, "arguments": dict(call.arguments)}
+                        for call in ran.tool_calls
+                    ],
+                }
+            )
+    except Exception:
+        logger.exception("baseline scan for bounty %s failed", claim.bounty_id)
+        async with sessions.begin() as session:
+            await scan.fail(session, claim)
+        return
+    async with sessions.begin() as session:
+        await scan.record(session, cipher, claim, results)
+    logger.info(
+        "baseline scan done",
+        extra={
+            "bounty_id": str(claim.bounty_id),
+            "probes": len(results),
+            "tripped": sum(1 for result in results if result["tripped"]),
+        },
+    )
 
 
 async def process_rearm(
@@ -235,6 +319,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                         session, older_than=stale_after, max_tries=settings.attempt_max_tries
                     )
                     await rearm.requeue_stale(session, older_than=stale_after)
+                    await scan.requeue_stale(session, older_than=stale_after)
                 if await work_once(sessions, cipher, model, max_tries=settings.attempt_max_tries):
                     continue
             except Exception:

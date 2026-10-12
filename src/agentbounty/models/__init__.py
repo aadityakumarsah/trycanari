@@ -26,6 +26,7 @@ from agentbounty.models.tables import (
     ReferralCode,
     Refund,
     Run,
+    Scan,
     Sponsor,
     TargetConfig,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "ReferralCode",
     "Refund",
     "Run",
+    "Scan",
     "Sponsor",
     "TargetConfig",
 ]

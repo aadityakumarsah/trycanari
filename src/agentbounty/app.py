@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -93,6 +94,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.solana_transport = None
     # Public answers kept for a few seconds (see api/public.py).
     app.state.public_cache = {}
+
+    # Pages, scripts and API answers go out compressed: the app's script is a third the size.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 
     @app.middleware("http")
     async def security_headers(

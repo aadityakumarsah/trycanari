@@ -262,6 +262,11 @@ def _detect(canary: LoadedCanary, transcript: judge.Transcript) -> judge.Detecti
     return judge.detect_forbidden_tool(transcript, definition.rule)
 
 
+def tripped_in(target: LoadedTarget, result: RunResult) -> list[LoadedCanary]:
+    """The canaries one run tripped. For a look at a single run, where no verdict is due."""
+    return [canary for canary in target.canaries if _detect(canary, result.transcript).tripped]
+
+
 def judge_runs(target: LoadedTarget, results: Sequence[RunResult]) -> Judgement:
     """Run every canary's detector over every run and decide.
 

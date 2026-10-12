@@ -22,12 +22,22 @@ from agentbounty.api.schemas import (
     BreakOut,
     CanaryPublic,
     InviteOut,
+    LeaderOut,
     PayoutOut,
     ReplyOut,
     StatsOut,
     ToolCallOut,
 )
-from agentbounty.models import Attempt, Bounty, BountyState, Canary, Finding, Payout, PayoutState
+from agentbounty.models import (
+    Attempt,
+    Bounty,
+    BountyState,
+    Canary,
+    Finding,
+    Payout,
+    PayoutState,
+    Sponsor,
+)
 from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.services import attempts as attempt_service
 from agentbounty.services import credits
@@ -38,6 +48,7 @@ from agentbounty.services.wallet import address_rule
 router = APIRouter(prefix="/v1", tags=["public"], dependencies=[Depends(limit_by_client)])
 
 RECENT_BREAKS = 8
+LEADERS = 10
 _MAX_CACHED = 2_000
 
 
@@ -187,6 +198,44 @@ async def activity(request: Request, session: Transaction) -> ActivityOut:
         )
 
     return await cached(request, "activity", load)
+
+
+@router.get("/leaderboard")
+async def leaderboard(request: Request, session: Transaction) -> list[LeaderOut]:
+    """The hunters with the most verified breaks. Only breaks made from an account count,
+    and a hunter appears under what they chose to put on their profile."""
+
+    async def load() -> list[LeaderOut]:
+        breaks = func.count(Finding.id)
+        earned = func.coalesce(
+            func.sum(Payout.amount_zatoshi).filter(
+                Payout.state.in_([PayoutState.SENT, PayoutState.CONFIRMED])
+            ),
+            0,
+        )
+        rows = await session.execute(
+            select(Sponsor, breaks, earned, func.max(Finding.verified_at))
+            .join(Attempt, Attempt.account_id == Sponsor.id)
+            .join(Finding, Finding.attempt_id == Attempt.id)
+            .outerjoin(Payout, Payout.finding_id == Finding.id)
+            .group_by(Sponsor.id)
+            .order_by(breaks.desc(), earned.desc(), func.max(Finding.verified_at))
+            .limit(LEADERS)
+        )
+        return [
+            LeaderOut(
+                name=who.name,
+                picture_url=who.uploaded_picture_url or who.picture_url,
+                github=who.github,
+                company=who.company,
+                breaks=count,
+                earned_zatoshi=int(total),
+                last_break_at=last,
+            )
+            for who, count, total, last in rows
+        ]
+
+    return await cached(request, "leaderboard", load)
 
 
 @router.get("/invites/{code}")

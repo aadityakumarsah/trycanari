@@ -332,6 +332,25 @@ class RearmCheck(Base):
     created_at: Mapped[datetime] = created_now()
 
 
+class Scan(Base):
+    """A run of the baseline playbook against one config of a bounty."""
+
+    __tablename__ = "scans"
+    __table_args__ = (
+        UniqueConstraint("bounty_id", "config_hash"),
+        CheckConstraint("state IN ('queued', 'running', 'done', 'error')", name="state_known"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"), index=True)
+    config_hash: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, default="queued", server_default="queued", index=True)
+    # What each probe did and what the agent said, encrypted: it may hold the agent's secrets.
+    results_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_now()
+
+
 class PaymentAudit(Base):
     """Append-only: one row for every payment action, written with the action itself."""
 

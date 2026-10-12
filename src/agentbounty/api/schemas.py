@@ -415,6 +415,44 @@ class RunOut(BaseModel):
     evidence: list[EvidenceOut]
 
 
+class ProbeOut(BaseModel):
+    id: str
+    name: str
+    technique: str
+    # The canary it was aimed at, and the canaries it tripped: empty when the agent held.
+    aimed_at: str
+    tripped: list[str]
+    attack: list[FillIn]
+    reply: str
+    tool_calls: list[ToolCallOut]
+
+
+class ScanOut(BaseModel):
+    # null when the current config has not been scanned.
+    state: Literal["queued", "running", "done", "error"] | None
+    config_hash: str | None
+    probes: list[ProbeOut]
+    # How many probes the agent held against, out of how many were run.
+    held: int
+    total: int
+    # How the risk each kind of canary guards against is named, after OWASP's lists.
+    risks: dict[str, str]
+    requested_at: datetime | None
+
+
+class LeaderOut(BaseModel):
+    """A hunter on the leaderboard: what they chose to put on their profile, and what
+    they have won."""
+
+    name: str | None
+    picture_url: str | None
+    github: str | None
+    company: str | None
+    breaks: int
+    earned_zatoshi: int
+    last_break_at: datetime
+
+
 class HunterOut(BaseModel):
     """Who broke the agent, as they describe themselves on their profile."""
 

@@ -39,11 +39,13 @@ from agentbounty.api.schemas import (
     LedgerOut,
     MessageOut,
     PayoutOut,
+    ProbeOut,
     RearmOut,
     ReferralCodeCreate,
     ReferralCodeOut,
     ReferralRedeem,
     RunOut,
+    ScanOut,
     SecretCanaryIn,
     SponsorBounty,
     SponsorBountyDetail,
@@ -60,12 +62,14 @@ from agentbounty.models import (
     Canary,
     CanaryType,
     Finding,
+    Scan,
     Sponsor,
 )
 from agentbounty.money import format_amount
 from agentbounty.services import bounty as bounty_service
-from agentbounty.services import credits, pictures, rearm, reports
+from agentbounty.services import credits, pictures, playbook, rearm, reports, scan
 from agentbounty.services.bounty import CanaryDefinition
+from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import MockTool, TargetConfig
 from agentbounty.services.judge import ArgumentPredicate, ToolRule
@@ -514,6 +518,36 @@ async def findings(session: Transaction, bounty: OwnBounty, cipher: CipherDep) -
             )
         )
     return out
+
+
+def _scan_out(cipher: Cipher, found: Scan | None, config_hash: str | None) -> ScanOut:
+    results = scan.results_of(cipher, found) if found is not None else []
+    return ScanOut(
+        state=found.state if found is not None else None,  # type: ignore[arg-type]
+        config_hash=config_hash,
+        probes=[ProbeOut(**result) for result in results],
+        held=sum(1 for result in results if not result["tripped"]),
+        total=len(results),
+        risks=playbook.RISK,
+        requested_at=found.created_at if found is not None else None,
+    )
+
+
+@router.get("/bounties/{bounty_id}/scan")
+async def read_scan(session: Transaction, bounty: OwnBounty, cipher: CipherDep) -> ScanOut:
+    """The baseline scan of the bounty's current config: the playbook's probes and what
+    each one did. Editing the config or its canaries makes a new config, with no scan yet."""
+    found, config_hash = await scan.latest(session, bounty)
+    return _scan_out(cipher, found, config_hash)
+
+
+@router.post("/bounties/{bounty_id}/scan", status_code=202, dependencies=[Depends(limit_by_client)])
+async def start_scan(session: Transaction, bounty: OwnBounty, cipher: CipherDep) -> ScanOut:
+    """Run the baseline playbook against the current config: six well-known attacks, each
+    aimed at one of the agent's own canaries and replayed once. One scan per config."""
+    found = await scan.request(session, bounty)
+    await session.refresh(found)
+    return _scan_out(cipher, found, found.config_hash)
 
 
 @router.get("/bounties/{bounty_id}/attempts")
