@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import { pictureOf } from "../account.tsx";
 import { api } from "../api.ts";
 import { Icon, type IconName } from "../components/Brand.tsx";
+import { AttackTimeline } from "../components/AttackTimeline.tsx";
 import { Flow } from "../components/Flow.tsx";
 import { WalkingMascot } from "../components/WalkingMascot.tsx";
 import { Ago, Avatar, ErrorNote, Skeleton, words } from "../components/ui.tsx";
@@ -463,6 +464,17 @@ export function Home() {
           </p>
         </div>
         <Flow />
+      </section>
+
+      <section className="sec flush safe-sec" aria-labelledby="safe-title">
+        <div className="safe-head">
+          <h2 id="safe-title">Safe to Attack</h2>
+          <p>
+            Every attack runs on a sandboxed copy of the agent, with mock tools. It is replayed five times and
+            judged by its tripwires before any reward moves.
+          </p>
+        </div>
+        <AttackTimeline />
       </section>
 
       <section className="sec flush split" id="how">

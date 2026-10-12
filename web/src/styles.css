@@ -1372,3 +1372,51 @@ table.people td { vertical-align: middle; white-space: nowrap; }
 .docs-body .do-dont ul { padding-left: 18px; }
 .do-dont li { margin-bottom: 8px; font-size: 14.500px; line-height: 22px; }
 @media (max-width: 720px) { .do-dont { grid-template-columns: 1fr; } }
+
+/* ============ the attack timeline ============ */
+.safe-sec { position: relative; overflow: hidden; background-color: var(--black); background-image: linear-gradient(to right, #ffffff10 1px, transparent 1px), linear-gradient(to bottom, #ffffff10 1px, transparent 1px); background-size: 48px 48px; background-position: -1px -1px; }
+.safe-head { padding: 56px 56px 0; }
+.safe-head h2 { font: 400 34px/42px var(--display); letter-spacing: -0.01em; color: #f5f5f5; }
+.safe-head p { max-width: 640px; margin-top: 14px; color: #929292; font: 400 17px/26px var(--sans); }
+.timeline { overflow-x: auto; scrollbar-width: none; padding: 8px 0 28px; }
+.timeline::-webkit-scrollbar { display: none; }
+.timeline > svg { display: block; width: 100%; min-width: 960px; height: auto; overflow: visible; }
+.tl-pill svg { flex: none; }
+.tl-line { stroke: #454545; stroke-width: 1.500; }
+.tl-mark { fill: #535353; }
+.tl-key circle { fill: #000; stroke: var(--accent); stroke-width: 1.500; }
+.tl-key .dot { fill: var(--accent); stroke: none; }
+.tl-key text { fill: #9a9a9a; font: 400 13px var(--mono); }
+.tl-dashed path { fill: none; stroke: #5a5a5a; stroke-width: 1.500; stroke-linecap: round; stroke-dasharray: 4 6; animation: tl-flow 1.4s linear infinite; }
+.tl-route { fill: none; stroke-width: 1.500; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1.6s cubic-bezier(0.4, 0, 0.2, 1) 0.2s; }
+.tl-route.good { stroke: var(--accent); }
+.tl-route.bad { stroke: var(--bad); transition-duration: 0.8s; }
+.seen .tl-route { stroke-dashoffset: 0; }
+.tl-stop { opacity: 0; transition: opacity 0.4s ease-out; }
+.seen .tl-stop { opacity: 1; }
+.seen .tl-stop.d1 { transition-delay: 0.5s; }
+.seen .tl-stop.d2 { transition-delay: 0.9s; }
+.tl-stop circle { fill: #000; stroke-width: 1.500; }
+.tl-stop path { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tl-stop.good circle, .tl-stop.good path { stroke: var(--accent); }
+.tl-stop.bad circle, .tl-stop.bad path { stroke: var(--bad); }
+.tl-stop text { fill: #9a9a9a; font: 400 13px var(--sans); }
+.tl-pill { display: flex; align-items: center; justify-content: center; gap: 8px; height: 46px; border: 1px solid #484848; border-radius: 999px; background: #000; color: #f2f2f2; font: 400 15px/1 var(--sans); white-space: nowrap; }
+.tl-pill .tl-verb { color: #a0a0a0; }
+.tl-app { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 7px; color: #000; }
+.tl-pill.violet .tl-app { background: #8b83ff; }
+.tl-pill.orange .tl-app { background: #e77b54; }
+.tl-pill.green .tl-app { background: var(--accent); }
+.tl-card { display: flex; align-items: center; gap: 11px; height: 52px; padding: 0 10px; border: 1px solid #d8d8d8; border-radius: 10px; background: #fff; color: #171717; font: 400 15px/1 var(--sans); white-space: nowrap; }
+.tl-badge { flex: none; padding: 8px 10px; border-radius: 5px; background: #050505; color: #fff; font: 500 12px/1 var(--mono); letter-spacing: 0.02em; }
+.tl-badge.live { background: #20c76b; }
+@keyframes tl-flow { to { stroke-dashoffset: -20; } }
+@media (max-width: 720px) {
+  .safe-head { padding: 40px 18px 0; }
+  .safe-head h2 { font-size: 28px; line-height: 36px; }
+  .safe-head p { font-size: 15.500px; line-height: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-dashed path { animation: none; }
+  .tl-route, .tl-stop { transition: none; }
+}
