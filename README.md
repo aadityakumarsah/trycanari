@@ -7,7 +7,7 @@
 <p align="center">
   <b>Bug bounties for AI agents.</b><br />
   Sponsors plant canaries in their agents and lock a reward. Hunters attack.<br />
-  A break that is proven five times over is paid automatically, in shielded Zcash.
+  A break that is proven five times over is paid automatically, in SOL or shielded Zcash.
 </p>
 
 <p align="center">
@@ -25,10 +25,11 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="486 tests" src="https://img.shields.io/badge/tests-486%20passing-6ee7b7" />
+  <img alt="494 tests" src="https://img.shields.io/badge/tests-494%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
-  <img alt="Zcash" src="https://img.shields.io/badge/payouts-shielded%20ZEC-F4B728?logo=zcash&logoColor=black" />
+  <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
+  <img alt="Zcash" src="https://img.shields.io/badge/or-shielded%20ZEC-F4B728?logo=zcash&logoColor=black" />
 </p>
 
 ---
@@ -42,14 +43,16 @@
 | **Backend** | Python 3.12 · FastAPI · SQLAlchemy 2 (async) · Alembic · Pydantic v2 |
 | **Frontend** | React 19 · TypeScript (strict) · Bun |
 | **Database** | PostgreSQL 16 (works on Supabase behind its pooler) |
-| **Payments** | Shielded Zcash, behind a three-method wallet interface |
-| **Status** | Working end to end in demo mode. A real model and a funded wallet are not connected yet |
+| **Payments** | SOL on Solana or shielded Zcash, behind a three-method wallet interface |
+| **Models** | Any OpenAI-compatible API (OpenRouter, OpenAI and others) |
+| **Pictures** | Cloudinary, one image per account |
+| **Status** | Runs end to end against a real model. Real payments are built but a real send is not yet proven |
 
 | Number | |
 |---:|---|
-| **35** | API endpoints |
+| **38** | API endpoints |
 | **14** | database migrations |
-| **399** | Python tests |
+| **407** | Python tests |
 | **87** | web tests |
 | **~8,100** | lines of Python |
 | **~6,600** | lines of TypeScript |
@@ -60,6 +63,7 @@
 - [Features](#features)
 - [Architecture](#architecture)
 - [Quick start](#quick-start)
+- [Going real](#going-real)
 - [Roles: owner, admin, ambassador](#roles-owner-admin-ambassador)
 - [Configuration](#configuration)
 - [Project layout](#project-layout)
@@ -82,7 +86,7 @@ sequenceDiagram
     H->>P: Submit an attack
     P->>P: Replay it 5 times in a sandbox
     alt same canary trips in 3 or more runs
-        P->>H: Pay the reward (shielded ZEC)
+        P->>H: Pay the reward (SOL or shielded ZEC)
         P->>S: The attack and all 5 transcripts
         P-->>S: Bounty pauses until patched
     else fewer than 3
@@ -153,7 +157,8 @@ flowchart LR
     W[Replay worker] --> DB
     W --> M[Model API]
     PAY[Payment process] --> DB
-    PAY --> Z[Zcash wallet]
+    PAY --> Z[Wallet<br/>Solana or Zcash]
+    API --> IMG[Cloudinary]
 ```
 
 Three processes share one database and nothing else:
@@ -164,7 +169,7 @@ Three processes share one database and nothing else:
 | **Replay worker** | Replays attacks, judges them, records verdicts | Holds a wallet, takes requests |
 | **Payment process** | Credits deposits, sends payouts and refunds | Takes requests, calls a model |
 
-Money is integer zatoshi. A bounty's balance is never stored: it is the sum of an
+Money is an integer of the currency's smallest unit (lamports or zatoshi). A bounty's balance is never stored: it is the sum of an
 append-only ledger that the database itself refuses to update or delete, and a finding
 can have exactly one payout, enforced by a unique constraint.
 
@@ -196,6 +201,37 @@ With `MODEL_BACKEND=fake` and `WALLET_BACKEND=fake` (the defaults in `.env.examp
 whole flow runs with no model key and no money: deposits arrive by themselves, and the
 stand-in agent obeys two directives, `[[reveal]]` and `[[call tool {…}]]`, so both kinds
 of canary can be tripped.
+
+## Going real
+
+Three switches take the demo to the real thing. Each works without the others.
+
+**A real model.** Any OpenAI-compatible API. A sponsor names the model in the agent's config.
+
+```bash
+MODEL_BACKEND=real
+MODEL_API_BASE=https://openrouter.ai/api/v1
+MODEL_API_KEY=sk-or-…
+```
+
+**Real payments, in SOL.** The escrow wallet is an ordinary Solana keypair. The API only
+needs its address; the payment process is the only one given the secret key.
+
+```bash
+WALLET_BACKEND=solana
+SOLANA_RPC_URL=https://api.devnet.solana.com     # or a mainnet RPC
+SOLANA_CLUSTER=devnet                            # devnet, testnet or mainnet-beta
+ESCROW_ADDRESS=<the wallet's address>
+SOLANA_SECRET_KEY=<its secret key>               # payment process only
+```
+
+A sponsor's deposit is matched to its bounty by the memo it carries. The funding page gives
+a Solana Pay link that fills in the address, the amount and the memo, because most wallets
+have no memo box.
+
+**Invite-only hunting.** `INVITE_ONLY=true`. Anyone can make an account and list an agent;
+attacking needs a referral code, used once, and spends tokens from a rolling 24-hour
+allowance. This is what keeps the model bill bounded.
 
 ## Roles: owner, admin, ambassador
 
@@ -236,8 +272,9 @@ Everything comes from environment variables; `.env.example` lists them all with 
 | `DATABASE_URL` | `postgresql+asyncpg://…` |
 | `SECRET_ENCRYPTION_KEY` | 32 random bytes, base64. Losing it makes encrypted columns unreadable |
 | `APP_ENV` | `development`, `test` or `production` |
-| `MODEL_BACKEND` | `fake`, or `real` with `MODEL_API_BASE` and `MODEL_API_KEY` |
-| `WALLET_BACKEND` | `fake`, or `zcash` with the wallet settings |
+| `MODEL_BACKEND` | `fake`, or `real` with `MODEL_API_BASE` and `MODEL_API_KEY` (any OpenAI-compatible API, such as `https://openrouter.ai/api/v1`) |
+| `WALLET_BACKEND` | `fake`; `solana` with `SOLANA_RPC_URL`, `SOLANA_SECRET_KEY` and `ESCROW_ADDRESS`; or `zcash` with the zipher settings. The currency follows from this |
+| `CLOUDINARY_URL` | Turns on profile picture uploads |
 | `INVITE_ONLY` | `true`: hunting needs a referral code and spends credits |
 | `ADMIN_EMAILS` | The owners' Google addresses, separated by commas |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_URL` | Turn on sign in with Google |
@@ -247,7 +284,7 @@ Everything comes from environment variables; `.env.example` lists them all with 
 
 | Variable | Default | What it limits |
 |---|---:|---|
-| `STARTER_CREDITS` | 25 | Credits a new account may spend in 24 hours |
+| `STARTER_CREDITS` | 25 | Tokens a new account may spend in 24 hours |
 | `PROVEN_CREDITS` | 200 | The same, after a verified break |
 | `RATE_LIMIT_PER_MINUTE` | 120 | Requests per visitor to public endpoints |
 | `ATTEMPTS_PER_ADDRESS_PER_HOUR` | 20 | Attacks per payout address |
@@ -266,7 +303,8 @@ src/agentbounty/
 ├── app.py            FastAPI app factory
 ├── settings.py       Every setting, read from the environment
 ├── api/              Routes: public, sponsor, admin, session, Google sign-in
-├── services/         judge · harness · attempts · payment · ledger · credits · wallet · crypto
+├── services/         judge · harness · attempts · payment · ledger · credits · wallet · solana
+│                     pictures · crypto
 ├── workers/          replay (verdicts) · payment (the only holder of a wallet)
 ├── models/           Tables and enum types
 ├── admin.py          Operator commands
@@ -285,7 +323,7 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 399 Python tests, each on its own scratch database
+make test         # 407 Python tests, each on its own scratch database
 make web-test     # 87 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
@@ -331,10 +369,17 @@ for anything sensitive.
 
 ## What is not done
 
-- **A real model is not connected.** Demo mode uses a stand-in agent that anyone who knows
-  its two directives can break.
-- **A real wallet send is untested.** The Zcash wallet code exists; the test wallet was
-  never funded.
+- **A real payment has never been sent.** The Solana wallet passes its tests, reads the
+  real devnet, and the network accepts the format and signature of its payments, but its
+  escrow wallet has not been funded, so no payout has landed yet.
+- **The Zcash wallet does not see deposits on today's testnet.** Its tool predates the
+  network's latest upgrade and its source is no longer published. Use Solana, or replace
+  the tool behind the same three methods.
+- **The free model tier is tiny.** Each attack is replayed five times, so a free OpenRouter
+  key covers only a handful of attacks a day.
+- **Field names still say `zatoshi`.** `reward_zatoshi` and its kin hold the smallest unit
+  of whichever currency is in use.
+- **Email addresses are not verified** at sign-up. Only Google sign-in proves one.
 - **Payouts stop at "sent".** The three-method wallet interface cannot see an outgoing
   payment confirm.
 - **CI is parked.** The workflow is at `ci/github-actions.yml`; copy it to

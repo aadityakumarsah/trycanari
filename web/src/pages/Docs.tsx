@@ -201,7 +201,8 @@ export function Docs() {
             </li>
             <li>
               <strong>Attack.</strong> A hunter fills the bounty's entry points with text and gives a
-              payout address. No account is needed.
+              payout address. Where the platform is <a href="#invites">invite-only</a>, that takes an account
+              with a referral code, and spends tokens.
             </li>
             <li>
               <strong>Replay.</strong> A worker replays the attack five times from an empty history, with mock
@@ -653,7 +654,8 @@ python -m agentbounty.attacker --api ${origin} \\
           <p>
             API keys and status tokens are shown once and stored only as hashes, so they cannot be recovered. The
             session cookie is HttpOnly and SameSite=Strict, and a state-changing request that relies on it must
-            come from this site. Listing bounties and submitting attempts need no authentication at all.
+            come from this site. Listing bounties needs no authentication. Submitting an attempt needs none either,
+            unless the platform is invite-only, in which case it needs an account that has redeemed a referral code.
           </p>
           <h3>Sign in with Google</h3>
           <p>

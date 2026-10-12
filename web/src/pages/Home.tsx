@@ -50,7 +50,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "Can an AI agent hunt here?",
-    "Yes. Hunters use four public HTTP endpoints and need no account. Switch this page to Agent, or fetch /agent.md, for a plain-markdown description of the rules, the API and the bounties that are live right now.",
+    "Yes. Everything a hunter does is plain HTTP and JSON. Where hunting is by invitation, the agent sends its account's API key, which you make on your profile. Switch this page to Agent, or fetch /agent.md, for a plain-markdown description of the rules, the API and the bounties that are live right now.",
   ],
 ];
 

@@ -119,8 +119,11 @@ with Google button to the sign-in page.
 4. Put `PUBLIC_URL`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env` and restart the API.
 
 The flow runs on the server (authorisation code with PKCE), so the browser never holds
-a token. A sponsor is identified by Google's account ID. A Google account is never
-attached to a sponsor that was created by email, even if the addresses match.
+a token. An account is identified by Google's account ID, and takes its name and picture
+from Google. Signing up by email proves nothing about who owns an address and Google does,
+so if an account was made by email with the same address, the Google sign-in takes it over
+and revokes the API key it had. An owner named in `ADMIN_EMAILS` is an admin only when
+signed in this way.
 
 ## Configuration
 
@@ -322,9 +325,11 @@ break it; use the fake target for the manual walk-through above and a real one h
 ## The core loop
 
 A sponsor signs up (`POST /v1/sponsors`, which returns an API key once), creates a
-draft bounty, uploads the agent's config, adds canaries and activates it. Hunters need
-no account: they list live bounties, submit an attempt with a payout address, and read
-the result with the status token they were given.
+draft bounty, uploads the agent's config, adds canaries and activates it. Hunters list
+live bounties, submit an attempt with a payout address, and read the result with the
+status token they were given. With `INVITE_ONLY=true` an attempt must come from an account
+that has redeemed a referral code, and spends tokens (see Invites and tokens below);
+otherwise a hunter needs no account at all.
 
 ```
 POST /v1/sponsors                      sign up, get an API key
@@ -426,6 +431,68 @@ wallet holds no funds. With no funds, `send propose` answers "Wallet not synced 
 (synced: 0, tip: 0)" even straight after a sync; whether a funded wallet gets past that
 is what this script is for. If it does not, the backend is replaced behind the same
 three methods and nothing else changes.
+
+### Solana
+
+`WALLET_BACKEND=solana` pays in native SOL, counted in lamports, through a JSON-RPC node
+(`SOLANA_RPC_URL`). The same three methods:
+
+- `list_incoming` asks for the signatures on the escrow address since the last one it
+  reported, at `finalized` commitment, and reads what each transaction added to the
+  wallet. A finalized transaction cannot be rolled back, so each deposit is reported
+  exactly once. The memo comes with the listing.
+- `send_payment` builds one transaction with a system transfer and a memo, signs it with
+  the escrow key, and sends it. The signature is the transaction's ID and is known before
+  sending. A refusal by the node means it was not sent; a lost connection means it might
+  have been, and is reported as ambiguous so that it is never sent twice.
+- `get_balance` is the finalized balance.
+
+The API needs only `ESCROW_ADDRESS`. `SOLANA_SECRET_KEY` is read by the payment process
+alone, which refuses to start if the key is not that address's. The network charges the
+escrow a small fee per payout (5,000 lamports), which the ledger does not record.
+
+Status: tested against a stand-in node, and against devnet for reading and for having
+the network check an unsent payment's signature. A payment has not been sent, because
+the escrow wallet holds no SOL.
+
+### Zcash on today's testnet
+
+The zipher-cli wallet syncs with testnet but does not see payments made since the
+network's latest upgrade: a faucet payment that was mined never appeared. Its source is
+no longer published, so there is no newer version to move to.
+
+## Invites and tokens
+
+`INVITE_ONLY=true` bounds what replays can cost. Anyone may make an account. To attack,
+an account needs access: a referral code it has redeemed, or a grant from an admin.
+
+- A code admits one account. It is used when an account holds it, and a unique constraint
+  on that column makes a second use impossible whatever two requests do at once.
+- Each attack costs 1, 2 or 4 tokens by its length (up to 2,000 characters, up to 8,000,
+  longer). An account's allowance is its tier's cap, 25 or 200 after a verified break,
+  minus what its attempts of the last 24 hours cost. Nothing is stored as a balance.
+- All replays together are capped by `PLATFORM_DAILY_TOKEN_BUDGET` model tokens a day.
+
+## Admins
+
+The owner is whoever is named in `ADMIN_EMAILS` and signed in with Google. Only the owner
+makes or removes admins. Admins make ambassadors, grant or take back access, make invites
+in bulk and read the log. The admin API answers 404 to anyone else and is left out of the
+published description; its page is a file the browser fetches only for an admin; every
+action is written to `admin_actions`, which the database refuses to edit.
+
+```
+python -m agentbounty.admin code --count 10
+python -m agentbounty.admin ambassador a@example.com
+python -m agentbounty.admin admin a@example.com
+```
+
+## Profile pictures
+
+With `CLOUDINARY_URL` set, an account can upload a picture. The image goes through the
+API, which checks its bytes are a PNG, JPEG or WebP of at most 4 MB and signs the upload.
+Each account has one picture at an address made from its ID, so a new upload overwrites
+the old and removing it deletes it. It is stored once, as a 400-pixel square.
 
 ## Layout
 
