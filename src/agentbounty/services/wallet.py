@@ -13,7 +13,7 @@ import asyncio
 import hashlib
 import json
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -505,6 +505,41 @@ class ZcashWallet:
         return balance.sapling + balance.orchard
 
 
+@dataclass(frozen=True)
+class AddressRule:
+    """What counts as an address a payment could be sent to, and what to call one."""
+
+    kind: str
+    accepts: Callable[[str], bool]
+
+
+def as_rule(network: Network | AddressRule) -> AddressRule:
+    """A rule from either a rule or, as the callers of old pass, a Zcash network."""
+    if isinstance(network, AddressRule):
+        return network
+    return AddressRule(f"shielded {network}", lambda a: validate_address(a, network=network))
+
+
+def address_rule(settings: Settings) -> AddressRule:
+    return AddressRule(address_kind(settings), lambda a: valid_payment_address(settings, a))
+
+
+def valid_payment_address(settings: Settings, address: str) -> bool:
+    """Whether a reward or a refund could be sent to the address, on this deployment."""
+    if settings.wallet_backend == "solana":
+        from agentbounty.services.solana import valid_address
+
+        return valid_address(address)
+    return validate_address(address, network=settings.zcash_network)
+
+
+def address_kind(settings: Settings) -> str:
+    """What to call an address here, when telling someone theirs is not one."""
+    if settings.wallet_backend == "solana":
+        return "Solana"
+    return f"shielded {settings.zcash_network}"
+
+
 def escrow_address(settings: Settings) -> str:
     """The address sponsors deposit to. Raises ValueError if it is missing or malformed.
 
@@ -515,8 +550,8 @@ def escrow_address(settings: Settings) -> str:
         if settings.wallet_backend == "fake":
             return FakeWallet(settings.zcash_network).address
         raise ValueError("ESCROW_ADDRESS is not set")
-    if not validate_address(settings.escrow_address, network=settings.zcash_network):
-        raise ValueError(f"ESCROW_ADDRESS is not a shielded {settings.zcash_network} address")
+    if not valid_payment_address(settings, settings.escrow_address):
+        raise ValueError(f"ESCROW_ADDRESS is not a {address_kind(settings)} address")
     return settings.escrow_address
 
 
@@ -524,6 +559,17 @@ def make_wallet(settings: Settings) -> WalletBackend:
     """The wallet WALLET_BACKEND selects."""
     if settings.wallet_backend == "fake":
         return FakeWallet(settings.zcash_network)
+    if settings.wallet_backend == "solana":
+        from agentbounty.services.solana import SolanaWallet
+
+        if settings.solana_rpc_url is None or settings.solana_secret_key is None:
+            raise ValueError("WALLET_BACKEND=solana needs SOLANA_RPC_URL and SOLANA_SECRET_KEY")
+        wallet = SolanaWallet(
+            settings.solana_rpc_url, settings.solana_secret_key.get_secret_value()
+        )
+        if settings.escrow_address and wallet.address != settings.escrow_address:
+            raise ValueError("SOLANA_SECRET_KEY is not the key of ESCROW_ADDRESS")
+        return wallet
     if settings.zipher_cli_path is None or settings.zipher_data_dir is None:
         raise ValueError("WALLET_BACKEND=zcash needs ZIPHER_CLI_PATH and ZIPHER_DATA_DIR")
     return ZcashWallet(

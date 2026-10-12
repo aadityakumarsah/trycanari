@@ -33,6 +33,7 @@ from agentbounty.services import attempts as attempt_service
 from agentbounty.services import credits
 from agentbounty.services.attempts import SubmissionLimits
 from agentbounty.services.harness import EntryPoint, SlotFill
+from agentbounty.services.wallet import address_rule
 
 router = APIRouter(prefix="/v1", tags=["public"], dependencies=[Depends(limit_by_client)])
 
@@ -240,7 +241,7 @@ async def submit_attempt(
         bounty_id,
         fills,
         body.payout_address,
-        settings.zcash_network,
+        address_rule(settings),
         SubmissionLimits(
             per_address_per_hour=settings.attempts_per_address_per_hour,
             per_bounty_per_hour=settings.attempts_per_bounty_per_hour,

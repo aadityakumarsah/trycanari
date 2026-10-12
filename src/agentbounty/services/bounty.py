@@ -37,7 +37,7 @@ from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import EntryPoint, MockTool, TargetConfig
 from agentbounty.services.ledger import bounty_balance
 from agentbounty.services.payment import go_live_if_funded, required_balance
-from agentbounty.services.wallet import Network, validate_address
+from agentbounty.services.wallet import AddressRule, Network, as_rule
 
 # What each encrypted column is bound to (see Cipher.encrypt).
 SYSTEM_PROMPT = "target_configs.system_prompt"
@@ -444,7 +444,7 @@ async def fund(
     cipher: Cipher,
     bounty: Bounty,
     refund_address: str,
-    network: Network,
+    network: Network | AddressRule,
 ) -> int:
     """Start funding: issue a one-time deposit code and wait for the deposit.
 
@@ -457,8 +457,8 @@ async def fund(
         raise ServiceError(409, "the bounty is closed or closing")
     if bounty.state is BountyState.LIVE:
         raise ServiceError(409, "the bounty is already live")
-    if not validate_address(refund_address, network=network):
-        raise ServiceError(422, f"refund_address is not a shielded {network} address")
+    if not as_rule(network).accepts(refund_address):
+        raise ServiceError(422, f"refund_address is not a {as_rule(network).kind} address")
     sponsor = await session.get_one(Sponsor, bounty.sponsor_id)
     sponsor.refund_address = refund_address
     if bounty.state is not BountyState.AWAITING_DEPOSIT:
@@ -494,7 +494,10 @@ async def pause(session: AsyncSession, bounty: Bounty) -> None:
 
 
 async def request_close(
-    session: AsyncSession, bounty: Bounty, refund_address: str | None, network: Network
+    session: AsyncSession,
+    bounty: Bounty,
+    refund_address: str | None,
+    network: Network | AddressRule,
 ) -> None:
     """Ask for the bounty to be closed and its unspent escrow refunded.
 
@@ -506,8 +509,8 @@ async def request_close(
         raise ServiceError(409, "the bounty is already closed")
     sponsor = await session.get_one(Sponsor, bounty.sponsor_id)
     if refund_address is not None:
-        if not validate_address(refund_address, network=network):
-            raise ServiceError(422, f"refund_address is not a shielded {network} address")
+        if not as_rule(network).accepts(refund_address):
+            raise ServiceError(422, f"refund_address is not a {as_rule(network).kind} address")
         sponsor.refund_address = refund_address
     if not sponsor.refund_address and await bounty_balance(session, bounty.id) > 0:
         raise ServiceError(422, "a refund_address is needed to return the escrow")

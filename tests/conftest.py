@@ -51,8 +51,17 @@ def _no_sign_in_provider_from_the_developers_env(monkeypatch: pytest.MonkeyPatch
         "CLOUDINARY_URL",
         "STARTER_CREDITS",
         "PROVEN_CREDITS",
+        "MODEL_API_BASE",
+        "MODEL_API_KEY",
+        "WALLET_BACKEND",
+        "SOLANA_RPC_URL",
+        "SOLANA_SECRET_KEY",
+        "SOLANA_CLUSTER",
+        "ESCROW_ADDRESS",
     ):
         monkeypatch.delenv(name, raising=False)
+    # Tests never call a real model, whatever the developer's own environment uses.
+    monkeypatch.setenv("MODEL_BACKEND", "fake")
 
 
 @pytest.fixture

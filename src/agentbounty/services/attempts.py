@@ -39,7 +39,7 @@ from agentbounty.services.harness import (
     SlotFill,
     validate_fills,
 )
-from agentbounty.services.wallet import Network, validate_address
+from agentbounty.services.wallet import AddressRule, Network, as_rule
 
 Verdict = Literal["verified", "not_verified", "not_counted"]
 
@@ -111,7 +111,7 @@ async def submit_attempt(
     bounty_id: uuid.UUID,
     fills: Sequence[SlotFill],
     payout_address: str,
-    network: Network,
+    network: Network | AddressRule,
     limits: SubmissionLimits | None = None,
     *,
     account_id: uuid.UUID | None = None,
@@ -132,9 +132,9 @@ async def submit_attempt(
         raise ServiceError(409, f"the bounty is {bounty.state} and is not accepting attempts")
     if bounty.close_requested_at is not None:
         raise ServiceError(409, "the bounty is closing and is not accepting attempts")
-    # A reward can only ever be sent to a shielded address, so refuse anything else now.
-    if not validate_address(payout_address, network=network):
-        raise ServiceError(422, f"payout_address is not a shielded {network} address")
+    # A reward can only ever be sent to an address the wallet can pay, so refuse others now.
+    if not as_rule(network).accepts(payout_address):
+        raise ServiceError(422, f"payout_address is not a {as_rule(network).kind} address")
     config = await session.get_one(TargetConfigRow, bounty.live_config_id)
     try:
         validate_fills([EntryPoint(slot) for slot in config.entry_points_json], fills)

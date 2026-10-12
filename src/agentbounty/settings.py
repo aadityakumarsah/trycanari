@@ -11,6 +11,8 @@ from urllib.parse import urlsplit
 from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from agentbounty.money import SOL, ZEC, Currency
+
 ASYNC_DRIVER_PREFIX = "postgresql+asyncpg://"
 SECRET_ENCRYPTION_KEY_BYTES = 32
 
@@ -37,8 +39,15 @@ class Settings(BaseSettings):
     model_api_base: str | None = None
     model_api_key: SecretStr | None = None
 
-    # "fake" is the in-memory FakeWallet; "zcash" drives the zipher-cli light wallet.
-    wallet_backend: Literal["fake", "zcash"] = "fake"
+    # "fake" is the in-memory FakeWallet; "zcash" drives the zipher-cli light wallet;
+    # "solana" pays in native SOL through a Solana RPC node.
+    wallet_backend: Literal["fake", "zcash", "solana"] = "fake"
+    # WALLET_BACKEND=solana: the RPC node to use, which cluster it belongs to (for the
+    # links and labels people are shown), and the escrow wallet's secret key, as a base58
+    # string or the list of numbers in a keypair file.
+    solana_rpc_url: str | None = None
+    solana_cluster: Literal["devnet", "testnet", "mainnet-beta"] = "devnet"
+    solana_secret_key: SecretStr | None = None
     zcash_network: Literal["testnet", "mainnet"] = "testnet"
     # The zipher-cli binary, its wallet directory, and the lightwalletd server it talks to.
     zipher_cli_path: str | None = None
@@ -128,6 +137,8 @@ class Settings(BaseSettings):
         "zipher_data_dir",
         "zipher_server",
         "zipher_seed",
+        "solana_rpc_url",
+        "solana_secret_key",
         "direct_url",
         "escrow_address",
         "google_client_id",
@@ -176,6 +187,10 @@ class Settings(BaseSettings):
             raise ValueError("WALLET_BACKEND=zcash needs ZIPHER_CLI_PATH and ZIPHER_DATA_DIR")
         if self.wallet_backend == "zcash" and not self.escrow_address:
             raise ValueError("WALLET_BACKEND=zcash needs ESCROW_ADDRESS")
+        if self.wallet_backend == "solana" and not (self.solana_rpc_url and self.escrow_address):
+            # The secret key is needed only by the payment process, which checks for it
+            # itself: the API serves sponsors with the address alone.
+            raise ValueError("WALLET_BACKEND=solana needs SOLANA_RPC_URL and ESCROW_ADDRESS")
         # A fake wallet in production would record payouts that were never sent.
         if self.wallet_backend == "fake" and self.app_env == "production":
             raise ValueError("WALLET_BACKEND=fake is not allowed when APP_ENV=production")
@@ -205,6 +220,11 @@ class Settings(BaseSettings):
             if self.app_env == "production" and not self.public_url.startswith("https://"):
                 raise ValueError("PUBLIC_URL must be https when APP_ENV=production")
         return self
+
+    @property
+    def currency(self) -> Currency:
+        """What rewards are paid in, which follows from the wallet."""
+        return SOL if self.wallet_backend == "solana" else ZEC
 
     @property
     def owners(self) -> frozenset[str]:

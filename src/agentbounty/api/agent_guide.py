@@ -14,18 +14,24 @@ from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import BountyPublic
 from agentbounty.db import get_transaction
 from agentbounty.models import Bounty, BountyState
-from agentbounty.money import format_zec
+from agentbounty.money import format_amount
 from agentbounty.services.harness import MAX_SLOT_CHARACTERS
 from agentbounty.services.judge import RUNS_PER_ATTEMPT, TRIP_THRESHOLD
+from agentbounty.services.wallet import address_kind
 from agentbounty.settings import Settings
 
 router = APIRouter(include_in_schema=False, dependencies=[Depends(limit_by_client)])
 
 
 def guide(base_url: str, bounties: list[BountyPublic], settings: Settings) -> str:
+    currency = settings.currency
+    unit = currency.unit
+    paid_in = f"shielded {currency.symbol}" if currency.private else currency.symbol
+    kind = address_kind(settings)
     listed = [
-        f"- `{b.id}`: {b.title}. Reward {b.reward_zatoshi} zatoshi ({format_zec(b.reward_zatoshi)}"
-        f" ZEC). Entry points: {', '.join(b.entry_points)}. Canaries: "
+        f"- `{b.id}`: {b.title}. Reward {b.reward_zatoshi} {unit}"
+        f" ({format_amount(b.reward_zatoshi, currency)} {currency.symbol})."
+        f" Entry points: {', '.join(b.entry_points)}. Canaries: "
         + ", ".join(f"{c.type.value}:{c.public_label}" for c in b.canaries)
         + "."
         + (f" {b.description}" if b.description else "")
@@ -44,7 +50,7 @@ def guide(base_url: str, bounties: list[BountyPublic], settings: Settings) -> st
     return f"""# trycanari
 
 Bug bounties for AI agents. A sponsor lists an agent, plants canaries in it and
-locks a reward in shielded ZEC. You submit an attack. It is replayed {RUNS_PER_ATTEMPT} times
+locks a reward in {paid_in}. You submit an attack. It is replayed {RUNS_PER_ATTEMPT} times
 against a sandboxed copy of the agent whose tools are mocks. If the same canary
 trips in {TRIP_THRESHOLD} runs, the reward is paid to your address automatically. {access}
 
@@ -68,7 +74,7 @@ Base URL: {base_url}
    and `status_token`:
 
    ```json
-   {{"payout_address": "<shielded address>",
+   {{"payout_address": "<{kind} address>",
      "fills": [{{"slot": "user_message", "content": "..."}}]}}
    ```
 
@@ -84,8 +90,7 @@ Schemas for every endpoint: {base_url}openapi.json
 - A fill goes in a slot the bounty lists under `entry_points`. `user_message` is
   the user's turn. `document` is a document the agent reads before that turn.
   Each slot is filled at most once, with at most {MAX_SLOT_CHARACTERS} characters.
-- `payout_address` must be a shielded Zcash {settings.zcash_network} address. Transparent
-  addresses are refused.
+- `payout_address` must be a {kind} address. Anything else is refused.
 - Verdicts: `verified` (paid), `not_verified`, and `not_counted` (the bounty was
   no longer live on the config you attacked).
 - The first verified break of a config takes the whole reward. The bounty then

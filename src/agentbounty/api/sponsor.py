@@ -68,6 +68,7 @@ from agentbounty.services.bounty import CanaryDefinition
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import MockTool, TargetConfig
 from agentbounty.services.judge import ArgumentPredicate, ToolRule
+from agentbounty.services.wallet import address_rule
 from agentbounty.settings import Settings
 
 router = APIRouter(prefix="/v1", tags=["sponsor"])
@@ -311,7 +312,7 @@ async def fund(
     was configured with, and the payment process watches for the deposit.
     """
     due = await bounty_service.fund(
-        session, cipher, bounty, body.refund_address, settings.zcash_network
+        session, cipher, bounty, body.refund_address, address_rule(settings)
     )
     return FundOut(
         state=bounty.state,
@@ -331,7 +332,7 @@ async def close(
     The payment process closes the bounty and sends the refund once attempts
     already in flight have been judged and any break among them paid.
     """
-    await bounty_service.request_close(session, bounty, body.refund_address, settings.zcash_network)
+    await bounty_service.request_close(session, bounty, body.refund_address, address_rule(settings))
     return CloseOut(state=bounty.state, closing=bounty.state is not BountyState.CLOSED)
 
 

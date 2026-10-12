@@ -53,10 +53,23 @@ router = APIRouter(prefix="/v1/auth", tags=["session"])
 Transaction = Annotated[AsyncSession, Depends(get_transaction)]
 
 
+class CurrencyOut(BaseModel):
+    """What rewards are paid in. Amounts everywhere are integers of the smallest unit."""
+
+    symbol: str
+    decimals: int
+    unit: str
+    # Whether payments hide who paid whom and how much.
+    private: bool
+    # Which network it is on, when that is worth telling people: a test network.
+    network: str | None
+
+
 class Providers(BaseModel):
     google: bool
     # Whether attacking needs an account that has redeemed a referral code.
     invite_only: bool
+    currency: CurrencyOut
 
 
 class SignInError(Exception):
@@ -179,7 +192,25 @@ async def exchange_code(
 async def providers(request: Request) -> Providers:
     """Which ways of signing in this deployment offers, besides an API key."""
     settings: Settings = request.app.state.settings
-    return Providers(google=settings.google_sign_in, invite_only=settings.invite_only)
+    currency = settings.currency
+    network: str | None
+    if settings.wallet_backend == "solana":
+        network = None if settings.solana_cluster == "mainnet-beta" else settings.solana_cluster
+    elif settings.wallet_backend == "zcash":
+        network = None if settings.zcash_network == "mainnet" else settings.zcash_network
+    else:
+        network = "demo"
+    return Providers(
+        google=settings.google_sign_in,
+        invite_only=settings.invite_only,
+        currency=CurrencyOut(
+            symbol=currency.symbol,
+            decimals=currency.decimals,
+            unit=currency.unit,
+            private=currency.private,
+            network=network,
+        ),
+    )
 
 
 @router.get("/google/start", dependencies=[Depends(limit_by_client)], include_in_schema=False)
