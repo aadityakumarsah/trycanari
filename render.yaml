@@ -14,18 +14,20 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
+      # The values below are safe to keep in the repository. Everything marked
+      # "sync: false" is a secret: paste it in Render from .env.production.env.
       - key: APP_ENV
-        value: development
-      - key: MODEL_BACKEND
-        value: fake
-      - key: WALLET_BACKEND
-        value: fake
-      - key: FAKE_WALLET_AUTOFUND
-        value: "true"
-      - key: PAYMENT_POLL_SECONDS
-        value: "5"
+        value: production
       - key: PUBLIC_URL
         value: https://trycanari.pages.dev
+      - key: MODEL_BACKEND
+        value: real
+      - key: WALLET_BACKEND
+        value: solana
+      - key: INVITE_ONLY
+        value: "true"
+      - key: PAYMENT_POLL_SECONDS
+        value: "15"
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL
@@ -36,5 +38,25 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: ADMIN_EMAILS
+        sync: false
       - key: PROXY_SECRET
+        sync: false
+      - key: MODEL_API_BASE
+        sync: false
+      - key: MODEL_API_KEY
+        sync: false
+      - key: SOLANA_CLUSTER
+        sync: false
+      - key: SOLANA_RPC_URL
+        sync: false
+      - key: ESCROW_ADDRESS
+        sync: false
+      - key: SOLANA_SECRET_KEY
+        sync: false
+      - key: PAYOUT_MAX_ZATOSHI
+        sync: false
+      - key: PAYOUT_DAILY_MAX_ZATOSHI
+        sync: false
+      - key: CLOUDINARY_URL
         sync: false

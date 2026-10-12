@@ -13,4 +13,6 @@ web/node_modules/
 web/.pages/
 .wrangler/
 render.env
+.env.*
+!.env.example
 demo-sponsor-key.txt

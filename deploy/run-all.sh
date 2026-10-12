@@ -4,6 +4,9 @@
 # so the host restarts all of them together.
 set -euo pipefail
 
+# Bring the database up to date before anything reads it. A failure stops the start.
+alembic upgrade head
+
 python -m agentbounty.workers.replay &
 python -m agentbounty.workers.payment &
 uvicorn agentbounty.app:create_app --factory --host 0.0.0.0 --port "${PORT:-8000}" &
