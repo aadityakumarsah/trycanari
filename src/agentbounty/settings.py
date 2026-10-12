@@ -124,6 +124,10 @@ class Settings(BaseSettings):
     # whole platform's model bill, whatever the number of bounties and accounts. Once
     # spent, no bounty takes attempts until some of that spend ages out.
     platform_daily_token_budget: int = Field(default=20_000_000, ge=1)
+    # A sponsor may point a bounty at a model endpoint of their own. Those URLs are reached
+    # only on the public internet, unless this is set: it exists for trying an endpoint on
+    # this machine during development and must stay off anywhere real.
+    allow_private_model_endpoints: bool = False
 
     worker_poll_seconds: float = Field(default=2.0, gt=0)
     # A running attempt older than this is taken to belong to a dead worker and is retried.

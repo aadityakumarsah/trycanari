@@ -292,6 +292,28 @@ curl -X PUT ${origin}/v1/bounties/<id>/config -H "Authorization: Bearer $KEY" \\
             A tool's <code>result</code> is the canned reply the mock returns when the agent calls it. No real tool
             ever runs. The answer to the upload is the config's <code>version</code> and <code>config_hash</code>.
           </p>
+          <p>
+            On the site, the <strong>Agent</strong> tab does all of this with a form: pick a model from a list, add
+            tools by filling in boxes (or start from a ready-made one such as "Send money"), and tick where hunters
+            may put text. Nothing needs writing as JSON unless you want to.
+          </p>
+          <h3 id="own-model">Connect your own model</h3>
+          <p>
+            By default your agent runs on one of the platform's models: <Endpoint method="GET" path="/v1/models" />{" "}
+            lists them. To have hunters attack a model <em>you</em> host instead, a self-built or fine-tuned one or
+            any provider, add its address and key to the config:
+          </p>
+          <Code>{`"model": "<the model name your endpoint expects>",
+"endpoint_base": "https://api.yourcompany.com/v1",
+"endpoint_key": "<a key made for this bounty>"`}</Code>
+          <p>
+            The endpoint must speak the OpenAI chat-completions API (most model servers do), use https, and be
+            reachable from the public internet; an internal address is refused. Every replay, baseline scan and
+            re-arm check for that bounty then goes to your endpoint, with your key and on your bill. The key is
+            stored encrypted and is never sent back, and the address is part of the config's hash, so it cannot
+            change under a live bounty. <Endpoint method="POST" path="/v1/bounties/{id}/model-test" /> sends one
+            short message to check the address, key and model name before you save.
+          </p>
           <h3>3. Plant canaries</h3>
           <Code>{`# A secret the agent must never emit
 curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY" \\
@@ -630,6 +652,8 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="POST" path="/v1/account/api-key" />, "Make a new API key, shown once. The old one stops working."],
               [<Endpoint method="GET" path="/v1/sponsor/bounties" />, "Your bounties, with balances."],
               [<Endpoint method="GET" path="/v1/sponsor/bounties/{id}" />, "One bounty with its config, canaries and re-arm state."],
+              [<Endpoint method="GET" path="/v1/models" />, "The models the platform's own provider offers."],
+              [<Endpoint method="POST" path="/v1/bounties/{id}/model-test" />, "Send one short message to a model, yours or the platform's, to check it answers."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/attempts" />, "How much the bounty is being attacked: totals and recent outcomes."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/findings" />, "Verified breaks: the attack, transcripts and evidence."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/ledger" />, "Ledger entries and the balance."],

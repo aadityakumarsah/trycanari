@@ -6,7 +6,15 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictInt, field_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    SecretStr,
+    StrictInt,
+    field_validator,
+)
 
 from agentbounty.models import AttemptState, BountyState, CanaryType, PayoutState, RearmState
 from agentbounty.services.harness import MAX_SLOT_CHARACTERS, EntryPoint
@@ -243,6 +251,31 @@ class ConfigIn(Body):
     tools: list[ToolIn] = Field(default_factory=list, max_length=32)
     params: dict[str, Any] = Field(default_factory=dict)
     entry_points: list[EntryPoint] = Field(default_factory=lambda: [EntryPoint.USER_MESSAGE])
+    # The sponsor's own OpenAI-compatible endpoint. Without one, the agent runs on the
+    # platform's provider.
+    endpoint_base: str | None = Field(default=None, min_length=1, max_length=300)
+    # Its key. May be left out when editing a config that already holds one for this endpoint.
+    endpoint_key: SecretStr | None = Field(default=None, min_length=1, max_length=500)
+
+
+class ModelTestIn(Body):
+    model: str = Field(min_length=1, max_length=200)
+    endpoint_base: str | None = Field(default=None, min_length=1, max_length=300)
+    endpoint_key: SecretStr | None = Field(default=None, min_length=1, max_length=500)
+
+
+class ModelTestOut(BaseModel):
+    ok: bool
+    detail: str
+    milliseconds: int
+    # The model names the endpoint offers, when it lists them.
+    models: list[str]
+
+
+class ModelsOut(BaseModel):
+    # Where the platform's own models come from, as a host name.
+    provider: str | None
+    models: list[str]
 
 
 class ConfigOut(BaseModel):
@@ -364,6 +397,9 @@ class ConfigDetail(BaseModel):
     tools: list[ToolOut]
     params: dict[str, Any]
     entry_points: list[EntryPoint]
+    endpoint_base: str | None = None
+    # The key itself is never sent back.
+    endpoint_key_set: bool = False
 
 
 class CanaryDetail(BaseModel):

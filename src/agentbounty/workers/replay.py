@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import logging
 import signal
+from collections.abc import AsyncIterator
 from datetime import timedelta
 from typing import Any
 
@@ -22,7 +23,7 @@ from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
 from agentbounty.models import Attempt
 from agentbounty.models import TargetConfig as TargetConfigRow
-from agentbounty.services import attempts, playbook, rearm, scan
+from agentbounty.services import attempts, endpoint, playbook, rearm, scan
 from agentbounty.services.bounty import LoadedTarget, load_target
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.harness import (
@@ -39,6 +40,24 @@ from agentbounty.settings import Settings, load_settings
 logger = logging.getLogger(__name__)
 
 SessionFactory = async_sessionmaker[AsyncSession]
+
+
+@contextlib.asynccontextmanager
+async def model_for(
+    target: LoadedTarget, platform: ModelClient, own: endpoint.Connector | None
+) -> AsyncIterator[ModelClient]:
+    """The model a config is replayed on: the sponsor's own endpoint if it names one,
+    and otherwise the platform's provider."""
+    if target.config.endpoint is None:
+        yield platform
+        return
+    if own is None or target.endpoint_key is None:
+        raise RuntimeError("this config names its own endpoint, which cannot be opened here")
+    model = own(target.config.endpoint, target.endpoint_key)
+    try:
+        yield model
+    finally:
+        await model.aclose()
 
 
 def make_model(settings: Settings) -> ModelClient:
@@ -80,6 +99,7 @@ async def process(
     *,
     max_tries: int,
     limits: SandboxLimits = DEFAULT_LIMITS,
+    own: endpoint.Connector | None = None,
 ) -> None:
     """Replay one claimed attempt and record the outcome.
 
@@ -95,9 +115,10 @@ async def process(
         return
     target, fills = loaded
     try:
-        results = await run_attempt(
-            target.config, fills, model, runs=RUNS_PER_ATTEMPT, limits=limits
-        )
+        async with model_for(target, model, own) as chosen:
+            results = await run_attempt(
+                target.config, fills, chosen, runs=RUNS_PER_ATTEMPT, limits=limits
+            )
     except Exception:
         logger.exception("replay of attempt %s failed", claim.attempt_id)
         async with sessions.begin() as session:
@@ -117,23 +138,24 @@ async def work_once(
     *,
     max_tries: int,
     limits: SandboxLimits = DEFAULT_LIMITS,
+    own: endpoint.Connector | None = None,
 ) -> bool:
     """Do one unit of work: an attempt, or else a re-arm check. False when there is none."""
     async with sessions.begin() as session:
         claim = await attempts.claim_next(session)
     if claim is not None:
-        await process(sessions, cipher, model, claim, max_tries=max_tries, limits=limits)
+        await process(sessions, cipher, model, claim, max_tries=max_tries, limits=limits, own=own)
         return True
     async with sessions.begin() as session:
         check = await rearm.claim_next(session)
     if check is not None:
-        await process_rearm(sessions, cipher, model, check, limits=limits)
+        await process_rearm(sessions, cipher, model, check, limits=limits, own=own)
         return True
     async with sessions.begin() as session:
         asked = await scan.claim_next(session)
     if asked is None:
         return False
-    await process_scan(sessions, cipher, model, asked, limits=limits)
+    await process_scan(sessions, cipher, model, asked, limits=limits, own=own)
     return True
 
 
@@ -144,6 +166,7 @@ async def process_scan(
     claim: scan.ScanClaim,
     *,
     limits: SandboxLimits = DEFAULT_LIMITS,
+    own: endpoint.Connector | None = None,
 ) -> None:
     """Run the baseline playbook against a config, one replay a probe, and record what
     each probe did."""
@@ -166,38 +189,40 @@ async def process_scan(
 
     results: list[dict[str, Any]] = []
     try:
-        for probe in playbook.probes(target):
-            (ran,) = await run_attempt(
-                target.config, list(probe.fills), model, runs=1, limits=limits
-            )
-            tripped = [
-                canary.definition.public_label for canary in attempts.tripped_in(target, ran)
-            ]
-            said = next(
-                (
-                    m.content
-                    for m in reversed(ran.transcript)
-                    if m.role == "assistant" and m.content
-                ),
-                "",
-            )
-            results.append(
-                {
-                    "id": probe.id,
-                    "name": probe.name,
-                    "technique": probe.technique,
-                    "aimed_at": probe.aimed_at,
-                    "tripped": tripped,
-                    "attack": [
-                        {"slot": fill.slot.value, "content": fill.content} for fill in probe.fills
-                    ],
-                    "reply": said[:600],
-                    "tool_calls": [
-                        {"name": call.name, "arguments": dict(call.arguments)}
-                        for call in ran.tool_calls
-                    ],
-                }
-            )
+        async with model_for(target, model, own) as chosen:
+            for probe in playbook.probes(target):
+                (ran,) = await run_attempt(
+                    target.config, list(probe.fills), chosen, runs=1, limits=limits
+                )
+                tripped = [
+                    canary.definition.public_label for canary in attempts.tripped_in(target, ran)
+                ]
+                said = next(
+                    (
+                        m.content
+                        for m in reversed(ran.transcript)
+                        if m.role == "assistant" and m.content
+                    ),
+                    "",
+                )
+                results.append(
+                    {
+                        "id": probe.id,
+                        "name": probe.name,
+                        "technique": probe.technique,
+                        "aimed_at": probe.aimed_at,
+                        "tripped": tripped,
+                        "attack": [
+                            {"slot": fill.slot.value, "content": fill.content}
+                            for fill in probe.fills
+                        ],
+                        "reply": said[:600],
+                        "tool_calls": [
+                            {"name": call.name, "arguments": dict(call.arguments)}
+                            for call in ran.tool_calls
+                        ],
+                    }
+                )
     except Exception:
         logger.exception("baseline scan for bounty %s failed", claim.bounty_id)
         async with sessions.begin() as session:
@@ -222,6 +247,7 @@ async def process_rearm(
     claim: rearm.RearmClaim,
     *,
     limits: SandboxLimits = DEFAULT_LIMITS,
+    own: endpoint.Connector | None = None,
 ) -> None:
     """Replay every paid attack of a bounty against its patched config.
 
@@ -249,21 +275,22 @@ async def process_rearm(
 
     worst = 0
     try:
-        for payload in attacks:
-            fills = [
-                SlotFill(EntryPoint(fill["slot"]), fill["content"])
-                for fill in payload
-                if fill["slot"] in target.config.entry_points
-            ]
-            if not fills:
-                continue
-            results = await run_attempt(
-                target.config, fills, model, runs=RUNS_PER_ATTEMPT, limits=limits
-            )
-            judgement = attempts.judge_runs(target, results)
-            worst = max(worst, _most_trips(judgement))
-            if judgement.broken_canary is not None:
-                break
+        async with model_for(target, model, own) as chosen:
+            for payload in attacks:
+                fills = [
+                    SlotFill(EntryPoint(fill["slot"]), fill["content"])
+                    for fill in payload
+                    if fill["slot"] in target.config.entry_points
+                ]
+                if not fills:
+                    continue
+                results = await run_attempt(
+                    target.config, fills, chosen, runs=RUNS_PER_ATTEMPT, limits=limits
+                )
+                judgement = attempts.judge_runs(target, results)
+                worst = max(worst, _most_trips(judgement))
+                if judgement.broken_canary is not None:
+                    break
     except Exception:
         logger.exception("re-arm replay for bounty %s failed", claim.bounty_id)
         async with sessions.begin() as session:
@@ -296,10 +323,11 @@ async def drain(
     *,
     max_tries: int = 3,
     limits: SandboxLimits = DEFAULT_LIMITS,
+    own: endpoint.Connector | None = None,
 ) -> int:
     """Process attempts until none is runnable. Returns how many were processed."""
     processed = 0
-    while await work_once(sessions, cipher, model, max_tries=max_tries, limits=limits):
+    while await work_once(sessions, cipher, model, max_tries=max_tries, limits=limits, own=own):
         processed += 1
     return processed
 
@@ -309,6 +337,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     sessions = create_session_factory(engine)
     cipher = Cipher(settings.secret_encryption_key.get_secret_value())
     model = make_model(settings)
+    own = endpoint.connector(settings)
     stale_after = timedelta(seconds=settings.attempt_timeout_seconds)
     logger.info("replay worker started (model backend: %s)", settings.model_backend)
     try:
@@ -320,7 +349,9 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                     )
                     await rearm.requeue_stale(session, older_than=stale_after)
                     await scan.requeue_stale(session, older_than=stale_after)
-                if await work_once(sessions, cipher, model, max_tries=settings.attempt_max_tries):
+                if await work_once(
+                    sessions, cipher, model, max_tries=settings.attempt_max_tries, own=own
+                ):
                     continue
             except Exception:
                 logger.exception("worker iteration failed")

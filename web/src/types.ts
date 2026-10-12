@@ -209,6 +209,21 @@ export interface ConfigDetail {
   tools: Tool[];
   params: Record<string, unknown>;
   entry_points: EntryPoint[];
+  /** The sponsor's own model endpoint, when the agent runs there. */
+  endpoint_base: string | null;
+  endpoint_key_set: boolean;
+}
+
+export interface ModelTest {
+  ok: boolean;
+  detail: string;
+  milliseconds: number;
+  models: string[];
+}
+
+export interface PlatformModels {
+  provider: string | null;
+  models: string[];
 }
 
 export interface CanaryDetail extends CanaryPublic {

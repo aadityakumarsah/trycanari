@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="509 tests" src="https://img.shields.io/badge/tests-509%20passing-6ee7b7" />
+  <img alt="560 tests" src="https://img.shields.io/badge/tests-560%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -50,10 +50,10 @@
 
 | Number | |
 |---:|---|
-| **44** | API endpoints |
-| **15** | database migrations |
-| **417** | Python tests |
-| **92** | web tests |
+| **46** | API endpoints |
+| **16** | database migrations |
+| **460** | Python tests |
+| **100** | web tests |
 | **~9,700** | lines of Python |
 | **~7,900** | lines of TypeScript |
 
@@ -124,7 +124,9 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 
 **For sponsors**
 
-- Config, mock tools and canaries
+- An agent form: pick a model, build tools by filling in boxes
+- Connect your own model: any OpenAI-compatible endpoint, key stored encrypted
+- Canaries: a secret that must not leak, a tool call that must not happen
 - A check that every canary can actually trip
 - Baseline scan: six well-known attacks, run before any hunter arrives
 - A printable evidence report, with risks named after OWASP's lists
@@ -320,7 +322,7 @@ web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
 ├── src/components/   Flow · Transcript · AttemptStatus · ReferralGate · shared pieces
 └── cloudflare/       The Pages worker that proxies API paths
-migrations/versions/  0001 … 0015
+migrations/versions/  0001 … 0016
 tests/                One file per area; a scratch database per test
 docs/REFERENCE.md     The long version of everything on this page
 ```
@@ -329,8 +331,8 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 417 Python tests, each on its own scratch database
-make web-test     # 92 web tests
+make test         # 460 Python tests, each on its own scratch database
+make web-test     # 100 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
 make e2e          # the definition of done, as one test
@@ -358,6 +360,9 @@ single origin. Set `API_ORIGIN` on Pages to the API's address. Details are in th
   are envelope-encrypted, each value under its own key.
 - **What hunters see.** Titles, entry points, canary labels and rewards. Never a prompt, a
   tool, a secret or a rule.
+- **Sponsors' own endpoints.** A sponsor's model URL must be https and on the public
+  internet. That is checked when it is saved and again on the address of every connection,
+  so it cannot be turned on this service's own network.
 - **Sessions.** An HttpOnly, SameSite=Strict cookie; a state-changing request that relies
   on it must come from the site itself.
 - **Payments.** A send is recorded before the wallet is asked to make it, and is never

@@ -144,7 +144,12 @@ class Bounty(Base):
 
 class TargetConfig(Base):
     __tablename__ = "target_configs"
-    __table_args__ = (UniqueConstraint("bounty_id", "version"),)
+    __table_args__ = (
+        UniqueConstraint("bounty_id", "version"),
+        CheckConstraint(
+            "(endpoint_base IS NULL) = (endpoint_key_enc IS NULL)", name="endpoint_has_key"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"), index=True)
@@ -156,6 +161,10 @@ class TargetConfig(Base):
     model: Mapped[str] = mapped_column(Text)
     params_json: Mapped[dict[str, Any]] = mapped_column(JSONB)
     entry_points_json: Mapped[list[str]] = mapped_column(JSONB)
+    # The sponsor's own model endpoint, when replays go there and not to the platform's
+    # provider, and the key for it as ciphertext.
+    endpoint_base: Mapped[str | None] = mapped_column(Text)
+    endpoint_key_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = created_now()
 
 

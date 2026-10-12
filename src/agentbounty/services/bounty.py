@@ -12,7 +12,7 @@ import json
 import secrets
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -43,6 +43,7 @@ from agentbounty.services.wallet import AddressRule, Network, as_rule
 SYSTEM_PROMPT = "target_configs.system_prompt"
 TOOLS = "target_configs.tools"
 CANARY_SECRET = "canaries.secret"  # noqa: S105 - a column name, not a credential
+ENDPOINT_KEY = "target_configs.endpoint_key"
 
 # A config can be edited while the bounty is in one of these states. A live config is
 # never edited: queued attempts are bound to its hash.
@@ -195,7 +196,7 @@ async def canary_rows(session: AsyncSession, config_id: uuid.UUID) -> list[Canar
 def config_hash(config: TargetConfig, canaries: Sequence[CanaryDefinition]) -> str:
     """SHA-256 over the canonical JSON of everything a verdict depends on: the agent and
     its canaries. Public labels are left out; renaming a canary changes no verdict."""
-    canonical = {
+    canonical: dict[str, Any] = {
         "system_prompt": config.system_prompt,
         "model": config.model,
         "tools": [
@@ -219,6 +220,9 @@ def config_hash(config: TargetConfig, canaries: Sequence[CanaryDefinition]) -> s
             key=lambda item: json.dumps(item, sort_keys=True),
         ),
     }
+    if config.endpoint is not None:
+        # Only when set, so that a config without one keeps the hash it always had.
+        canonical["endpoint"] = config.endpoint
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(encoded.encode()).hexdigest()
 
@@ -229,6 +233,9 @@ class LoadedTarget:
 
     config: TargetConfig
     canaries: tuple[LoadedCanary, ...]
+    # The key for the config's own endpoint. It is no part of the hash: rotating a key
+    # changes no verdict.
+    endpoint_key: str | None = field(default=None, repr=False)
 
     @property
     def hash(self) -> str:
@@ -255,12 +262,18 @@ async def load_target(session: AsyncSession, cipher: Cipher, row: TargetConfigRo
         tools=tuple(MockTool(**tool) for tool in tools),
         params=row.params_json,
         entry_points=tuple(EntryPoint(slot) for slot in row.entry_points_json),
+        endpoint=row.endpoint_base,
     )
     canaries = tuple(
         LoadedCanary(canary.id, _definition(canary, cipher))
         for canary in await canary_rows(session, row.id)
     )
-    return LoadedTarget(config, canaries)
+    key = (
+        cipher.decrypt(row.endpoint_key_enc, purpose=ENDPOINT_KEY).decode()
+        if row.endpoint_key_enc is not None
+        else None
+    )
+    return LoadedTarget(config, canaries, key)
 
 
 async def latest_config(session: AsyncSession, bounty_id: uuid.UUID) -> TargetConfigRow | None:
@@ -277,7 +290,18 @@ def _require_editable(bounty: Bounty) -> None:
         raise ServiceError(409, f"the config cannot be changed while the bounty is {bounty.state}")
 
 
-def _write_config(row: TargetConfigRow, cipher: Cipher, config: TargetConfig) -> None:
+def _write_config(
+    row: TargetConfigRow, cipher: Cipher, config: TargetConfig, endpoint_key: str | None
+) -> None:
+    if config.endpoint is None:
+        row.endpoint_key_enc = None
+    elif endpoint_key:
+        row.endpoint_key_enc = cipher.encrypt(endpoint_key.encode(), purpose=ENDPOINT_KEY)
+    elif row.endpoint_base != config.endpoint or row.endpoint_key_enc is None:
+        # A key is kept across edits only for the endpoint it was given for: otherwise
+        # naming a new URL would send the old key to it.
+        raise ServiceError(422, "enter the API key for your model endpoint")
+    row.endpoint_base = config.endpoint
     row.system_prompt_enc = cipher.encrypt(config.system_prompt.encode(), purpose=SYSTEM_PROMPT)
     row.tools_enc = cipher.encrypt_json(_tools_to_json(config.tools), purpose=TOOLS)
     row.model = config.model
@@ -309,6 +333,8 @@ async def _new_version(
         model=previous.model if previous else "",
         params_json=dict(previous.params_json) if previous else {},
         entry_points_json=list(previous.entry_points_json) if previous else [],
+        endpoint_base=previous.endpoint_base if previous else None,
+        endpoint_key_enc=previous.endpoint_key_enc if previous else None,
     )
     session.add(row)
     await session.flush()
@@ -338,13 +364,20 @@ async def _editable_config(
 
 
 async def put_config(
-    session: AsyncSession, cipher: Cipher, bounty: Bounty, config: TargetConfig
+    session: AsyncSession,
+    cipher: Cipher,
+    bounty: Bounty,
+    config: TargetConfig,
+    endpoint_key: str | None = None,
 ) -> TargetConfigRow:
-    """Store the config as the bounty's working version and return it with its new hash."""
+    """Store the config as the bounty's working version and return it with its new hash.
+
+    A config with its own endpoint needs that endpoint's key, unless the working
+    version already holds one for the same endpoint."""
     _require_editable(bounty)
     row = await _editable_config(session, bounty, create=True)
     assert row is not None  # noqa: S101 - create=True always returns a row
-    _write_config(row, cipher, config)
+    _write_config(row, cipher, config, endpoint_key)
     await _rehash(session, cipher, row)
     return row
 

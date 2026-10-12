@@ -5,6 +5,7 @@ import { NotFound } from "../App.tsx";
 import { pictureOf } from "../account.tsx";
 import { api } from "../api.ts";
 import { useConfirm } from "../confirm.tsx";
+import { AgentForm } from "../components/AgentForm.tsx";
 import { Transcript } from "../components/Transcript.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { WalletFunding } from "../components/WalletFunding.tsx";
@@ -221,72 +222,6 @@ function Funding({ bounty, act, base, reload }: Props & { base: string; reload: 
   );
 }
 
-function ConfigForm({ bounty, act }: Props) {
-  const config = bounty.config;
-  const [prompt, setPrompt] = useState(config?.system_prompt ?? "");
-  const [model, setModel] = useState(config?.model ?? "");
-  const [tools, setTools] = useState(JSON.stringify(config?.tools ?? [], null, 2));
-  const [params, setParams] = useState(JSON.stringify(config?.params ?? {}, null, 2));
-  const [slots, setSlots] = useState<EntryPoint[]>(config?.entry_points ?? ["user_message"]);
-
-  function toggle(slot: EntryPoint) {
-    setSlots((current) => (current.includes(slot) ? current.filter((s) => s !== slot) : [...current, slot]));
-  }
-
-  async function save() {
-    let parsedTools: unknown;
-    let parsedParams: unknown;
-    try {
-      parsedTools = JSON.parse(tools || "[]");
-      parsedParams = JSON.parse(params || "{}");
-    } catch {
-      throw new Error("Tools and model params must be valid JSON.");
-    }
-    const body = {
-      system_prompt: prompt,
-      model: model.trim(),
-      tools: parsedTools,
-      params: parsedParams,
-      entry_points: slots,
-    };
-    await act("config", body, "PUT");
-  }
-
-  return (
-    <ActionForm submit={save} label="Save config">
-      <label>
-        System prompt
-        <textarea rows={8} required spellCheck={false} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-        <small>Encrypted at rest and never shown to hunters.</small>
-      </label>
-      <label>
-        Model
-        <input required spellCheck={false} className="code" value={model} onChange={(e) => setModel(e.target.value)} />
-      </label>
-      <label>
-        Tools (JSON)
-        <textarea rows={6} spellCheck={false} value={tools} onChange={(e) => setTools(e.target.value)} />
-        <small>
-          A list of objects with <code>name</code>, <code>description</code>, <code>parameters</code> (JSON Schema)
-          and <code>result</code>, the canned reply the mock returns. No real tool runs.
-        </small>
-      </label>
-      <label>
-        Model params (JSON)
-        <textarea rows={2} spellCheck={false} value={params} onChange={(e) => setParams(e.target.value)} />
-      </label>
-      <fieldset>
-        <legend>Where hunters can put text</legend>
-        {(["user_message", "document"] as const).map((slot) => (
-          <label key={slot} className="check">
-            <input type="checkbox" checked={slots.includes(slot)} onChange={() => toggle(slot)} /> {words(slot)}
-          </label>
-        ))}
-      </fieldset>
-    </ActionForm>
-  );
-}
-
 function Config({ bounty, act }: Props) {
   const config = bounty.config;
   return (
@@ -300,13 +235,14 @@ function Config({ bounty, act }: Props) {
       )}
       {editable(bounty) ? (
         // Keyed by the saved config, so the form picks up what the server now holds.
-        <ConfigForm key={config?.config_hash ?? "new"} bounty={bounty} act={act} />
+        <AgentForm key={config?.config_hash ?? "new"} bounty={bounty} act={act} />
       ) : (
         config && (
           <>
             <pre>{config.system_prompt}</pre>
             <p className="muted">
-              Model {config.model}. Entry points: {config.entry_points.map(words).join(", ")}. The config can be
+              Model {config.model}
+              {config.endpoint_base ? `, on your own endpoint ${config.endpoint_base}` : ", on our provider"}. Entry points: {config.entry_points.map(words).join(", ")}. The config can be
               edited while the bounty is a draft or paused.
             </p>
           </>

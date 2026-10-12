@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
+from urllib.parse import urlsplit
 
+import httpx
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import func, select
 
@@ -38,6 +41,9 @@ from agentbounty.api.schemas import (
     LedgerEntryOut,
     LedgerOut,
     MessageOut,
+    ModelsOut,
+    ModelTestIn,
+    ModelTestOut,
     PayoutOut,
     ProbeOut,
     RearmOut,
@@ -67,16 +73,20 @@ from agentbounty.models import (
 )
 from agentbounty.money import format_amount
 from agentbounty.services import bounty as bounty_service
-from agentbounty.services import credits, pictures, playbook, rearm, reports, scan
+from agentbounty.services import credits, endpoint, pictures, playbook, rearm, reports, scan
 from agentbounty.services.bounty import CanaryDefinition
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import MockTool, TargetConfig
 from agentbounty.services.judge import ArgumentPredicate, ToolRule
+from agentbounty.services.model import RealModel
 from agentbounty.services.wallet import address_rule
 from agentbounty.settings import Settings
 
 router = APIRouter(prefix="/v1", tags=["sponsor"])
+
+# How long the platform provider's list of models is kept before it is asked for again.
+MODELS_KEPT_SECONDS = 600
 
 
 @router.post("/sponsors", status_code=201, dependencies=[Depends(limit_by_client)])
@@ -248,10 +258,92 @@ async def create_bounty(
     return BountyCreated(id=bounty.id, state=bounty.state)
 
 
+async def _endpoint(base: str | None, settings: Settings) -> str | None:
+    """A sponsor's endpoint URL in its stored form, refused if it may not be used."""
+    if base is None:
+        return None
+    allow_private = settings.allow_private_model_endpoints
+    try:
+        normal = endpoint.normalize(base, allow_private=allow_private)
+        await endpoint.check_reachable_host(normal, allow_private=allow_private)
+    except endpoint.EndpointError as exc:
+        raise ServiceError(422, str(exc)) from exc
+    return normal
+
+
+@router.get("/models")
+async def platform_models(request: Request, settings: SettingsDep, _: SponsorDep) -> ModelsOut:
+    """The models the platform's own provider offers, for the quick-start choice."""
+    if settings.model_backend != "real" or not settings.model_api_base:
+        return ModelsOut(provider=None, models=[])
+    kept = request.app.state.models_listed
+    if kept is None or kept[0] < time.monotonic():
+        key = settings.model_api_key.get_secret_value() if settings.model_api_key else ""
+        client = httpx.AsyncClient(transport=request.app.state.model_transport, timeout=15)
+        provider = RealModel(settings.model_api_base, key, client=client)
+        try:
+            names = await provider.models()
+        finally:
+            await provider.aclose()
+        # A list that could not be read is asked for again soon; a good one is kept longer.
+        kept = (time.monotonic() + (MODELS_KEPT_SECONDS if names else 30), names)
+        request.app.state.models_listed = kept
+    return ModelsOut(provider=urlsplit(settings.model_api_base).hostname, models=kept[1])
+
+
+@router.post("/bounties/{bounty_id}/model-test", dependencies=[Depends(limit_by_client)])
+async def test_model(
+    body: ModelTestIn,
+    request: Request,
+    session: Transaction,
+    bounty: OwnBounty,
+    cipher: CipherDep,
+    settings: SettingsDep,
+) -> ModelTestOut:
+    """Send one short message to the model, to show that the URL, key and name work before
+    a config is saved. Without an endpoint it asks the platform's provider."""
+    base = await _endpoint(body.endpoint_base, settings)
+    if base is None:
+        if settings.model_backend != "real" or not settings.model_api_base:
+            return ModelTestOut(
+                ok=True,
+                detail="This deployment runs a built-in test model, which answers to any name.",
+                milliseconds=0,
+                models=[],
+            )
+        key = settings.model_api_key.get_secret_value() if settings.model_api_key else ""
+        client = httpx.AsyncClient(transport=request.app.state.model_transport, timeout=30)
+        model = RealModel(settings.model_api_base, key, client=client)
+    else:
+        own_key = body.endpoint_key.get_secret_value() if body.endpoint_key else None
+        if own_key is None:
+            # The saved key is used only for the endpoint it was saved for.
+            row = await bounty_service.latest_config(session, bounty.id)
+            if row is None or row.endpoint_base != base or row.endpoint_key_enc is None:
+                raise ServiceError(422, "enter the API key for your model endpoint")
+            own_key = cipher.decrypt(
+                row.endpoint_key_enc, purpose=bounty_service.ENDPOINT_KEY
+            ).decode()
+        model = request.app.state.model_connector(base, own_key)
+    try:
+        result = await endpoint.test(model, body.model)
+        names = await model.models() if base is not None and result.ok else []
+    finally:
+        await model.aclose()
+    return ModelTestOut(
+        ok=result.ok, detail=result.detail, milliseconds=result.milliseconds, models=names
+    )
+
+
 @router.put("/bounties/{bounty_id}/config")
 async def put_config(
-    body: ConfigIn, session: Transaction, bounty: OwnBounty, cipher: CipherDep
+    body: ConfigIn,
+    session: Transaction,
+    bounty: OwnBounty,
+    cipher: CipherDep,
+    settings: SettingsDep,
 ) -> ConfigOut:
+    base = await _endpoint(body.endpoint_base, settings)
     try:
         config = TargetConfig(
             system_prompt=body.system_prompt,
@@ -262,10 +354,12 @@ async def put_config(
             ),
             params=body.params,
             entry_points=tuple(body.entry_points),
+            endpoint=base,
         )
     except ValueError as exc:
         raise ServiceError(422, str(exc)) from exc
-    row = await bounty_service.put_config(session, cipher, bounty, config)
+    key = body.endpoint_key.get_secret_value() if body.endpoint_key else None
+    row = await bounty_service.put_config(session, cipher, bounty, config, key)
     return ConfigOut(version=row.version, config_hash=row.config_hash)
 
 
@@ -422,6 +516,8 @@ async def my_bounty(
             ],
             params=dict(target.config.params),
             entry_points=sorted(target.config.entry_points),
+            endpoint_base=target.config.endpoint,
+            endpoint_key_set=target.endpoint_key is not None,
         )
     return SponsorBountyDetail(
         **_summary(detail.summary),

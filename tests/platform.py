@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentbounty.app import create_app
 from agentbounty.services.crypto import Cipher
-from agentbounty.services.harness import SandboxLimits
+from agentbounty.services.harness import DEFAULT_LIMITS, SandboxLimits
 from agentbounty.services.model import GUARD_SENTENCE, FakeModel, ModelClient, call_directive
 from agentbounty.services.payment import PaymentService, SpendingCaps
 from agentbounty.services.wallet import FakeWallet, bech32_encode
@@ -187,7 +187,7 @@ class Platform:
             self.cipher,
             model or FakeModel(),
             max_tries=max_tries,
-            **({"limits": limits} if limits else {}),
+            limits=limits or DEFAULT_LIMITS,
         )
 
     async def poll(

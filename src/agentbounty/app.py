@@ -30,6 +30,7 @@ from agentbounty.api import (
 from agentbounty.api.ratelimit import RateLimiter
 from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
+from agentbounty.services import endpoint
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.wallet import escrow_address
@@ -92,6 +93,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.google_transport = None
     app.state.cloudinary_transport = None
     app.state.solana_transport = None
+    app.state.model_transport = None
+    # How a sponsor's own model endpoint is opened: never at an internal address.
+    app.state.model_connector = endpoint.connector(settings)
+    app.state.models_listed = None
     # Public answers kept for a few seconds (see api/public.py).
     app.state.public_cache = {}
 

@@ -88,6 +88,8 @@ class TargetConfig:
     tools: tuple[MockTool, ...] = ()
     params: Mapping[str, object] = field(default_factory=dict)
     entry_points: tuple[EntryPoint, ...] = (EntryPoint.USER_MESSAGE,)
+    # The base URL of the sponsor's own model endpoint. None: the platform's provider.
+    endpoint: str | None = None
 
     def __post_init__(self) -> None:
         if not self.system_prompt or not self.model:

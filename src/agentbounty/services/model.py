@@ -240,6 +240,7 @@ def _arguments(raw: str) -> Mapping[str, object]:
 # How many times a "too many requests" answer is waited out before giving up, and the
 # longest single wait. Together they stay inside what one replay is allowed to take.
 RATE_LIMIT_WAITS = 4
+MAX_MODELS_LISTED = 300
 RATE_LIMIT_MAX_WAIT_SECONDS = 20.0
 
 
@@ -266,13 +267,32 @@ class RealModel:
     ) -> None:
         if not api_base or not api_key:
             raise ValueError("RealModel needs MODEL_API_BASE and MODEL_API_KEY")
-        self._url = api_base.rstrip("/") + "/chat/completions"
+        self._base = api_base.rstrip("/")
+        self._url = self._base + "/chat/completions"
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self._client = client or httpx.AsyncClient(timeout=timeout_seconds)
         self._sleep = sleep
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+    async def models(self) -> list[str]:
+        """The model names the provider offers, or none if it does not say."""
+        try:
+            response = await self._client.get(
+                self._base + "/models", headers=self._headers, timeout=15
+            )
+            body = response.json() if response.status_code == httpx.codes.OK else {}
+        except (httpx.HTTPError, ValueError):
+            return []
+        listed = body.get("data", []) if isinstance(body, dict) else []
+        names = {
+            item["id"]
+            for item in listed
+            if isinstance(listed, list)
+            if isinstance(item, dict) and isinstance(item.get("id"), str) and len(item["id"]) <= 200
+        }
+        return sorted(names)[:MAX_MODELS_LISTED]
 
     async def complete(
         self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec], params: ModelParams

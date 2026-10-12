@@ -335,6 +335,8 @@ otherwise a hunter needs no account at all.
 POST /v1/sponsors                      sign up, get an API key
 POST /v1/bounties                      create a draft                      (sponsor)
 PUT  /v1/bounties/{id}/config          upload the config, get its hash     (sponsor)
+GET  /v1/models                        the platform provider's models      (sponsor)
+POST /v1/bounties/{id}/model-test      check a model answers               (sponsor)
 POST /v1/bounties/{id}/canaries        add a canary                        (sponsor)
 POST /v1/bounties/{id}/activate        listing check, pin config, go live  (sponsor)
 GET  /v1/bounties, /v1/bounties/{id}   live bounties, labels only
@@ -349,6 +351,22 @@ POST /v1/bounties/{id}/scan            queue a baseline scan               (spon
 GET  /v1/bounties/{id}/scan            the latest scan and its probes      (sponsor)
 GET  /v1/leaderboard                   hunters ranked by verified breaks
 ```
+
+### A sponsor's own model
+
+A config may carry `endpoint_base` and `endpoint_key`: an OpenAI-compatible endpoint the
+sponsor hosts. Replays, baseline scans and re-arm checks for that config then go there, not
+to `MODEL_API_BASE`. The URL is part of the config hash; the key is envelope-encrypted and
+never returned (`endpoint_key_set` says whether one is held). A saved key is reused only for
+the URL it was saved with.
+
+This makes the service call a URL a stranger chose, so it is guarded twice. When saved, the
+URL must be https, carry no credentials or query, and resolve only to public addresses. At
+each connection the name is resolved again, every address is checked, and the connection is
+made to the checked address itself, so a name that changes its answer later is still
+refused. Redirects are not followed and proxy settings in the environment are ignored.
+`ALLOW_PRIVATE_MODEL_ENDPOINTS=true` lifts this for trying a model server on your own
+machine; never set it on a deployment.
 
 A paused bounty is resumed with `activate`. Pausing is refused while attempts are queued
 or running, because it would make them not count.
