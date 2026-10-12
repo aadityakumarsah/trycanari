@@ -131,10 +131,52 @@ def completion(message: dict[str, Any], finish_reason: str = "stop") -> dict[str
     }
 
 
+async def no_wait(_: float) -> None:
+    """Waiting, without the wait."""
+
+
 def real_model(handler: httpx.MockTransport) -> RealModel:
     return RealModel(
-        "https://model.test/v1/", "key-123", client=httpx.AsyncClient(transport=handler)
+        "https://model.test/v1/",
+        "key-123",
+        client=httpx.AsyncClient(transport=handler),
+        sleep=no_wait,
     )
+
+
+async def test_real_model_waits_out_a_rate_limit_and_then_answers() -> None:
+    answers = [
+        httpx.Response(429, headers={"retry-after": "3"}, text="slow down"),
+        httpx.Response(429, text="slow down"),
+        httpx.Response(429, headers={"retry-after": "600"}, text="slow down"),
+        httpx.Response(200, json=completion({"content": "done"})),
+    ]
+    waits: list[float] = []
+
+    async def record(seconds: float) -> None:
+        waits.append(seconds)
+
+    model = RealModel(
+        "https://model.test/v1/",
+        "key-123",
+        client=httpx.AsyncClient(transport=httpx.MockTransport(lambda _: answers.pop(0))),
+        sleep=record,
+    )
+    assert (await model.complete([user("hi")], [], PARAMS)).text == "done"
+    # What the provider asked for; a guess when it did not say; never more than the cap.
+    assert waits == [3.0, 4.0, 20.0]
+
+
+async def test_real_model_gives_up_on_a_rate_limit_that_does_not_lift() -> None:
+    calls = []
+
+    def limited(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(429, text="slow down")
+
+    with pytest.raises(ModelError, match="answered 429"):
+        await real_model(httpx.MockTransport(limited)).complete([user("hi")], [], PARAMS)
+    assert len(calls) == 5
 
 
 async def test_real_model_sends_a_function_calling_request_and_reads_tool_calls() -> None:

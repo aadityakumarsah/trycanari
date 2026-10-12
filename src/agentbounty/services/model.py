@@ -8,9 +8,10 @@ OpenAI-compatible endpoint also accepts.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
@@ -236,6 +237,21 @@ def _arguments(raw: str) -> Mapping[str, object]:
     return parsed if isinstance(parsed, dict) else {UNPARSED_ARGUMENTS: raw}
 
 
+# How many times a "too many requests" answer is waited out before giving up, and the
+# longest single wait. Together they stay inside what one replay is allowed to take.
+RATE_LIMIT_WAITS = 4
+RATE_LIMIT_MAX_WAIT_SECONDS = 20.0
+
+
+def _retry_after(response: httpx.Response, waited: int) -> float:
+    """How long to wait before asking again: what the provider says, within reason."""
+    try:
+        asked = float(response.headers.get("retry-after", ""))
+    except ValueError:
+        asked = 2.0 * (waited + 1)
+    return max(0.5, min(asked, RATE_LIMIT_MAX_WAIT_SECONDS))
+
+
 class RealModel:
     """Calls POST {api_base}/chat/completions with a bearer key."""
 
@@ -246,12 +262,14 @@ class RealModel:
         *,
         timeout_seconds: float = 120.0,
         client: httpx.AsyncClient | None = None,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         if not api_base or not api_key:
             raise ValueError("RealModel needs MODEL_API_BASE and MODEL_API_KEY")
         self._url = api_base.rstrip("/") + "/chat/completions"
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self._client = client or httpx.AsyncClient(timeout=timeout_seconds)
+        self._sleep = sleep
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -280,10 +298,16 @@ class RealModel:
                 }
                 for tool in tools
             ]
-        try:
-            response = await self._client.post(self._url, json=body, headers=self._headers)
-        except httpx.HTTPError as exc:
-            raise ModelError(f"model API request failed: {type(exc).__name__}") from exc
+        # A provider that says "slow down" is obeyed rather than treated as a failure: a
+        # free tier allows only so many tokens a minute, and five replays can reach that.
+        for waited in range(RATE_LIMIT_WAITS + 1):
+            try:
+                response = await self._client.post(self._url, json=body, headers=self._headers)
+            except httpx.HTTPError as exc:
+                raise ModelError(f"model API request failed: {type(exc).__name__}") from exc
+            if response.status_code != httpx.codes.TOO_MANY_REQUESTS or waited == RATE_LIMIT_WAITS:
+                break
+            await self._sleep(_retry_after(response, waited))
         if response.status_code != httpx.codes.OK:
             raise ModelError(f"model API answered {response.status_code}: {response.text[:300]}")
         try:
