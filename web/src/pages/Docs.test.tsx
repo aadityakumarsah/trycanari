@@ -18,7 +18,7 @@ describe("Docs", () => {
   test("every entry in the sidebar leads to a section on the page", () => {
     const view = page();
     const ids = CONTENTS.flatMap((group) => group.entries.map((entry) => entry.id));
-    expect(ids.length).toBe(17);
+    expect(ids.length).toBe(20);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) {
       expect(view.container.querySelector(`section#${id} h2`)).not.toBeNull();
@@ -48,6 +48,16 @@ describe("Docs", () => {
       "/agent.md",
     ]) {
       expect(text).toContain(path);
+    }
+  });
+
+  test("it is about the bounty program, not about running the service", () => {
+    const text = page().container.textContent ?? "";
+    for (const internal of ["uv run", "make migrate", ".env", "DATABASE_URL", "MODEL_API_KEY", "SECRET_ENCRYPTION_KEY", "Self-hosting"]) {
+      expect(text).not.toContain(internal);
+    }
+    for (const title of ["The problem", "Rules of the hunt", "Writing an attack that verifies", "Questions"]) {
+      expect(text).toContain(title);
     }
   });
 

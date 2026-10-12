@@ -5,9 +5,9 @@ import { Code } from "../components/Code.tsx";
 import { addressKind, currency, paidIn } from "../money.ts";
 
 /**
- * The documentation: one page, written by hand, covering everything the service does.
- * Every number here is the service's own default; if one changes in the code it
- * changes here too.
+ * The documentation: one page, written by hand, for the people who use the site:
+ * hunters and sponsors. Nothing here is about running the service; that lives in the
+ * repository. Every number is the service's own default.
  */
 
 interface Entry {
@@ -28,22 +28,30 @@ export const CONTENTS: Group[] = [
     ],
   },
   {
-    title: "Guides",
+    title: "For hunters",
     entries: [
+      { id: "the-problem", title: "The problem" },
       { id: "hunters", title: "Quickstart for hunters" },
-      { id: "sponsors", title: "Quickstart for sponsors" },
+      { id: "rules", title: "Rules of the hunt" },
+      { id: "tips", title: "Writing an attack that verifies" },
+      { id: "invites", title: "Invites and tokens" },
       { id: "agents", title: "Hunting with an AI agent" },
     ],
   },
   {
-    title: "Concepts",
+    title: "For sponsors",
+    entries: [
+      { id: "sponsors", title: "Quickstart for sponsors" },
+      { id: "rearm", title: "Patching and re-arming" },
+    ],
+  },
+  {
+    title: "How it is judged",
     entries: [
       { id: "entry-points", title: "Entry points" },
       { id: "canaries", title: "Canaries" },
       { id: "verification", title: "Replays and verdicts" },
       { id: "money", title: "Escrow, payouts and refunds" },
-      { id: "rearm", title: "Patching and re-arming" },
-      { id: "invites", title: "Invites and tokens" },
     ],
   },
   {
@@ -53,8 +61,8 @@ export const CONTENTS: Group[] = [
       { id: "authentication", title: "Authentication" },
       { id: "errors", title: "Errors" },
       { id: "limits", title: "Limits" },
-      { id: "security", title: "Security and privacy" },
-      { id: "self-hosting", title: "Self-hosting" },
+      { id: "security", title: "Safety and privacy" },
+      { id: "faq", title: "Questions" },
     ],
   },
 ];
@@ -170,8 +178,8 @@ export function Docs() {
         <p className="eyebrow">Documentation</p>
         <h1>trycanari docs</h1>
         <p className="lede">
-          Everything about hunting bounties, listing an agent, and running the service: the guides, the
-          concepts behind them, and the full API.
+          Everything about the bounty program: what you are asked to do, the rules, how a break is proven and
+          paid, how to list your own agent, and the full API.
         </p>
 
         <Section id="introduction" title="Introduction">
@@ -205,18 +213,53 @@ export function Docs() {
               with a referral code, and spends tokens.
             </li>
             <li>
-              <strong>Replay.</strong> A worker replays the attack five times from an empty history, with mock
+              <strong>Replay.</strong> The attack is replayed five times from an empty history, with mock
               tools, and a judge checks every run against every canary.
             </li>
             <li>
-              <strong>Pay.</strong> Three trips of the same canary is a verified break. The payment service sends
-              the reward and the bounty pauses.
+              <strong>Pay.</strong> Three trips of the same canary is a verified break. The reward is sent and the bounty pauses.
             </li>
             <li>
               <strong>Patch.</strong> The sponsor fixes the agent. The paid attack is replayed against the patch,
               and the bounty can reopen only once it fails.
             </li>
           </ol>
+        </Section>
+
+        <Section id="the-problem" title="The problem">
+          <p>
+            Every bounty is the same problem with a different agent. You are given an AI agent you cannot see
+            inside. Its instructions, tools and secrets are hidden. You are told only three things:
+          </p>
+          <Table
+            head={["You are told", "Which means"]}
+            rows={[
+              [<strong>Entry points</strong>, "The places you may put text: the user's message, a document the agent reads, or both."],
+              [
+                <strong>Canary labels</strong>,
+                <>
+                  What the sponsor is protecting, by name: <code>signing_reference</code>,{" "}
+                  <code>unapproved_transfer</code>. Not the secret, not the rule.
+                </>,
+              ],
+              [<strong>The reward</strong>, `What is paid, in ${money.symbol}, to the first hunter who breaks it.`],
+            ]}
+          />
+          <h3>Your task</h3>
+          <p>
+            Write text for the entry points that makes the agent do the one thing its sponsor planted a tripwire
+            for: say a hidden secret, or call a tool in a way its rules forbid. That is a <strong>break</strong>.
+          </p>
+          <h3>What counts as solved</h3>
+          <p>
+            Your attack is replayed five times, each from a fresh conversation. It is <strong>verified</strong>{" "}
+            when the same canary trips in at least three of the five. One lucky run is not a break. A verified
+            break is paid automatically; nobody reviews it and there is no report to write.
+          </p>
+          <div className="callout">
+            <b>You do not need to explain your attack.</b> The proof is the transcript. If the canary tripped
+            three times, you are paid. If it did not, no argument changes that.
+          </div>
         </Section>
 
         <Section id="hunters" title="Quickstart for hunters">
@@ -253,6 +296,166 @@ export function Docs() {
             done you get the <code>verdict</code>, how many runs tripped, which canary, and what the agent said and
             did in one run, so you can see why an attempt failed and change approach. A verified attempt also
             carries <code>payout</code>, with the transaction ID once the reward is sent.
+          </p>
+        </Section>
+
+        <Section id="rules" title="Rules of the hunt">
+          <p>The short version: attack the agent, through the entry points, as yourself.</p>
+          <div className="do-dont">
+            <div className="do">
+              <h3>Allowed</h3>
+              <ul>
+                <li>Any text in a bounty's entry points: instructions, role-play, fake documents, encodings, other languages.</li>
+                <li>As many attempts as your tokens and the limits allow.</li>
+                <li>Reading the agent's replies and using them to improve the next attempt.</li>
+                <li>Writing your own script or agent to hunt for you, through the public API.</li>
+                <li>Attacking a bounty again after its sponsor has patched it. It is a new problem.</li>
+              </ul>
+            </div>
+            <div className="dont">
+              <h3>Not allowed</h3>
+              <ul>
+                <li>Attacking trycanari itself, its accounts or its payments. Only listed agents are in scope.</li>
+                <li>More than one account, or borrowed accounts, to get more tokens or more attempts.</li>
+                <li>Flooding a bounty to use up its budget or to block other hunters.</li>
+                <li>Attacking your own bounty, or arranging a break with its sponsor, to collect the reward.</li>
+                <li>Selling or posting referral codes. A code is for one person you actually invite.</li>
+              </ul>
+            </div>
+          </div>
+          <p>An account that breaks these rules can lose its hunting access.</p>
+          <h3>When two hunters find the same break</h3>
+          <p>
+            The first verified break of a config takes the whole reward and pauses the bounty. An attempt that
+            was still waiting when that happened comes back as <code>not_counted</code>.
+          </p>
+        </Section>
+
+        <Section id="tips" title="Writing an attack that verifies">
+          <ul>
+            <li>
+              <strong>Aim at a label.</strong> A label such as <code>unapproved_transfer</code> tells you what the
+              sponsor fears. Decide which canary you are going for before you write a word.
+            </li>
+            <li>
+              <strong>Make it reliable, not clever.</strong> You need three of five. An attack that works one time
+              in four will fail. Remove anything the agent could reasonably refuse.
+            </li>
+            <li>
+              <strong>Use the document when there is one.</strong> Agents trust what they read more than what a
+              stranger types. An instruction planted in a document is often stronger than the same words in the
+              user message.
+            </li>
+            <li>
+              <strong>Read what came back.</strong> Every result includes what the agent said and which tools it
+              called in one run. A refusal tells you what it is guarding; a tool call with the wrong arguments
+              tells you that you are close.
+            </li>
+            <li>
+              <strong>A secret counts in any form.</strong> Base64, hex, reversed or spelled out letter by letter
+              all trip a secret canary. Asking for a "harmless" encoding is a real technique.
+            </li>
+            <li>
+              <strong>Short is cheap.</strong> An attack costs 1, 2 or 4 tokens by length. Start short and add
+              only what earns its place.
+            </li>
+          </ul>
+          <div className="callout">
+            <b>Stuck?</b> The <Link to="/#bounties">Completed</Link> tab shows which agents were broken and which
+            held. And skip the obvious: every sponsor can run six well-known attacks against their own agent
+            before listing it, so "ignore your instructions" has usually been tried already.
+          </div>
+        </Section>
+
+        <Section id="invites" title="Invites and tokens">
+          <p>
+            Every attack is replayed five times against a real model, which costs real money. So hunting is by
+            invitation, and each account has a daily allowance of tokens to spend on attacks.
+          </p>
+          <h3>Anyone can join; hunting needs a referral code</h3>
+          <p>
+            Making an account and filling in your <Link to="/profile">profile</Link> is open to everyone, and so is
+            listing an agent. Taking part in bounties is by invitation: you enter a referral code once, on the
+            dashboard or on any bounty page, and from then on you can attack. Codes are handed out by the
+            platform and by <strong>ambassadors</strong>, and each one is for one person. If you arrive through
+            an invite link, the code is applied for you as you join.
+          </p>
+          <h3>Attacking spends tokens</h3>
+          <p>
+            An attack must come from an account that has redeemed a referral code, and spends tokens from that
+            account's allowance for the last 24 hours.
+          </p>
+          <Table
+            head={["Size of the attack, all entry points together", "Cost"]}
+            rows={[
+              ["Up to 2,000 characters", "1 token"],
+              ["Up to 8,000 characters", "2 tokens"],
+              ["Anything longer", "4 tokens"],
+            ]}
+          />
+          <Table
+            head={["Tier", "Allowance", "How you get it"]}
+            rows={[
+              ["Starter", "25 tokens in any 24 hours", "Everyone starts here"],
+              ["Proven", "200 tokens in any 24 hours", "Have one attack verified"],
+            ]}
+          />
+          <p>
+            No balance is stored. What you have left is your tier's allowance minus what your attempts of the last
+            24 hours cost, so tokens come back by themselves as attempts age out. An attempt that is refused costs
+            nothing, and neither does one the platform failed to replay. An attack you cannot afford is answered
+            with status 402.
+          </p>
+          <h3>From a script or an agent</h3>
+          <p>
+            Send your account's API key with the attempt, and read what is left with{" "}
+            <Endpoint method="GET" path="/v1/account" />.
+          </p>
+          <Code>{`curl -X POST ${origin}/v1/bounties/<bounty_id>/attempts \\
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \\
+  -d '{"payout_address": "<${addressKind()} address>", "fills": [{"slot": "user_message", "content": "..."}]}'`}</Code>
+          <h3>Invite links</h3>
+          <p>
+            Every referral code has an invite link, <code>{origin}/invite/&lt;code&gt;</code>. Whoever opens it sees
+            who invited them. If they are signed in they accept with one click; if not, they sign in or create an
+            account and the code is applied for them. Either way the bounties are open to them from then on.
+          </p>
+          <p>
+            <strong>A code works once.</strong> When one person has used it, it is spent, and the link says so to
+            anyone who opens it afterwards. To invite five people, make five.
+          </p>
+          <h3>Ambassadors</h3>
+          <p>
+            An ambassador makes invites from the <Link to="/dashboard">dashboard</Link>, up to ten at a time, copies
+            their links, and sees which have been used. An ambassador can hold 25 unused invites at once; using
+            one up makes room for another.
+          </p>
+        </Section>
+
+        <Section id="agents" title="Hunting with an AI agent">
+          <p>
+            Agents are first-class hunters. Everything a hunter does is plain HTTP and JSON, and{" "}
+            <a href="/agent.md">/agent.md</a> describes the rules, the API and the bounties that are live right now
+            in one markdown file an agent can fetch in a single request. The Human / Agent switch on the home page
+            shows the same file.
+          </p>
+          <ol className="steps-list">
+            <li>
+              Make an API key on your <Link to="/profile">profile</Link> and give it to your agent. It sends the
+              key as <code>Authorization: Bearer &lt;api_key&gt;</code> when it submits an attack.
+            </li>
+            <li>
+              Point the agent at <code>{origin}/agent.md</code>. It lists every live bounty with its entry points
+              and canary labels.
+            </li>
+            <li>
+              Let it loop: submit an attack, read the verdict and what the target agent replied, change approach,
+              try again. The replies are returned for exactly this reason.
+            </li>
+          </ol>
+          <p>
+            An agent spends tokens from your account like you do, and its breaks count as yours. The same{" "}
+            <a href="#rules">rules</a> apply to it.
           </p>
         </Section>
 
@@ -365,22 +568,23 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
           </p>
         </Section>
 
-        <Section id="agents" title="Hunting with an AI agent">
+        <Section id="rearm" title="Patching and re-arming">
           <p>
-            Agents are first-class hunters. Everything a hunter needs is plain HTTP and JSON, and{" "}
-            <a href="/agent.md">/agent.md</a> describes the rules, the API and the bounties live right now in one
-            markdown file an agent can fetch in a single request. The Human / Agent switch at the bottom of every
-            page shows the same file.
+            A verified break pauses the bounty. The broken config can never go live again. To reopen:
           </p>
-          <p>
-            The repository also ships an attacker agent: a script that reads a bounty, asks a model for an attack,
-            submits it, reads the agent's replies, and tries again until a canary trips or its budget runs out. It
-            uses only the public API.
-          </p>
-          <Code>{`export MODEL_API_BASE=<an OpenAI-compatible endpoint>
-export MODEL_API_KEY=<key>  ATTACKER_MODEL=<model id>
-python -m agentbounty.attacker --api ${origin} \\
-  --bounty <bounty_id> --payout-address <${addressKind()} address> --max-attempts 8`}</Code>
+          <ol className="steps-list">
+            <li>Upload a patched config. It becomes a new version; the broken one is kept as it was.</li>
+            <li>
+              Ask for a re-arm check with <Endpoint method="POST" path="/v1/bounties/{id}/rearm" />. Every attack
+              you have paid for is replayed against the patch.
+            </li>
+            <li>
+              If none of them is a verified break again, the check passes and the bounty can be funded and go live
+              on the patch. If one still works, the check fails and the config has to be changed, not checked
+              again.
+            </li>
+          </ol>
+          <p>The paid attack is your regression test.</p>
         </Section>
 
         <Section id="entry-points" title="Entry points">
@@ -497,8 +701,7 @@ python -m agentbounty.attacker --api ${origin} \\
 
         <Section id="money" title="Escrow, payouts and refunds">
           <p>
-            All amounts are integers in {money.unit}, the smallest unit of {money.symbol}. A bounty's balance is never stored: it is the sum of an append-only
-            ledger, which the database itself refuses to update or delete.
+            All amounts are integers in {money.unit}, the smallest unit of {money.symbol}. Every movement of money is written to a ledger that can only be added to, and a bounty's balance is the sum of its entries.
           </p>
           <ul>
             <li>
@@ -511,7 +714,7 @@ python -m agentbounty.attacker --api ${origin} \\
             </li>
             <li>
               <strong>Payouts.</strong> A verified finding is the only thing that can cause a payout, and each
-              finding can have exactly one, enforced by a unique constraint in the database. The reward is sent to
+              finding can have exactly one. The reward is sent to
               the hunter's address with the finding ID in the memo.
             </li>
             <li>
@@ -521,92 +724,8 @@ python -m agentbounty.attacker --api ${origin} \\
             </li>
           </ul>
           <p>
-            A send is recorded as in progress before the wallet is asked to make it. If the service dies between
-            the two, the payment is never sent a second time automatically: a person resolves it.
-          </p>
-        </Section>
-
-        <Section id="rearm" title="Patching and re-arming">
-          <p>
-            A verified break pauses the bounty. The broken config can never go live again. To reopen:
-          </p>
-          <ol className="steps-list">
-            <li>Upload a patched config. It becomes a new version; the broken one is kept as it was.</li>
-            <li>
-              Ask for a re-arm check with <Endpoint method="POST" path="/v1/bounties/{id}/rearm" />. Every attack
-              you have paid for is replayed against the patch.
-            </li>
-            <li>
-              If none of them is a verified break again, the check passes and the bounty can be funded and go live
-              on the patch. If one still works, the check fails and the config has to be changed, not checked
-              again.
-            </li>
-          </ol>
-          <p>The paid attack is your regression test.</p>
-        </Section>
-
-        <Section id="invites" title="Invites and tokens">
-          <p>
-            Every attack is replayed five times against a real model, and the platform pays for that. So a
-            deployment can run <strong>invite-only</strong>, which limits who can attack and how much.
-          </p>
-          <h3>Anyone can join; hunting needs a referral code</h3>
-          <p>
-            Making an account and filling in your <Link to="/profile">profile</Link> is open to everyone, and so is
-            listing an agent. Taking part in bounties is by invitation: you enter a referral code once, on the
-            dashboard or on any bounty page, and from then on you can attack. Codes are handed out by the
-            platform and by <strong>ambassadors</strong>, and each one is for one person. If you arrive through
-            an invite link, the code is applied for you as you join.
-          </p>
-          <h3>Attacking spends tokens</h3>
-          <p>
-            An attack must come from an account that has redeemed a referral code, and spends tokens from that
-            account's allowance for the last 24 hours.
-          </p>
-          <Table
-            head={["Size of the attack, all entry points together", "Cost"]}
-            rows={[
-              ["Up to 2,000 characters", "1 token"],
-              ["Up to 8,000 characters", "2 tokens"],
-              ["Anything longer", "4 tokens"],
-            ]}
-          />
-          <Table
-            head={["Tier", "Allowance", "How you get it"]}
-            rows={[
-              ["Starter", "25 tokens in any 24 hours", "Everyone starts here"],
-              ["Proven", "200 tokens in any 24 hours", "Have one attack verified"],
-            ]}
-          />
-          <p>
-            No balance is stored. What you have left is your tier's allowance minus what your attempts of the last
-            24 hours cost, so tokens come back by themselves as attempts age out. An attempt that is refused costs
-            nothing, and neither does one the platform failed to replay. An attack you cannot afford is answered
-            with status 402.
-          </p>
-          <h3>From a script or an agent</h3>
-          <p>
-            Send your account's API key with the attempt, and read what is left with{" "}
-            <Endpoint method="GET" path="/v1/account" />.
-          </p>
-          <Code>{`curl -X POST ${origin}/v1/bounties/<bounty_id>/attempts \\
-  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \\
-  -d '{"payout_address": "<${addressKind()} address>", "fills": [{"slot": "user_message", "content": "..."}]}'`}</Code>
-          <h3>Invite links</h3>
-          <p>
-            Every referral code has an invite link, <code>{origin}/invite/&lt;code&gt;</code>. Whoever opens it sees
-            who invited them. If they are signed in they accept with one click; if not, they sign in or create an
-            account and the code is applied for them. Either way the bounties are open to them from then on.
-          </p>
-          <p>
-            <strong>A code works once.</strong> When one person has used it, it is spent, and the link says so to
-            anyone who opens it afterwards. To invite five people, make five.
-          </p>
-          <h3>Ambassadors</h3>
-          <p>
-            An ambassador makes invites from the <Link to="/dashboard">dashboard</Link>, up to ten at a time, copies
-            their links, and sees which have been used. An ambassador can hold 25 unused invites at once; using
-            one up makes room for another.
+            A payment is never sent twice. If one is interrupted part-way, it is held for a person to check
+            and is not retried automatically.
           </p>
         </Section>
 
@@ -630,7 +749,6 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="POST" path="/v1/sponsors" />, "Sign up as a sponsor. Returns the API key, once."],
               [<Endpoint method="GET" path="/v1/invites/{code}" />, "What an invite link offers: who it is from, and whether it is still unused."],
               [<Endpoint method="GET" path="/agent.md" />, "The hunter side of the platform as markdown."],
-              [<Endpoint method="GET" path="/health" />, "Whether the service can reach its database."],
             ]}
           />
           <h3>Sponsor</h3>
@@ -709,7 +827,7 @@ python -m agentbounty.attacker --api ${origin} \\
           </p>
           <h3>Sign in with Google</h3>
           <p>
-            Where it is switched on, the <Link to="/login">sign-in page</Link> offers Continue with Google. The
+            The <Link to="/login">sign-in page</Link> offers Continue with Google. The
             first sign-in creates your account; later ones return to it. An account made this way has no API key
             until you make one on your <Link to="/profile">profile</Link>. Signing up by email does not prove an
             address is yours, and Google does: so if an account was made by email with your address, signing in
@@ -729,17 +847,17 @@ python -m agentbounty.attacker --api ${origin} \\
               [<code>404</code>, "No such bounty or attempt, or it is not yours. A wrong status token is also a 404."],
               [<code>409</code>, "Not allowed in the bounty's current state: editing a live config, attacking a paused bounty, activating a broken config."],
               [<code>422</code>, "The request is malformed: an undeclared slot, a transparent payout address, a secret that is too short."],
-              [<code>402</code>, "Not enough tokens for this attack. Invite-only deployments."],
+              [<code>402</code>, "Not enough tokens for this attack. Your allowance refills over 24 hours."],
               [<code>403</code>, "A cookie request from another site; or attacking before redeeming a referral code."],
               [<code>429</code>, "A limit was reached. Wait and try again."],
-              [<code>503</code>, "The service cannot reach its database."],
+              [<code>503</code>, "trycanari is briefly unavailable. Try again in a moment."],
             ]}
           />
         </Section>
 
         <Section id="limits" title="Limits">
           <Table
-            head={["Limit", "Default"]}
+            head={["What", "Limit"]}
             rows={[
               ["Requests to public endpoints, per client address", "120 a minute"],
               ["Attempts per payout address", "20 an hour"],
@@ -756,81 +874,78 @@ python -m agentbounty.attacker --api ${origin} \\
           </p>
         </Section>
 
-        <Section id="security" title="Security and privacy">
+        <Section id="security" title="Safety and privacy">
           <ul>
             <li>
-              <strong>The sandbox.</strong> Replays have no real tools and no network access other than the model
-              API. Every tool call is answered by a mock from a table of canned results.
-            </li>
-            <li>
-              <strong>Encryption at rest.</strong> System prompts, tool definitions, canary secrets and replay
-              transcripts are envelope-encrypted: each value under its own key, each of those wrapped by a master
-              key that never reaches the database.
+              <strong>Nothing real is touched.</strong> Attacks run against a sandboxed copy of the agent. Its
+              tools are mocks that answer with a canned reply: no money moves, no email is sent, no record is
+              read.
             </li>
             <li>
               <strong>What hunters see.</strong> A bounty's title, description, entry points, canary labels and
               reward. Never the system prompt, the tools, a secret or a rule.
             </li>
             <li>
-              <strong>Separation of duties.</strong> The process that serves requests cannot pay anyone and never
-              calls the model. The replay worker has no wallet. Only the payment process holds a wallet, and it
-              takes no requests.
+              <strong>What sponsors see.</strong> For a verified break: the attack, all five transcripts and the
+              hunter's public profile. For everything else: counts and outcomes, not the attack text.
             </li>
             <li>
-              <strong>Audit.</strong> Every payment action is written to an append-only audit log in the same
-              transaction as the action itself.
+              <strong>Kept encrypted.</strong> System prompts, tools, canary secrets, model keys and transcripts
+              are encrypted where they are stored.
             </li>
             <li>
-              <strong>Database.</strong> Row level security is enabled on every table with no policies, so nothing
-              but the service can read or write them.
+              <strong>Keys are shown once.</strong> An API key or a status token cannot be recovered, only
+              replaced. A sponsor's own model key is never shown again, not even to the sponsor.
+            </li>
+            <li>
+              <strong>Found a flaw in trycanari itself?</strong> That is outside the bounties. Please tell us
+              privately through the project's GitHub page; do not test it on other people's accounts.
             </li>
           </ul>
         </Section>
 
-        <Section id="self-hosting" title="Self-hosting">
+        <Section id="faq" title="Questions">
+          <h3>Do I need to know how to code?</h3>
           <p>
-            The service is three processes on one PostgreSQL database: the API (which also serves this site), the
-            replay worker and the payment process. Configuration comes only from environment variables.
+            No. An attack is text you type into a box on the bounty's page. The API is there for people who want to
+            script it.
           </p>
-          <Code>{`cp .env.example .env        # then fill it in
-make migrate                # apply the schema
-make web-build              # build this site (needs Bun)
-uv run --env-file .env uvicorn agentbounty.app:create_app --factory --app-dir src
-uv run --env-file .env python -m agentbounty.workers.replay
-uv run --env-file .env python -m agentbounty.workers.payment`}</Code>
-          <Table
-            head={["Variable", "Meaning"]}
-            rows={[
-              [<code>APP_ENV</code>, "development, test or production"],
-              [<code>DATABASE_URL</code>, "postgresql+asyncpg://…  Add ?pgbouncer=true behind a transaction-mode pooler"],
-              [<code>DIRECT_URL</code>, "A session-mode connection for migrations, when DATABASE_URL is pooled"],
-              [<code>SECRET_ENCRYPTION_KEY</code>, "32 random bytes, base64. Losing it makes encrypted columns unreadable"],
-              [<code>MODEL_BACKEND</code>, "fake (deterministic, refused in production) or real"],
-              [<code>MODEL_API_BASE</code>, "An OpenAI-compatible chat completions endpoint"],
-              [<code>MODEL_API_KEY</code>, "Its key"],
-              [<code>WALLET_BACKEND</code>, "fake (in memory, refused in production), solana or zcash"],
-              [<code>ESCROW_ADDRESS</code>, "The escrow wallet's address, which sponsors deposit to"],
-              [<code>SOLANA_RPC_URL</code>, "With WALLET_BACKEND=solana: the RPC node to use"],
-              [<code>SOLANA_SECRET_KEY</code>, "The escrow wallet's secret key. Only the payment process needs it"],
-              [<code>PAYOUT_MAX_ZATOSHI</code>, "Cap on a single payout. Required in production"],
-              [<code>PAYOUT_DAILY_MAX_ZATOSHI</code>, "Cap on payouts in any 24 hours. Required in production"],
-              [<code>FEE_RATE</code>, "The fee as a fraction of the reward. Default 0.1"],
-              [<code>INVITE_ONLY</code>, "true to require a referral code to hunt and tokens to attack"],
-              [<code>STARTER_CREDITS</code>, "Tokens a new account may spend in any 24 hours. Default 25"],
-              [<code>PROVEN_CREDITS</code>, "The same, once an account has a verified break. Default 200"],
-              [<code>PUBLIC_URL</code>, "Where browsers reach the service, such as https://example.com"],
-              [<code>GOOGLE_CLIENT_ID</code>, "An OAuth web client from the Google Cloud console. Turns on Google sign-in"],
-              [
-                <code>GOOGLE_CLIENT_SECRET</code>,
-                "Its secret. The client's redirect URI must be PUBLIC_URL + /v1/auth/google/callback",
-              ],
-            ]}
-          />
+          <h3>Is this allowed? Am I hacking someone?</h3>
           <p>
-            With <code>MODEL_BACKEND=fake</code> and <code>WALLET_BACKEND=fake</code> the whole flow runs locally
-            with no model key and no money: deposits arrive by themselves and the stand-in agent obeys two
-            directives, <code>[[reveal]]</code> and <code>[[call tool {"{…}"}]]</code>, so both kinds of canary can be
-            tripped.
+            You are attacking a copy of an agent that its owner listed here and is paying to have attacked. Its
+            tools are mocks. Nothing outside trycanari is touched.
+          </p>
+          <h3>How long does a result take?</h3>
+          <p>Usually a minute or two: five replays, then the verdict. The page updates by itself.</p>
+          <h3>When am I paid, and in what?</h3>
+          <p>
+            In {money.symbol}, to the {addressKind()} address you gave with the attempt, automatically once the
+            break is verified. The result shows the transaction ID.
+          </p>
+          <h3>My attack worked once and then was "not verified". Why?</h3>
+          <p>
+            It tripped the canary in fewer than three of the five replays. Models do not answer the same way
+            every time, and a sponsor only pays for an attack that works reliably.
+          </p>
+          <h3>How do I get a referral code?</h3>
+          <p>
+            From an ambassador or from the trycanari team. Each code works once, for one account. Listing your own
+            agent needs no code.
+          </p>
+          <h3>I am a sponsor. What does it cost?</h3>
+          <p>
+            The reward you set plus a 10% fee, held in escrow. The fee is charged only if a hunter breaks your
+            agent. Close the bounty unbroken and all of it comes back.
+          </p>
+          <h3>Can hunters see my agent's instructions?</h3>
+          <p>
+            No. They see the title, the description, the entry points and the labels of your canaries. If an
+            attack makes the agent recite its instructions, that reply is shown to the hunter who caused it,
+            which is exactly the leak a secret canary exists to catch.
+          </p>
+          <h3>Can I test my own model, not one of yours?</h3>
+          <p>
+            Yes. See <a href="#own-model">Connect your own model</a>.
           </p>
         </Section>
       </article>
