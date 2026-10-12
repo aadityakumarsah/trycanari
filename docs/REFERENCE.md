@@ -350,6 +350,8 @@ GET  /v1/bounties/{id}/ledger          ledger entries and balance          (spon
 POST /v1/bounties/{id}/scan            queue a baseline scan               (sponsor)
 GET  /v1/bounties/{id}/scan            the latest scan and its probes      (sponsor)
 GET  /v1/leaderboard                   hunters ranked by verified breaks
+GET  /v1/bounties?show=completed       attacked bounties that are over
+DELETE /v1/bounties/{id}               delete a draft or a closed bounty   (sponsor)
 ```
 
 ### A sponsor's own model

@@ -139,6 +139,9 @@ class Bounty(Base):
     # Set when the sponsor asks to close. The bounty takes no new attempts from then on
     # and becomes closed once the attempts already in flight have been judged and paid.
     close_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the sponsor deletes a draft or a closed bounty. It is then shown to no one;
+    # the row stays because money records point at it.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_now()
 
 

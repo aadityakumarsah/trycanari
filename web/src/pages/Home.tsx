@@ -105,9 +105,21 @@ function Strip() {
   );
 }
 
-function BountyCard({ bounty }: { bounty: BountyPublic }) {
+/** How a bounty that is over ended, in a word. */
+export function outcomeOf(bounty: BountyPublic): "broken" | "held" {
+  return bounty.breaks > 0 ? "broken" : "held";
+}
+
+function BountyCard({ bounty, over = false }: { bounty: BountyPublic; over?: boolean }) {
+  const outcome = outcomeOf(bounty);
   return (
-    <li className="card">
+    <li className={over ? `card over ${outcome}` : "card"}>
+      {over && (
+        <span className={`outcome ${outcome}`}>
+          <Icon name={outcome === "broken" ? "zap" : "shield"} size={13} />
+          {outcome === "broken" ? `Broken ${bounty.breaks}×` : "Held"}
+        </span>
+      )}
       <p className="reward">
         {formatZec(bounty.reward_zatoshi)} <span>{sym()}</span>
       </p>
@@ -127,7 +139,7 @@ function BountyCard({ bounty }: { bounty: BountyPublic }) {
         ))}
       </div>
       <div>
-        <p className="label">Canaries to trip</p>
+        <p className="label">{over ? "Canaries" : "Canaries to trip"}</p>
         {bounty.canaries.map((canary) => (
           <span key={`${canary.type}:${canary.public_label}`} className="tag">
             <Icon name={canary.type === "secret_leak" ? "key" : "ban"} size={13} />
@@ -144,10 +156,46 @@ function BountyCard({ bounty }: { bounty: BountyPublic }) {
           {bounty.breaks ? `broken ${bounty.breaks}×` : "unbroken"}
         </span>
       </p>
-      <Link className="btn-attack" to={`/b/${bounty.id}`}>
-        Attack <Icon name="chevron" />
+      <Link className={over ? "btn-line" : "btn-attack"} to={`/b/${bounty.id}`}>
+        {over ? "See how it went" : "Attack"} <Icon name="chevron" />
       </Link>
     </li>
+  );
+}
+
+/** Bounties that are over: broken, or closed unbroken. Loaded when the tab is opened. */
+function CompletedList() {
+  const completed = useLoad(
+    (signal) => api<BountyPublic[]>("GET", "/v1/bounties?show=completed", { signal }),
+    "completed",
+    "completed",
+  );
+  const over = completed.data ?? [];
+  return (
+    <>
+      <ErrorNote>{completed.error}</ErrorNote>
+      {!completed.data && !completed.error && (
+        <ul className="cards">
+          {[0, 1, 2].map((index) => (
+            <li key={index} className="card">
+              <Skeleton block lines={4} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {completed.data && over.length === 0 && (
+        <div className="empty">
+          <p>No bounty has finished yet. Broken and closed agents are kept here.</p>
+        </div>
+      )}
+      {over.length > 0 && (
+        <ul className="cards">
+          {over.map((bounty) => (
+            <BountyCard key={bounty.id} bounty={bounty} over />
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
 
@@ -181,6 +229,7 @@ export function Home() {
   const activity = useLoad((signal) => api<Activity>("GET", "/v1/activity", { signal }), "home", "activity");
   const leaders = useLoad((signal) => api<Leader[]>("GET", "/v1/leaderboard", { signal }), "home", "leaders").data ?? [];
   const location = useLocation();
+  const [showing, setShowing] = useState<"live" | "completed">("live");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("reward");
   const search = useRef<HTMLInputElement>(null);
@@ -244,65 +293,91 @@ export function Home() {
 
       <section className="sec" id="bounties">
         <div className="sec-head">
-          <h2>Live Bounties</h2>
-          <p>{live.length ? `${live.length} open, ${formatZec(pool)} ${sym()} in rewards` : "Agents you can attack right now"}</p>
+          <h2>{showing === "live" ? "Live Bounties" : "Completed Bounties"}</h2>
+          <p>
+            {showing === "completed"
+              ? "Agents that have been attacked and are no longer open: broken, or closed unbroken."
+              : live.length
+                ? `${live.length} open, ${formatZec(pool)} ${sym()} in rewards`
+                : "Agents you can attack right now"}
+          </p>
         </div>
-        <ErrorNote>{bounties.error}</ErrorNote>
-        {live.length > 1 && (
-          <div className="toolbar">
-            <label className="search">
-              <Icon name="search" size={16} />
-              <input
-                ref={search}
-                type="search"
-                placeholder="Search agents and canaries"
-                aria-label="Search bounties"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-              <kbd>/</kbd>
-            </label>
-            <label className="sort">
-              <span>Sort</span>
-              <select value={sort} onChange={(event) => setSort(event.target.value as Sort)}>
-                {Object.entries(SORTS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        )}
-        {!bounties.data && !bounties.error && (
-          <ul className="cards">
-            {[0, 1, 2].map((index) => (
-              <li key={index} className="card">
-                <Skeleton block lines={4} />
-              </li>
-            ))}
-          </ul>
-        )}
-        {bounties.data?.length === 0 && (
-          <div className="empty">
-            <p>No bounty is live right now.</p>
-            <Link to="/dashboard">List the first agent →</Link>
-          </div>
-        )}
-        {live.length > 0 && shown.length === 0 && (
-          <div className="empty">
-            <p>No bounty matches “{query}”.</p>
-            <button type="button" className="text-button" onClick={() => setQuery("")}>
-              Clear the search
+        <div className="switcher" role="tablist" aria-label="Which bounties to show">
+          {(["live", "completed"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="tab"
+              aria-selected={showing === option}
+              className={showing === option ? "on" : undefined}
+              onClick={() => setShowing(option)}
+            >
+              {option === "live" ? "Live" : "Completed"}
+              {option === "live" && live.length > 0 && <span>{live.length}</span>}
             </button>
-          </div>
-        )}
-        {shown.length > 0 && (
-          <ul className="cards">
-            {shown.map((bounty) => (
-              <BountyCard key={bounty.id} bounty={bounty} />
-            ))}
-          </ul>
+          ))}
+        </div>
+        {showing === "completed" && <CompletedList />}
+        {showing === "live" && (
+          <>
+            <ErrorNote>{bounties.error}</ErrorNote>
+            {live.length > 1 && (
+              <div className="toolbar">
+                <label className="search">
+                  <Icon name="search" size={16} />
+                  <input
+                    ref={search}
+                    type="search"
+                    placeholder="Search agents and canaries"
+                    aria-label="Search bounties"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                  <kbd>/</kbd>
+                </label>
+                <label className="sort">
+                  <span>Sort</span>
+                  <select value={sort} onChange={(event) => setSort(event.target.value as Sort)}>
+                    {Object.entries(SORTS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+            {!bounties.data && !bounties.error && (
+              <ul className="cards">
+                {[0, 1, 2].map((index) => (
+                  <li key={index} className="card">
+                    <Skeleton block lines={4} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {bounties.data?.length === 0 && (
+              <div className="empty">
+                <p>No bounty is live right now.</p>
+                <Link to="/dashboard">List the first agent →</Link>
+              </div>
+            )}
+            {live.length > 0 && shown.length === 0 && (
+              <div className="empty">
+                <p>No bounty matches “{query}”.</p>
+                <button type="button" className="text-button" onClick={() => setQuery("")}>
+                  Clear the search
+                </button>
+              </div>
+            )}
+            {shown.length > 0 && (
+              <ul className="cards">
+                {shown.map((bounty) => (
+                  <BountyCard key={bounty.id} bounty={bounty} />
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </section>
 

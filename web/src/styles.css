@@ -1331,3 +1331,30 @@ table.people td { vertical-align: middle; white-space: nowrap; }
 .field-block > small { display: block; margin-top: 6px; color: var(--muted); font-size: 13px; }
 .page .with-button button { margin-top: 6px; }
 @media (max-width: 640px) { .page .with-button button { min-height: 42px; margin-top: 0; } }
+
+/* ============ live / completed ============ */
+.switcher { display: inline-flex; gap: 2px; margin: 0 auto 24px; padding: 4px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.sec > .switcher { display: flex; width: max-content; }
+.switcher button { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 18px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 500 14px/1 var(--sans); cursor: pointer; transition: background 0.15s, color 0.15s; }
+.switcher button:hover { color: var(--foreground); }
+.switcher button.on { background: var(--foreground); color: #000; }
+.switcher button span { min-width: 20px; padding: 2px 6px; border-radius: 999px; background: #00000022; font: 500 11px/14px var(--mono); }
+.switcher button:not(.on) span { background: var(--surface-2); }
+.switcher button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card.over { position: relative; }
+.card.over .reward { color: var(--muted); }
+.outcome { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; padding: 3px 10px; border-radius: 999px; font: 500 12px/18px var(--sans); }
+.outcome.broken { background: var(--warn-bg); color: var(--warn); }
+.outcome.held { background: var(--accent-bg); color: var(--accent); }
+.card .btn-line { margin-top: auto; }
+
+/* ============ fixes: floating switch, phone layouts ============ */
+.mode { transition: opacity 0.2s, transform 0.2s, visibility 0.2s; }
+.mode.tucked { opacity: 0; visibility: hidden; transform: translateY(12px); pointer-events: none; }
+@media (max-width: 640px) {
+  .welcome > div { flex: 1 1 calc(100% - 80px); }
+  .page .welcome h1 { font-size: 24px; line-height: 32px; overflow-wrap: break-word; }
+  .page .welcome .button { flex: 1 1 100%; }
+  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .facts div { padding: 12px 14px; overflow-wrap: anywhere; }
+}

@@ -86,7 +86,7 @@ async def own_bounty(
 ) -> Bounty:
     """The sponsor's bounty, locked for the request. Someone else's bounty is a 404."""
     bounty = await bounty_service.lock_bounty(session, bounty_id)
-    if bounty is None or bounty.sponsor_id != sponsor.id:
+    if bounty is None or bounty.sponsor_id != sponsor.id or bounty.deleted_at is not None:
         raise HTTPException(404, "bounty not found")
     return bounty
 

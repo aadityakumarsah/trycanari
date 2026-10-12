@@ -399,10 +399,20 @@ export function BountyPage() {
             />
           ) : (
             <div className="notice">
-              <b>This bounty is {words(data.state)} and is not taking attempts.</b>{" "}
-              {data.breaks > 0
-                ? "A hunter broke it. It reopens once the sponsor has patched the agent."
-                : "Its sponsor has stopped it for now."}{" "}
+              <b>
+                {data.state === "closed"
+                  ? "This bounty is over."
+                  : `This bounty is ${words(data.state)} and is not taking attempts.`}
+              </b>{" "}
+              {data.state === "closed"
+                ? data.breaks > 0
+                  ? `Hunters attacked it ${data.attempts} ${data.attempts === 1 ? "time" : "times"} and broke it ${data.breaks === 1 ? "once" : `${data.breaks} times`}. Each break was verified in at least 3 of 5 replays and paid.`
+                  : data.attempts > 0
+                    ? `Hunters attacked it ${data.attempts} ${data.attempts === 1 ? "time" : "times"} and none of them broke it.`
+                    : "Its sponsor closed it before anyone attacked it."
+                : data.breaks > 0
+                  ? "A hunter broke it. It reopens once the sponsor has patched the agent."
+                  : "Its sponsor has stopped it for now."}{" "}
               <Link to="/#bounties">See what is live →</Link>
             </div>
           )}

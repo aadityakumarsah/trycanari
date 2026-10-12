@@ -439,6 +439,14 @@ async def close(
     return CloseOut(state=bounty.state, closing=bounty.state is not BountyState.CLOSED)
 
 
+@router.delete("/bounties/{bounty_id}", status_code=204)
+async def delete_bounty(session: Transaction, bounty: OwnBounty) -> Response:
+    """Delete a draft that holds no money, or a closed bounty. It leaves the dashboard
+    and every public page; its ledger, findings and payouts are kept."""
+    await bounty_service.delete(session, bounty)
+    return Response(status_code=204)
+
+
 @router.post("/bounties/{bounty_id}/rearm", status_code=202)
 async def request_rearm(session: Transaction, bounty: OwnBounty) -> RearmOut:
     """Replay the paid attack against the patched config.

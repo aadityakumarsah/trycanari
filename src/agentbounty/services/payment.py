@@ -208,6 +208,9 @@ class PaymentService:
             else:
                 deposit.bounty_id = bounty.id
                 deposit.state = DepositState.MATCHED
+                # Money for a draft its sponsor deleted brings the draft back, so that they
+                # can see the deposit and close the bounty for a refund.
+                bounty.deleted_at = None
                 await audit(
                     session,
                     PaymentAction.DEPOSIT_MATCHED,

@@ -526,6 +526,27 @@ async def pause(session: AsyncSession, bounty: Bounty) -> None:
     await session.flush()
 
 
+async def delete(session: AsyncSession, bounty: Bounty) -> None:
+    """Remove a bounty from its sponsor's dashboard and from every public page.
+
+    Only a bounty with nothing left to happen can go: a draft that holds no money, or
+    one that is closed. Its ledger, findings and payouts are kept; they are records.
+    """
+    if bounty.close_requested_at is not None and bounty.state is not BountyState.CLOSED:
+        raise ServiceError(409, "this bounty is closing; it can be deleted once it has closed")
+    if bounty.state is BountyState.DRAFT:
+        if await bounty_balance(session, bounty.id) != 0:
+            raise ServiceError(
+                409, "this draft holds escrow; close it to get the refund, then delete it"
+            )
+    elif bounty.state is not BountyState.CLOSED:
+        raise ServiceError(
+            409, f"a bounty that is {bounty.state} cannot be deleted; close it first"
+        )
+    bounty.deleted_at = datetime.now(UTC)
+    await session.flush()
+
+
 async def request_close(
     session: AsyncSession,
     bounty: Bounty,

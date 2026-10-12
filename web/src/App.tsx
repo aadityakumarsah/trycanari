@@ -387,6 +387,9 @@ function ToTop() {
   );
 }
 
+/** Signed-in pages: places to work, where the human / agent switch has no use. */
+const WORKSPACE = ["/dashboard", "/profile", "/admin", "/attempts", "/login", "/invite", "/b"];
+
 export function App() {
   const [mode, setMode] = useState<Mode>("human");
   const { session } = useSession();
@@ -401,6 +404,17 @@ export function App() {
   }, [session, providers]);
   // Following any link in the page chrome goes back to the pages people read.
   const human = () => setMode("human");
+  const { pathname } = useLocation();
+  const workspace = WORKSPACE.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  // Further down a page the switch would float over cards and buttons, so it steps
+  // aside there and comes back near the top.
+  const [deep, setDeep] = useState(false);
+  useEffect(() => {
+    const measure = () => setDeep(window.scrollY > 420);
+    measure();
+    window.addEventListener("scroll", measure, { passive: true });
+    return () => window.removeEventListener("scroll", measure);
+  }, []);
 
   return (
     <>
@@ -506,21 +520,25 @@ export function App() {
         )}
       </main>
       <Footer onNavigate={human} />
-      <div className="mode" role="group" aria-label="Who is reading">
-        {(["human", "agent"] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            aria-pressed={mode === option}
-            onClick={() => {
-              setMode(option);
-              window.scrollTo({ top: 0 });
-            }}
-          >
-            {option}
-          </button>
-        ))}
-      </div>
+      {/* The switch is for the public pages. On a signed-in page it would only sit on
+          top of forms and buttons. */}
+      {!workspace && (
+        <div className={deep ? "mode tucked" : "mode"} role="group" aria-label="Who is reading">
+          {(["human", "agent"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={mode === option}
+              onClick={() => {
+                setMode(option);
+                window.scrollTo({ top: 0 });
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
       <ToTop />
     </>
   );

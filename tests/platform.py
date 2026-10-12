@@ -86,7 +86,7 @@ class Sponsor:
     async def call(self, method: str, path: str, expect: int = 200, **kwargs: Any) -> Any:
         response = await self.client.request(method, path, headers=self.headers, **kwargs)
         assert response.status_code == expect, response.text
-        return response.json()
+        return response.json() if response.content else None
 
     async def draft(self, config: dict[str, Any] = DEMO_CONFIG) -> str:
         """A draft bounty with the demo config and both canaries. Returns its ID."""

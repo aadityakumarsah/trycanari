@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { NotFound } from "../App.tsx";
 import { pictureOf } from "../account.tsx";
@@ -12,6 +12,7 @@ import { WalletFunding } from "../components/WalletFunding.tsx";
 import { Ago, Avatar, Badge, Copyable, ErrorNote, Skeleton, when, words } from "../components/ui.tsx";
 import { useAction, useInterval, useLoad } from "../hooks.ts";
 import { currency, formatZec, sym } from "../money.ts";
+import { useToast } from "../toast.tsx";
 import type { AttemptActivity, EntryPoint, Finding, Hunter, Ledger, Scan, SponsorBountyDetail } from "../types.ts";
 
 interface Everything {
@@ -72,7 +73,12 @@ function ActionForm({
 
 function Actions({ bounty, act, broken }: Props & { broken: boolean }) {
   const open = bounty.state !== "closed" && !bounty.closing;
+  // Only a bounty with nothing left to happen: closed, or a draft that holds no money.
+  const deletable =
+    bounty.state === "closed" || (bounty.state === "draft" && !bounty.closing && bounty.balance_zatoshi === 0);
   const confirm = useConfirm();
+  const navigate = useNavigate();
+  const toast = useToast();
   return (
     <section>
       <h2>Actions</h2>
@@ -93,11 +99,36 @@ function Actions({ bounty, act, broken }: Props & { broken: boolean }) {
               });
               if (sure) await act("close", { refund_address: bounty.refund_address });
             }}
-            label="Close and refund"
+            label={bounty.state === "draft" && bounty.balance_zatoshi === 0 ? "Close" : "Close and refund"}
+            className="danger"
+          />
+        )}
+        {deletable && (
+          <ActionForm
+            submit={async () => {
+              const sure = await confirm({
+                title: bounty.state === "draft" ? "Delete this draft?" : "Delete this bounty?",
+                body:
+                  bounty.state === "draft"
+                    ? "The agent, its canaries and its settings are removed from your dashboard. This cannot be undone."
+                    : "It is removed from your dashboard and from the public Completed list. Records of what was paid are kept. This cannot be undone.",
+                confirm: "Delete",
+                cancel: "Keep it",
+                danger: true,
+              });
+              if (!sure) return;
+              await api<unknown>("DELETE", `/v1/bounties/${bounty.id}`);
+              toast(bounty.state === "draft" ? "Draft deleted." : "Bounty deleted.");
+              navigate("/dashboard");
+            }}
+            label={bounty.state === "draft" ? "Delete draft" : "Delete"}
             className="danger"
           />
         )}
       </div>
+      {bounty.state === "closed" && (
+        <p className="muted">This bounty is closed. It stays here as a record until you delete it.</p>
+      )}
       {bounty.closing && (
         <p className="muted">
           Closing: the unspent escrow is refunded once attempts in flight have been judged and paid.

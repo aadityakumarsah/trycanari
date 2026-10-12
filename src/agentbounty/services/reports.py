@@ -54,7 +54,9 @@ async def summarise(session: AsyncSession, bounty: Bounty) -> BountySummary:
 
 async def sponsor_bounties(session: AsyncSession, sponsor: Sponsor) -> list[BountySummary]:
     bounties = await session.scalars(
-        select(Bounty).where(Bounty.sponsor_id == sponsor.id).order_by(Bounty.created_at, Bounty.id)
+        select(Bounty)
+        .where(Bounty.sponsor_id == sponsor.id, Bounty.deleted_at.is_(None))
+        .order_by(Bounty.created_at, Bounty.id)
     )
     return [await summarise(session, bounty) for bounty in bounties]
 

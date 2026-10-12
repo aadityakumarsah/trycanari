@@ -5,10 +5,10 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentbounty.api.deps import BearerToken, CipherDep, MaybeSponsor, SettingsDep, Transaction
@@ -47,6 +47,9 @@ from agentbounty.services.wallet import address_rule
 
 router = APIRouter(prefix="/v1", tags=["public"], dependencies=[Depends(limit_by_client)])
 
+# How many finished bounties the public list of them goes back.
+COMPLETED_SHOWN = 60
+
 RECENT_BREAKS = 8
 LEADERS = 10
 _MAX_CACHED = 2_000
@@ -77,7 +80,9 @@ def _count_of(column: Any) -> Any:
     return select(func.count()).where(column == Bounty.id).correlate(Bounty).scalar_subquery()
 
 
-async def public_views(session: AsyncSession, where: Any) -> list[BountyPublic]:
+async def public_views(
+    session: AsyncSession, where: Any, *, order: tuple[Any, ...] | None = None, limit: int = 500
+) -> list[BountyPublic]:
     """Bounties as hunters see them: labels and entry points, never a secret, rule or prompt.
 
     Three queries however many bounties there are.
@@ -85,8 +90,9 @@ async def public_views(session: AsyncSession, where: Any) -> list[BountyPublic]:
     rows = (
         await session.execute(
             select(Bounty, _count_of(Attempt.bounty_id), _count_of(Finding.bounty_id))
-            .where(where)
-            .order_by(Bounty.created_at, Bounty.id)
+            .where(where, Bounty.deleted_at.is_(None))
+            .order_by(*(order or (Bounty.created_at, Bounty.id)))
+            .limit(limit)
         )
     ).all()
     config_ids = [bounty.live_config_id for bounty, _, _ in rows if bounty.live_config_id]
@@ -128,8 +134,29 @@ async def public_views(session: AsyncSession, where: Any) -> list[BountyPublic]:
 
 
 @router.get("/bounties")
-async def list_bounties(request: Request, session: Transaction) -> list[BountyPublic]:
-    """Bounties that are live right now, oldest first."""
+async def list_bounties(
+    request: Request, session: Transaction, show: Literal["live", "completed"] = "live"
+) -> list[BountyPublic]:
+    """Bounties that are live right now, oldest first. With `show=completed`: the ones
+    hunters attacked that are now over, newest first: closed, or broken and not live again."""
+    if show == "completed":
+        broken = select(Finding.id).where(Finding.bounty_id == Bounty.id).exists()
+        attacked = select(Attempt.id).where(Attempt.bounty_id == Bounty.id).exists()
+        over = and_(
+            Bounty.live_config_id.is_not(None),
+            attacked,
+            or_(
+                Bounty.state == BountyState.CLOSED,
+                and_(Bounty.state == BountyState.PAUSED, broken),
+            ),
+        )
+        return await cached(
+            request,
+            "bounties:completed",
+            lambda: public_views(
+                session, over, order=(Bounty.created_at.desc(), Bounty.id), limit=COMPLETED_SHOWN
+            ),
+        )
     live = and_(Bounty.state == BountyState.LIVE, Bounty.close_requested_at.is_(None))
     return await cached(request, "bounties", lambda: public_views(session, live))
 

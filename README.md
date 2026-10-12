@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="560 tests" src="https://img.shields.io/badge/tests-560%20passing-6ee7b7" />
+  <img alt="568 tests" src="https://img.shields.io/badge/tests-568%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -50,10 +50,10 @@
 
 | Number | |
 |---:|---|
-| **46** | API endpoints |
-| **16** | database migrations |
-| **460** | Python tests |
-| **100** | web tests |
+| **47** | API endpoints |
+| **17** | database migrations |
+| **466** | Python tests |
+| **102** | web tests |
 | **~9,700** | lines of Python |
 | **~7,900** | lines of TypeScript |
 
@@ -118,6 +118,7 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 - A plain-markdown guide for AI agents at `/agent.md`
 - An attacker agent that hunts by itself
 - A public leaderboard of verified breaks
+- A Completed list of agents that were broken or closed unbroken
 
 </td>
 <td width="33%" valign="top">
@@ -134,7 +135,7 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 - Escrow with a deposit code
 - Activity, findings and a full ledger
 - Re-arm gate: the paid attack is replayed against the patch
-- Close and refund at any time
+- Close and refund at any time; delete drafts and closed bounties
 
 </td>
 <td width="33%" valign="top">
@@ -322,7 +323,7 @@ web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
 ├── src/components/   Flow · Transcript · AttemptStatus · ReferralGate · shared pieces
 └── cloudflare/       The Pages worker that proxies API paths
-migrations/versions/  0001 … 0016
+migrations/versions/  0001 … 0017
 tests/                One file per area; a scratch database per test
 docs/REFERENCE.md     The long version of everything on this page
 ```
@@ -331,8 +332,8 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 460 Python tests, each on its own scratch database
-make web-test     # 100 web tests
+make test         # 466 Python tests, each on its own scratch database
+make web-test     # 102 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
 make e2e          # the definition of done, as one test
