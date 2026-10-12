@@ -79,6 +79,9 @@ class Sponsor(Base):
     referral_code: Mapped[str | None] = mapped_column(Text, unique=True)
     # Let in by an admin, without a code.
     hunting_granted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Made only to try the platform out. Shown to no one: not on the leaderboard, and not
+    # in the admin's list of people. Set in the database, never through the API.
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = created_now()
 
 

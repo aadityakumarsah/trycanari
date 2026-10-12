@@ -14,7 +14,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -102,7 +102,8 @@ async def people(
     offset: Offset = 0,
 ) -> PeoplePage:
     """A page of accounts, newest first. `q` searches names, emails, GitHub names and companies."""
-    matching = []
+    # Demo accounts are nobody: they are not listed, so they cannot be given a role either.
+    matching: list[ColumnElement[bool]] = [Sponsor.is_demo.is_(False)]
     wanted = q.strip()
     if wanted:
         # The search text is data, never part of the pattern's syntax.

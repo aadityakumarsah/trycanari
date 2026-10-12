@@ -12,6 +12,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 from sqlalchemy import select, update
 
+from agentbounty.models import Bounty as BountyRow
 from agentbounty.models import Notification
 from agentbounty.models import Sponsor as SponsorRow
 from agentbounty.money import ZEC
@@ -346,3 +347,31 @@ def test_the_cloudflare_backend_needs_its_account_token_sender_and_site(
         Settings(**ready)
     settings = Settings(**{**ready, "public_url": "https://bounty.example"})
     assert isinstance(mail.make_sender(settings), mail.CloudflareEmail)
+
+
+# --- demo accounts ------------------------------------------------------------------------
+
+
+async def test_a_demo_account_is_on_no_leaderboard_and_a_deleted_bounty_in_no_feed(
+    platform: Platform,
+) -> None:
+    _, _, bounty_id, _ = await broken(platform)
+    await platform.payments.tick()
+    client = platform.client
+    assert [who["name"] for who in (await client.get("/v1/leaderboard")).json()] == ["Ada Hunter"]
+    assert len((await client.get("/v1/activity")).json()["recent_breaks"]) == 1
+
+    async with platform.sessions.begin() as session:
+        await session.execute(
+            update(SponsorRow).where(SponsorRow.email == "hunter@example.com").values(is_demo=True)
+        )
+    assert (await client.get("/v1/leaderboard")).json() == []
+
+    # The break stays counted, but a feed that links to the bounty no longer lists it.
+    async with platform.sessions.begin() as session:
+        await session.execute(
+            update(BountyRow).where(BountyRow.id == bounty_id).values(deleted_at=datetime.now(UTC))
+        )
+    feed = (await client.get("/v1/activity")).json()
+    assert feed["recent_breaks"] == []
+    assert feed["stats"]["verified_breaks"] == 1

@@ -285,6 +285,8 @@ async def activity(request: Request, session: Transaction) -> ActivityOut:
             .join(Bounty, Bounty.id == Finding.bounty_id)
             .join(Canary, Canary.id == Finding.canary_id)
             .outerjoin(Payout, Payout.finding_id == Finding.id)
+            # A break is listed with a link to its bounty, so not one of a deleted bounty.
+            .where(Bounty.deleted_at.is_(None))
             .order_by(Finding.verified_at.desc(), Finding.id)
             .limit(RECENT_BREAKS)
         )
@@ -330,6 +332,7 @@ async def leaderboard(request: Request, session: Transaction) -> list[LeaderOut]
             .join(Attempt, Attempt.account_id == Sponsor.id)
             .join(Finding, Finding.attempt_id == Attempt.id)
             .outerjoin(Payout, Payout.finding_id == Finding.id)
+            .where(Sponsor.is_demo.is_(False))
             .group_by(Sponsor.id)
             .order_by(breaks.desc(), earned.desc(), func.max(Finding.verified_at))
             .limit(LEADERS)
