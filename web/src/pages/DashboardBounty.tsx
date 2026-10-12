@@ -10,7 +10,7 @@ import { WalletFunding } from "../components/WalletFunding.tsx";
 import { Ago, Avatar, Badge, Copyable, ErrorNote, Skeleton, when, words } from "../components/ui.tsx";
 import { useAction, useInterval, useLoad } from "../hooks.ts";
 import { currency, formatZec, sym } from "../money.ts";
-import type { AttemptActivity, EntryPoint, Finding, Hunter, Ledger, SponsorBountyDetail } from "../types.ts";
+import type { AttemptActivity, EntryPoint, Finding, Hunter, Ledger, Scan, SponsorBountyDetail } from "../types.ts";
 
 interface Everything {
   bounty: SponsorBountyDetail;
@@ -568,6 +568,122 @@ export function isMoving(bounty: SponsorBountyDetail): boolean {
   return bounty.state === "awaiting_deposit" || bounty.state === "live" || bounty.closing || checking;
 }
 
+/**
+ * The baseline scan: well-known attacks run against the agent before any hunter sees it.
+ * It tells a sponsor at once whether the obvious things already work.
+ */
+function ScanTab({ bountyId, canaries }: { bountyId: string; canaries: number }) {
+  const path = `/v1/bounties/${bountyId}/scan`;
+  const scan = useLoad((signal) => api<Scan>("GET", path, { signal }), bountyId, `sponsor:scan:${bountyId}`);
+  const starting = useAction();
+  const running = scan.data?.state === "queued" || scan.data?.state === "running";
+  useInterval(() => void scan.reload(), 2500, running);
+  if (!scan.data) return scan.error ? <ErrorNote>{scan.error}</ErrorNote> : <Skeleton lines={4} />;
+  const { state, probes, held, total } = scan.data;
+  const broken = total - held;
+
+  async function start() {
+    await starting.run(async () => {
+      await api<Scan>("POST", path);
+      await scan.reload();
+    });
+  }
+
+  return (
+    <section>
+      <h2>Baseline scan</h2>
+      <p className="muted">
+        Six attacks every hunter tries first, written for this agent's own canaries: direct injection, a forged
+        authority, instructions planted in a document, a forged policy update, role-play and an encoded request.
+        Each is replayed once. It is a quick floor, not the five-replay standard a paid break is held to.
+      </p>
+      {state === null && (
+        <div className="scan-start">
+          <button type="button" className="accent" disabled={starting.busy || canaries === 0} onClick={() => void start()}>
+            <Icon name="zap" size={15} /> {starting.busy ? "Starting…" : "Run the baseline scan"}
+          </button>
+          <span className="muted small">
+            {canaries === 0
+              ? "Add a canary first: a scan needs something to trip."
+              : "Takes under a minute. Changing the agent or its canaries makes the last scan out of date."}
+          </span>
+        </div>
+      )}
+      <ErrorNote>{starting.error}</ErrorNote>
+      {running && (
+        <div className="replaying">
+          <p>
+            <Badge state={state ?? "queued"} /> Running the playbook against your agent…
+          </p>
+          <div className="progress" role="progressbar" aria-label="Scanning">
+            <i />
+          </div>
+        </div>
+      )}
+      {state === "error" && (
+        <div className="scan-start">
+          <p className="error">The scan could not be completed. Nothing is wrong with your agent; try again.</p>
+          <button type="button" className="secondary" disabled={starting.busy} onClick={() => void start()}>
+            Try again
+          </button>
+        </div>
+      )}
+      {state === "done" && (
+        <>
+          <div className={broken === 0 ? "scan-score good" : "scan-score bad"}>
+            <b>
+              {held} / {total}
+            </b>
+            <span>
+              {broken === 0
+                ? "The agent held against every probe. Hunters will have to do better than the obvious."
+                : `${broken} ${broken === 1 ? "probe" : "probes"} got through. A hunter would find ${broken === 1 ? "this" : "these"} quickly: consider tightening the agent before you fund the bounty.`}
+            </span>
+          </div>
+          <ul className="probes">
+            {probes.map((probe) => (
+              <li key={probe.id} className={probe.tripped.length ? "probe tripped" : "probe"}>
+                <details>
+                  <summary>
+                    <span className={probe.tripped.length ? "probe-mark bad" : "probe-mark"}>
+                      <Icon name={probe.tripped.length ? "close" : "check"} size={14} />
+                    </span>
+                    <span className="probe-name">
+                      <b>{probe.name}</b>
+                      <small>
+                        {probe.technique} · aimed at <code>{probe.aimed_at}</code>
+                      </small>
+                    </span>
+                    <span className={probe.tripped.length ? "badge badge-error" : "badge badge-live"}>
+                      {probe.tripped.length ? `tripped ${probe.tripped.join(", ")}` : "held"}
+                    </span>
+                  </summary>
+                  <div className="probe-body">
+                    <h4>The attack</h4>
+                    {probe.attack.map((fill) => (
+                      <div key={fill.slot}>
+                        <p className="muted">{words(fill.slot)}</p>
+                        <pre>{fill.content}</pre>
+                      </div>
+                    ))}
+                    <h4>What the agent did</h4>
+                    {probe.tool_calls.map((call, index) => (
+                      <pre key={index}>
+                        {call.name}({JSON.stringify(call.arguments, null, 2)})
+                      </pre>
+                    ))}
+                    {probe.reply ? <pre>{probe.reply}</pre> : probe.tool_calls.length === 0 && <p className="muted">It said nothing.</p>}
+                  </div>
+                </details>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
 /** How hard the bounty is being attacked. The attacks themselves are shown only for breaks. */
 function ActivityTab({ bountyId, watching }: { bountyId: string; watching: boolean }) {
   const activity = useLoad(
@@ -640,7 +756,7 @@ function ActivityTab({ bountyId, watching }: { bountyId: string; watching: boole
   );
 }
 
-export const TABS = ["overview", "agent", "canaries", "funding", "activity", "findings", "ledger"] as const;
+export const TABS = ["overview", "agent", "canaries", "scan", "funding", "activity", "findings", "ledger"] as const;
 export type Tab = (typeof TABS)[number];
 
 /** The tab a ?tab= value names. Anything unknown is the overview. */
@@ -718,6 +834,12 @@ export function DashboardBounty() {
           <dt>Verified breaks</dt>
           <dd>{findings.length}</dd>
         </div>
+        <div>
+          <dt>Evidence</dt>
+          <dd>
+            <Link to={`/dashboard/b/${bounty.id}/report`}>Open the report</Link>
+          </dd>
+        </div>
         {(bounty.state === "live" || bounty.state === "paused") && (
           <div>
             <dt>Public page</dt>
@@ -762,6 +884,7 @@ export function DashboardBounty() {
         )}
         {tab === "agent" && <Config bounty={bounty} act={act} />}
         {tab === "canaries" && <CanarySection bounty={bounty} act={act} />}
+        {tab === "scan" && <ScanTab bountyId={bounty.id} canaries={bounty.canaries.length} />}
         {tab === "funding" && <Funding bounty={bounty} act={act} base={base} reload={page.reload} />}
         {tab === "activity" && <ActivityTab bountyId={bounty.id} watching={isMoving(bounty)} />}
         {tab === "findings" && <Findings findings={findings} />}

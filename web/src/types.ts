@@ -253,6 +253,37 @@ export interface Run {
   evidence: Evidence[];
 }
 
+export interface Probe {
+  id: string;
+  name: string;
+  technique: string;
+  aimed_at: string;
+  tripped: string[];
+  attack: { slot: EntryPoint; content: string }[];
+  reply: string;
+  tool_calls: ToolCall[];
+}
+
+export interface Scan {
+  state: "queued" | "running" | "done" | "error" | null;
+  config_hash: string | null;
+  probes: Probe[];
+  held: number;
+  total: number;
+  risks: Record<string, string>;
+  requested_at: string | null;
+}
+
+export interface Leader {
+  name: string | null;
+  picture_url: string | null;
+  github: string | null;
+  company: string | null;
+  breaks: number;
+  earned_zatoshi: number;
+  last_break_at: string;
+}
+
 export interface Hunter {
   name: string | null;
   picture_url: string | null;

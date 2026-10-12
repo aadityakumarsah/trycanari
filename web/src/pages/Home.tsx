@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
+import { pictureOf } from "../account.tsx";
 import { api } from "../api.ts";
 import { Icon, type IconName } from "../components/Brand.tsx";
 import { Flow } from "../components/Flow.tsx";
 import { WalkingMascot } from "../components/WalkingMascot.tsx";
-import { Ago, ErrorNote, Skeleton, words } from "../components/ui.tsx";
+import { Ago, Avatar, ErrorNote, Skeleton, words } from "../components/ui.tsx";
 import { useLoad } from "../hooks.ts";
 import { currency, formatZec, paidIn, sym } from "../money.ts";
-import type { Activity, BountyPublic } from "../types.ts";
+import type { Activity, BountyPublic, Leader } from "../types.ts";
 
 const VERIFIED_BY: [IconName, string][] = [
   ["repeat", "Five fresh replays"],
@@ -178,6 +179,7 @@ export function arrange(bounties: BountyPublic[], query: string, sort: Sort): Bo
 export function Home() {
   const bounties = useLoad((signal) => api<BountyPublic[]>("GET", "/v1/bounties", { signal }), "home", "bounties");
   const activity = useLoad((signal) => api<Activity>("GET", "/v1/activity", { signal }), "home", "activity");
+  const leaders = useLoad((signal) => api<Leader[]>("GET", "/v1/leaderboard", { signal }), "home", "leaders").data ?? [];
   const location = useLocation();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("reward");
@@ -339,6 +341,41 @@ export function Home() {
           </ol>
         )}
       </section>
+
+      {leaders.length > 0 && (
+        <section className="sec" id="hunters">
+          <div className="sec-head">
+            <h2>Top Hunters</h2>
+            <p>Ranked by verified breaks. Every break was replayed five times and paid automatically.</p>
+          </div>
+          <ol className="leaders">
+            {leaders.map((leader, index) => (
+              <li key={`${leader.name}:${leader.last_break_at}`}>
+                <span className={index < 3 ? `rank top r${index + 1}` : "rank"}>{index + 1}</span>
+                <Avatar name={leader.name} picture={pictureOf(leader)} size={40} />
+                <span className="leader-who">
+                  <b>{leader.name ?? "Anonymous hunter"}</b>
+                  <small>
+                    {[leader.company, leader.github && `@${leader.github}`].filter(Boolean).join(" · ") || "Independent"}
+                  </small>
+                </span>
+                <span className="leader-breaks">
+                  <b>{leader.breaks}</b>
+                  <small>{leader.breaks === 1 ? "break" : "breaks"}</small>
+                </span>
+                <span className="leader-earned">
+                  <b>
+                    {formatZec(leader.earned_zatoshi)} {sym()}
+                  </b>
+                  <small>
+                    last <Ago iso={leader.last_break_at} />
+                  </small>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       <section className="sec flush flow-sec" aria-labelledby="flow-title">
         <div className="sec-head">

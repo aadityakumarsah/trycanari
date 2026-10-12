@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="494 tests" src="https://img.shields.io/badge/tests-494%20passing-6ee7b7" />
+  <img alt="507 tests" src="https://img.shields.io/badge/tests-507%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -50,12 +50,12 @@
 
 | Number | |
 |---:|---|
-| **38** | API endpoints |
-| **14** | database migrations |
-| **407** | Python tests |
-| **87** | web tests |
-| **~8,100** | lines of Python |
-| **~6,600** | lines of TypeScript |
+| **44** | API endpoints |
+| **15** | database migrations |
+| **417** | Python tests |
+| **90** | web tests |
+| **~9,700** | lines of Python |
+| **~7,900** | lines of TypeScript |
 
 ## Contents
 
@@ -117,6 +117,7 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 - Attempt history kept in the browser
 - A plain-markdown guide for AI agents at `/agent.md`
 - An attacker agent that hunts by itself
+- A public leaderboard of verified breaks
 
 </td>
 <td width="33%" valign="top">
@@ -125,6 +126,9 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 
 - Config, mock tools and canaries
 - A check that every canary can actually trip
+- Baseline scan: six well-known attacks, run before any hunter arrives
+- A printable evidence report, with risks named after OWASP's lists
+- One-click funding from a browser wallet
 - Escrow with a deposit code
 - Activity, findings and a full ledger
 - Re-arm gate: the paid attack is replayed against the patch
@@ -316,7 +320,7 @@ web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
 ├── src/components/   Flow · Transcript · AttemptStatus · ReferralGate · shared pieces
 └── cloudflare/       The Pages worker that proxies API paths
-migrations/versions/  0001 … 0014
+migrations/versions/  0001 … 0015
 tests/                One file per area; a scratch database per test
 docs/REFERENCE.md     The long version of everything on this page
 ```
@@ -325,8 +329,8 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 407 Python tests, each on its own scratch database
-make web-test     # 87 web tests
+make test         # 417 Python tests, each on its own scratch database
+make web-test     # 90 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
 make e2e          # the definition of done, as one test
@@ -371,14 +375,15 @@ for anything sensitive.
 
 ## What is not done
 
-- **A real payment has never been sent.** The Solana wallet passes its tests, reads the
-  real devnet, and the network accepts the format and signature of its payments, but its
-  escrow wallet has not been funded, so no payout has landed yet.
+- **Real payments are proven on Solana devnet only.** A deposit, a payout and a refund
+  have each landed there. Mainnet is not configured.
+- **The baseline scan is a floor, not a verdict.** It replays each of its six attacks once;
+  a paid break needs the same tripwire in 3 of 5 replays.
 - **The Zcash wallet does not see deposits on today's testnet.** Its tool predates the
   network's latest upgrade and its source is no longer published. Use Solana, or replace
   the tool behind the same three methods.
-- **The free model tier is tiny.** Each attack is replayed five times, so a free OpenRouter
-  key covers only a handful of attacks a day.
+- **The free model tier is small.** Each attack is replayed five times, so a free Groq or
+  OpenRouter key covers a limited number of attacks a day.
 - **Field names still say `zatoshi`.** `reward_zatoshi` and its kin hold the smallest unit
   of whichever currency is in use.
 - **Email addresses are not verified** at sign-up. Only Google sign-in proves one.

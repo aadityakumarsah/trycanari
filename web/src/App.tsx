@@ -15,6 +15,7 @@ import { Login } from "./pages/Login.tsx";
 import { MyAttempts, useSavedAttempts } from "./pages/MyAttempts.tsx";
 import { InvitePage } from "./pages/Invite.tsx";
 import { Profile } from "./pages/Profile.tsx";
+import { Report } from "./pages/Report.tsx";
 import { useSession } from "./session.tsx";
 import { dismissSplash } from "./splash.ts";
 
@@ -469,6 +470,16 @@ export function App() {
                 <Page>
                   <Private>
                     <Dashboard />
+                  </Private>
+                </Page>
+              }
+            />
+            <Route
+              path="/dashboard/b/:bountyId/report"
+              element={
+                <Page wide>
+                  <Private>
+                    <Report />
                   </Private>
                 </Page>
               }

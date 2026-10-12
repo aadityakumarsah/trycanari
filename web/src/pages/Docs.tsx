@@ -327,6 +327,20 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
             movement of money and the balance. After a break, see <a href="#rearm">patching and re-arming</a>. To
             stop and get the unspent escrow back, call <Endpoint method="POST" path="/v1/bounties/{id}/close" />.
           </p>
+          <h3>6. Scan it yourself, and keep the evidence</h3>
+          <p>
+            The <strong>Scan</strong> tab runs six attacks every hunter tries first against your current config:
+            direct injection, a claimed authority, an instruction planted in a document, a forged policy update,
+            role-play and a request for an encoded answer. Each is written for your own canaries and replayed once,
+            so it is a quick floor and not the five-replay standard a paid break is held to. It costs no escrow.
+            From a script, use <Endpoint method="POST" path="/v1/bounties/{id}/scan" />.
+          </p>
+          <p>
+            <strong>Open the report</strong> on a bounty gives one printable page: what was tested, the tripwires
+            and the risk each covers (named after OWASP's lists for LLM and agentic applications), the scan, the
+            number of attacks received and every verified break with its evidence. Save it as a PDF for whoever
+            asks how the agent was tested.
+          </p>
         </Section>
 
         <Section id="agents" title="Hunting with an AI agent">
@@ -587,6 +601,7 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="GET" path="/v1/bounties" />, "Bounties that are live now."],
               [<Endpoint method="GET" path="/v1/bounties/{id}" />, "One bounty: entry points, canary labels, reward, state."],
               [<Endpoint method="GET" path="/v1/activity" />, "Platform totals and the latest verified breaks. Never the attack itself."],
+              [<Endpoint method="GET" path="/v1/leaderboard" />, "Hunters ranked by verified breaks, with what each has earned."],
               [<Endpoint method="POST" path="/v1/bounties/{id}/attempts" />, "Submit an attack. Returns the attempt ID and status token."],
               [<Endpoint method="GET" path="/v1/attempts/{id}" />, "State, verdict, one run's replies and the payout. Needs the status token."],
               [<Endpoint method="POST" path="/v1/sponsors" />, "Sign up as a sponsor. Returns the API key, once."],
@@ -618,6 +633,8 @@ python -m agentbounty.attacker --api ${origin} \\
               [<Endpoint method="GET" path="/v1/bounties/{id}/attempts" />, "How much the bounty is being attacked: totals and recent outcomes."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/findings" />, "Verified breaks: the attack, transcripts and evidence."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/ledger" />, "Ledger entries and the balance."],
+              [<Endpoint method="POST" path="/v1/bounties/{id}/scan" />, "Queue a baseline scan of the current config: six well-known attacks, each replayed once."],
+              [<Endpoint method="GET" path="/v1/bounties/{id}/scan" />, "The latest scan: each probe, what it was aimed at, what the agent did and whether it held."],
             ]}
           />
           <h3>Browser session</h3>

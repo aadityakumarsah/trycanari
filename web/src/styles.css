@@ -1176,3 +1176,73 @@ table.people td { vertical-align: middle; white-space: nowrap; }
 .by-hand[open] summary { margin-bottom: 14px; }
 .from-wallet { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+/* ============ baseline scan, evidence report, leaderboard ============ */
+.scan-start { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 18px 0; }
+.scan-start .error { margin: 0; flex: 1; }
+.scan-score { display: flex; align-items: center; gap: 18px; margin: 20px 0 16px; padding: 18px 20px; border: 1px solid #6ee7b755; border-radius: 12px; background: var(--accent-bg); }
+.scan-score.bad { border-color: #fbbf2466; background: var(--warn-bg); }
+.scan-score b { flex: none; color: var(--accent); font: 600 34px/40px var(--mono); letter-spacing: -0.02em; }
+.scan-score.bad b { color: var(--warn); }
+.scan-score span { color: #d4d4d4; font-size: 14.500px; line-height: 22px; }
+.probes { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.probe { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); transition: border-color 0.15s; }
+.probe.tripped { border-color: #f8717155; }
+.probe summary { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; list-style: none; }
+.probe summary::-webkit-details-marker { display: none; }
+.probe-mark { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-bg); color: var(--accent); }
+.probe-mark.bad { background: var(--bad-bg); color: var(--bad); }
+.probe-name { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.probe-name b { font: 500 15px/22px var(--display); }
+.probe-name small { color: var(--muted); font-size: 12.500px; line-height: 18px; }
+.probe-body { padding: 4px 14px 14px 52px; border-top: 1px solid var(--border); }
+.page .probe-body h4 { margin: 14px 0 6px; }
+.page .probe-body pre { margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.leaders { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.leaders li { display: flex; align-items: center; gap: 14px; padding: 14px 18px; transition: background 0.15s; }
+.leaders li + li { border-top: 1px solid var(--border); }
+.leaders li:hover { background: #ffffff05; }
+.rank { flex: none; width: 28px; color: var(--dim); font: 600 15px/1 var(--mono); text-align: center; }
+.rank.top { display: grid; place-items: center; height: 28px; border-radius: 50%; color: #06130d; }
+.rank.r1 { background: #f4b728; } .rank.r2 { background: #c9d1d9; } .rank.r3 { background: #c08457; }
+.leaders .avatar { display: grid; place-items: center; width: 40px; height: 40px; font-size: 16px; }
+.leaders img.avatar { display: block; }
+.leader-who { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.leader-who b { font: 500 15px/22px var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leader-who small, .leader-breaks small, .leader-earned small { color: var(--muted); font-size: 12.500px; line-height: 18px; }
+.leader-breaks, .leader-earned { display: flex; flex-direction: column; align-items: flex-end; flex: none; min-width: 64px; }
+.leader-breaks b { font: 600 18px/22px var(--mono); }
+.leader-earned b { color: var(--accent); font: 500 14px/22px var(--mono); white-space: nowrap; }
+
+.report { max-width: 900px; margin: 0 auto; }
+.report-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 28px; }
+.report-bar a { color: var(--accent); text-decoration: none; }
+.report-head .eyebrow { color: var(--accent); }
+.page .report h1 { margin-bottom: 8px; }
+.page .report table { width: 100%; }
+.page .report tbody th { width: 190px; color: var(--muted); font-weight: 500; text-align: left; vertical-align: top; white-space: nowrap; }
+.page .report td { white-space: normal; vertical-align: top; }
+.report-finding { margin-top: 18px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); break-inside: avoid; }
+.page .report-finding h3 { margin: 0 0 8px; }
+.page .report-finding pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.report .facts + p { margin-top: 16px; }
+.report section { overflow-x: auto; }
+.report-foot { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--border); }
+
+@media (max-width: 640px) {
+  .leader-breaks { display: none; }
+  .probe-body { padding-left: 14px; }
+}
+/* On paper: black on white, and only the report. */
+@media print {
+  :root { --background: #fff; --black: #fff; --surface: #fff; --surface-2: #f3f3f3; --foreground: #000; --muted: #444; --dim: #666; --border: #ccc; --border-strong: #999; --accent: #0a7a50; --accent-bg: #eaf7f1; --warn: #8a5a00; --warn-bg: #fff6e0; }
+  html, body, .frame, main.frame { background: #fff !important; color: #000; border: 0; }
+  .nav, .footer, .mode, .to-top, .toasts, .report-bar, #splash { display: none !important; }
+  .page { max-width: none; padding: 0; }
+  .page > *, .page section { animation: none !important; }
+  .page .report pre, .page .report code { border-color: #ccc; background: #f6f6f6; color: #000; }
+  .page .report table, .page .report th, .page .report td { border-color: #ccc; color: #000; }
+  .report section { break-inside: avoid; }
+  a { color: inherit; text-decoration: none; }
+}

@@ -345,6 +345,9 @@ GET  /v1/sponsor/bounties              the sponsor's bounties              (spon
 GET  /v1/sponsor/bounties/{id}         one bounty, with config and canaries (sponsor)
 GET  /v1/bounties/{id}/findings        breaks, transcripts and evidence    (sponsor)
 GET  /v1/bounties/{id}/ledger          ledger entries and balance          (sponsor)
+POST /v1/bounties/{id}/scan            queue a baseline scan               (sponsor)
+GET  /v1/bounties/{id}/scan            the latest scan and its probes      (sponsor)
+GET  /v1/leaderboard                   hunters ranked by verified breaks
 ```
 
 A paused bounty is resumed with `activate`. Pausing is refused while attempts are queued
