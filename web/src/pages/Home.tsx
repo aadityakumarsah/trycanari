@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import { pictureOf } from "../account.tsx";
 import { api } from "../api.ts";
 import { Icon, type IconName } from "../components/Brand.tsx";
+import { BrokenBy } from "../components/BrokenBy.tsx";
 import { AttackTimeline } from "../components/AttackTimeline.tsx";
 import { Flow } from "../components/Flow.tsx";
 import { WalkingMascot } from "../components/WalkingMascot.tsx";
@@ -148,6 +149,12 @@ function BountyCard({ bounty, over = false }: { bounty: BountyPublic; over?: boo
           </span>
         ))}
       </div>
+      {over && bounty.broken_by.length > 0 && (
+        <div>
+          <p className="label">Broken by</p>
+          <BrokenBy hunters={bounty.broken_by} compact />
+        </div>
+      )}
       <p className="card-meta">
         <span>
           <Icon name="target" size={13} />

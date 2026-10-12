@@ -47,6 +47,7 @@ from agentbounty.models import (
     Sponsor,
     TargetConfig,
 )
+from agentbounty.services import notify
 from agentbounty.services.ledger import append_entry, bounty_balance
 from agentbounty.services.wallet import IncomingPayment, WalletBackend
 
@@ -338,6 +339,10 @@ class PaymentService:
                 )
         except _RejectedError as rejected:
             logger.error("payout for finding %s rejected: %s", finding_id, rejected)
+            # The rejection rolled the payout back, so the hunter is told in a
+            # transaction of its own that it is waiting for a person.
+            async with self._sessions.begin() as session:
+                await notify.on_payout_held(session, finding_id)
         except IntegrityError:
             logger.info("finding %s already has a payout", finding_id)
 
@@ -401,6 +406,8 @@ class PaymentService:
                 finding = await session.get_one(Finding, payout.finding_id)
                 if not result.ambiguous:
                     payout.state = PayoutState.PENDING
+                else:
+                    await notify.on_payout_held(session, finding.id)
                 await audit(
                     session,
                     action,
@@ -432,6 +439,7 @@ class PaymentService:
                     ref_id=payout.id,
                 )
             finding.state = FindingState.PAID
+            await notify.on_payout_sent(session, finding, payout)
             await audit(
                 session,
                 PaymentAction.PAYOUT_SENT,

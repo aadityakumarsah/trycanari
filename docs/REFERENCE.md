@@ -352,7 +352,31 @@ GET  /v1/bounties/{id}/scan            the latest scan and its probes      (spon
 GET  /v1/leaderboard                   hunters ranked by verified breaks
 GET  /v1/bounties?show=completed       attacked bounties that are over
 DELETE /v1/bounties/{id}               delete a draft or a closed bounty   (sponsor)
+GET  /v1/account/attempts              your attacks, verdicts and payouts  (account)
+GET  /v1/account/attempts/{id}         one of them, with the agent's side  (account)
+GET  /v1/notifications                 what you have been told, and unread (account)
+POST /v1/notifications/read            mark some or all of them read       (account)
 ```
+
+### Notifications and email
+
+A notification is a row written in the transaction that makes its event true, so it exists
+exactly when the event does, and a unique constraint on (account, kind, finding) means a
+step that runs twice tells nobody twice. A verified break tells the sponsor who broke the
+agent (`bounty_broken`) and the hunter that the payout is under review (`break_verified`).
+A payout that is sent tells the hunter (`payout_sent`) and the sponsor (`reward_paid`); one
+that could not be made automatically tells the hunter once (`payout_held`). A hunter who
+attacked without an account has nobody to tell.
+
+The same rows are the email outbox. With `EMAIL_BACKEND=cloudflare` the API process sends
+them through Cloudflare Email Service (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_EMAIL_TOKEN`,
+`EMAIL_FROM` on a domain onboarded there). A row is committed as `sending` before the
+provider is called, so a crash can lose an email but never send it twice; a refusal that
+could pass is retried five times. Only an account that signed in with Google is emailed,
+since that is what proves the address, and news older than a day is not sent.
+
+A bounty's public view lists `broken_by`: the hunters who broke it, as they describe
+themselves on their profile, with the canary and the reward. Never the attack.
 
 ### A sponsor's own model
 

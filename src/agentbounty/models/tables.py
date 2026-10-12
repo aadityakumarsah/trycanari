@@ -374,6 +374,48 @@ class Scan(Base):
     created_at: Mapped[datetime] = created_now()
 
 
+class Notification(Base):
+    """Something an account is told: shown under the site's bell, and sent as an email.
+
+    Written in the transaction that makes the event true, so it exists exactly when the
+    event does. It is also the email outbox: `email_state` says whether it has gone out.
+    """
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        # An account is told of one event once, however often the step that tells it runs.
+        UniqueConstraint("account_id", "kind", "finding_id"),
+        CheckConstraint(
+            "kind IN ('bounty_broken', 'break_verified', 'payout_held', 'payout_sent',"
+            " 'reward_paid')",
+            name="kind_known",
+        ),
+        CheckConstraint(
+            "email_state IN ('pending', 'sending', 'sent', 'failed', 'skipped')",
+            name="email_state_known",
+        ),
+        Index("ix_notifications_account_created", "account_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sponsors.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"))
+    finding_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("findings.id"))
+    # The other party, when the account is told who: the hunter, for a sponsor.
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"))
+    amount_zatoshi: Mapped[int | None] = mapped_column(BigInteger)
+    txid: Mapped[str | None] = mapped_column(Text)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # pending until the mail process takes it; "sending" is committed before the provider
+    # is called, so a crash in between never sends the same email twice.
+    email_state: Mapped[str] = mapped_column(
+        Text, default="pending", server_default="pending", index=True
+    )
+    email_tries: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    created_at: Mapped[datetime] = created_now()
+
+
 class PaymentAudit(Base):
     """Append-only: one row for every payment action, written with the action itself."""
 

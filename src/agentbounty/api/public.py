@@ -19,6 +19,7 @@ from agentbounty.api.schemas import (
     AttemptIn,
     AttemptStatusOut,
     BountyPublic,
+    BreakerOut,
     BreakOut,
     CanaryPublic,
     InviteOut,
@@ -85,7 +86,7 @@ async def public_views(
 ) -> list[BountyPublic]:
     """Bounties as hunters see them: labels and entry points, never a secret, rule or prompt.
 
-    Three queries however many bounties there are.
+    Four queries at most, however many bounties there are.
     """
     rows = (
         await session.execute(
@@ -111,6 +112,40 @@ async def public_views(
             .order_by(Canary.public_label, Canary.id)
         ):
             canaries.setdefault(config_id, []).append(CanaryPublic(type=kind, public_label=label))
+    broken_by: dict[uuid.UUID, list[BreakerOut]] = {}
+    broken = [bounty.id for bounty, _, breaks in rows if breaks]
+    if broken:
+        # Who a hunter is, is what they chose to put on their profile, as on the
+        # leaderboard. The attack itself stays the sponsor's.
+        for finding, who, kind, label, amount, state in await session.execute(
+            select(
+                Finding,
+                Sponsor,
+                Canary.type,
+                Canary.public_label,
+                func.coalesce(Payout.amount_zatoshi, Bounty.reward_zatoshi),
+                Payout.state,
+            )
+            .join(Bounty, Bounty.id == Finding.bounty_id)
+            .join(Canary, Canary.id == Finding.canary_id)
+            .join(Attempt, Attempt.id == Finding.attempt_id)
+            .outerjoin(Sponsor, Sponsor.id == Attempt.account_id)
+            .outerjoin(Payout, Payout.finding_id == Finding.id)
+            .where(Finding.bounty_id.in_(broken))
+            .order_by(Finding.verified_at.desc(), Finding.id)
+        ):
+            broken_by.setdefault(finding.bounty_id, []).append(
+                BreakerOut(
+                    name=who.name if who else None,
+                    picture_url=(who.uploaded_picture_url or who.picture_url) if who else None,
+                    github=who.github if who else None,
+                    canary=CanaryPublic(type=kind, public_label=label),
+                    reward_zatoshi=int(amount),
+                    tripped_runs=finding.tripped_runs,
+                    paid=state in (PayoutState.SENT, PayoutState.CONFIRMED),
+                    verified_at=finding.verified_at,
+                )
+            )
     return [
         BountyPublic(
             id=bounty.id,
@@ -127,6 +162,7 @@ async def public_views(
             canaries=canaries.get(bounty.live_config_id or bounty.id, []),
             attempts=attempts,
             breaks=breaks,
+            broken_by=broken_by.get(bounty.id, []),
             created_at=bounty.created_at,
         )
         for bounty, attempts, breaks in rows

@@ -30,7 +30,7 @@ from agentbounty.api import (
 from agentbounty.api.ratelimit import RateLimiter
 from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
-from agentbounty.services import endpoint
+from agentbounty.services import endpoint, mail, notify
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.wallet import escrow_address
@@ -59,6 +59,22 @@ async def warm_pool(engine: AsyncEngine, connections: int = 3) -> None:
         logger.warning("could not warm the database pool", exc_info=True)
 
 
+async def mail_loop(app: FastAPI, sender: mail.EmailSender) -> None:
+    """Send the emails notifications ask for, for as long as the app runs.
+
+    It lives in the API process because it needs no secret the API lacks and no
+    process of its own. Several API processes may run it at once: each email is
+    claimed under a row lock before it is sent.
+    """
+    settings: Settings = app.state.settings
+    while True:
+        try:
+            await notify.send_pending(app.state.session_factory, sender, settings)
+        except Exception:
+            logger.exception("sending email failed")
+        await asyncio.sleep(settings.email_poll_seconds)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     if settings.app_env != "test":
@@ -66,11 +82,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_engine(settings.database_url)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # In the background: the app must not wait on the database to start answering.
         warming = asyncio.create_task(warm_pool(engine))
+        # Tests drain the outbox themselves, with a sender of their own.
+        sender = mail.make_sender(settings) if settings.app_env != "test" else None
+        mailing = asyncio.create_task(mail_loop(app, sender)) if sender else None
         yield
         warming.cancel()
+        if mailing is not None and sender is not None:
+            mailing.cancel()
+            await sender.aclose()
         await engine.dispose()
 
     app = FastAPI(

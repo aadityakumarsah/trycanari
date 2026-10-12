@@ -60,3 +60,13 @@ services:
         sync: false
       - key: CLOUDINARY_URL
         sync: false
+      # Email about breaks and payouts, through Cloudflare Email Service. Leave
+      # EMAIL_BACKEND unset in Render to send none.
+      - key: EMAIL_BACKEND
+        sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_EMAIL_TOKEN
+        sync: false
+      - key: EMAIL_FROM
+        sync: false

@@ -11,9 +11,11 @@ import {
   type SavedAttempt,
 } from "../attempts.ts";
 import { AttemptResult, isSettled } from "../components/AttemptStatus.tsx";
+import { HuntList, useHunts } from "../components/Hunts.tsx";
 import { Icon } from "../components/Brand.tsx";
-import { Ago, Badge, ErrorNote } from "../components/ui.tsx";
+import { Ago, Badge, ErrorNote, Skeleton } from "../components/ui.tsx";
 import { useInterval } from "../hooks.ts";
+import { useSession } from "../session.tsx";
 import type { AttemptStatus } from "../types.ts";
 
 /** The attempts this browser remembers, kept in step with every tab. */
@@ -101,18 +103,99 @@ export function AttemptRow({ attempt, showBounty = true }: { attempt: SavedAttem
   );
 }
 
-export function MyAttempts() {
-  const attempts = useSavedAttempts();
+/** What this browser remembers: all there is for a visitor, and for an account only the
+ * attempts it does not hold itself. */
+function Remembered({ attempts, signedIn }: { attempts: SavedAttempt[]; signedIn: boolean }) {
   const confirm = useConfirm();
   const won = attempts.filter((attempt) => attempt.outcome === "verified").length;
   const pending = attempts.filter((attempt) => !attempt.outcome).length;
+  return (
+    <>
+      {!signedIn && (
+        <dl className="facts">
+          <div>
+            <dt>Attempts</dt>
+            <dd>{attempts.length}</dd>
+          </div>
+          <div>
+            <dt>Verified breaks</dt>
+            <dd>{won}</dd>
+          </div>
+          <div>
+            <dt>Still running</dt>
+            <dd>{pending}</dd>
+          </div>
+        </dl>
+      )}
+      <ul className="attempt-list">
+        {attempts.map((attempt) => (
+          <AttemptRow key={attempt.attempt_id} attempt={attempt} />
+        ))}
+      </ul>
+      <p>
+        <button
+          type="button"
+          className="secondary"
+          onClick={async () => {
+            const sure = await confirm({
+              title: "Forget every attempt?",
+              body: "This browser will stop remembering them, and their results can no longer be read.",
+              confirm: "Forget all",
+              cancel: "Keep them",
+              danger: true,
+            });
+            if (sure) forgetAllAttempts();
+          }}
+        >
+          Forget all
+        </button>
+      </p>
+    </>
+  );
+}
 
+/** An account's attempts come from the server, with their payouts. */
+function Mine({ remembered }: { remembered: SavedAttempt[] }) {
+  const hunts = useHunts();
+  // What the account holds is shown from the server, so only the rest is listed again.
+  const held = new Set(hunts.data?.items.map((hunt) => hunt.id));
+  const others = hunts.data ? remembered.filter((attempt) => !held.has(attempt.attempt_id)) : [];
+  return (
+    <>
+      <p className="lede">
+        Every attack you made from this account: what you sent, how the five replays went, and where the reward
+        is on its way to you.
+      </p>
+      <HuntList hunts={hunts} />
+      {others.length > 0 && (
+        <section className="remembered">
+          <h2>Remembered by this browser</h2>
+          <p className="muted">Attempts made here without this account. Clearing your browser data forgets them.</p>
+          <Remembered attempts={others} signedIn />
+        </section>
+      )}
+    </>
+  );
+}
+
+export function MyAttempts() {
+  const attempts = useSavedAttempts();
+  const { session } = useSession();
+  if (session === null) return <Skeleton block lines={4} />;
+  if (session.signed_in) {
+    return (
+      <>
+        <h1>My attempts</h1>
+        <Mine remembered={attempts} />
+      </>
+    );
+  }
   return (
     <>
       <h1>My attempts</h1>
       <p className="lede">
-        Hunters need no account, so your attempts are remembered by this browser only. Clearing your browser data
-        forgets them.
+        Without an account, your attempts are remembered by this browser only. Clearing your browser data forgets
+        them. Sign in and your attacks, verdicts and payouts are kept with your account.
       </p>
       {attempts.length === 0 ? (
         <div className="empty">
@@ -120,45 +203,7 @@ export function MyAttempts() {
           <Link to="/#bounties">Find a bounty →</Link>
         </div>
       ) : (
-        <>
-          <dl className="facts">
-            <div>
-              <dt>Attempts</dt>
-              <dd>{attempts.length}</dd>
-            </div>
-            <div>
-              <dt>Verified breaks</dt>
-              <dd>{won}</dd>
-            </div>
-            <div>
-              <dt>Still running</dt>
-              <dd>{pending}</dd>
-            </div>
-          </dl>
-          <ul className="attempt-list">
-            {attempts.map((attempt) => (
-              <AttemptRow key={attempt.attempt_id} attempt={attempt} />
-            ))}
-          </ul>
-          <p>
-            <button
-              type="button"
-              className="secondary"
-              onClick={async () => {
-                const sure = await confirm({
-                  title: "Forget every attempt?",
-                  body: "This browser will stop remembering them, and their results can no longer be read.",
-                  confirm: "Forget all",
-                  cancel: "Keep them",
-                  danger: true,
-                });
-                if (sure) forgetAllAttempts();
-              }}
-            >
-              Forget all
-            </button>
-          </p>
-        </>
+        <Remembered attempts={attempts} signedIn={false} />
       )}
     </>
   );

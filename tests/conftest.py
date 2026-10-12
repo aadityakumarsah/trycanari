@@ -58,6 +58,10 @@ def _no_sign_in_provider_from_the_developers_env(monkeypatch: pytest.MonkeyPatch
         "SOLANA_SECRET_KEY",
         "SOLANA_CLUSTER",
         "ESCROW_ADDRESS",
+        "EMAIL_BACKEND",
+        "CLOUDFLARE_ACCOUNT_ID",
+        "CLOUDFLARE_EMAIL_TOKEN",
+        "EMAIL_FROM",
     ):
         monkeypatch.delenv(name, raising=False)
     # Tests never call a real model, whatever the developer's own environment uses.

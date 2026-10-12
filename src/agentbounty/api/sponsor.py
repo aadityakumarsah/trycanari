@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -16,9 +17,11 @@ from agentbounty.api.schemas import (
     AccountOut,
     AccountUpdate,
     ActivateOut,
+    ActorOut,
     ApiKeyOut,
     AttemptActivity,
     AttemptLine,
+    AttemptStatusOut,
     BountyCreate,
     BountyCreated,
     CanaryDetail,
@@ -38,18 +41,26 @@ from agentbounty.api.schemas import (
     FundIn,
     FundOut,
     HunterOut,
+    HuntOut,
+    HuntPayoutOut,
+    HuntsOut,
+    HuntTotals,
     LedgerEntryOut,
     LedgerOut,
     MessageOut,
     ModelsOut,
     ModelTestIn,
     ModelTestOut,
+    NotificationOut,
+    NotificationsOut,
+    NotificationsRead,
     PayoutOut,
     ProbeOut,
     RearmOut,
     ReferralCodeCreate,
     ReferralCodeOut,
     ReferralRedeem,
+    ReplyOut,
     RunOut,
     ScanOut,
     SecretCanaryIn,
@@ -58,6 +69,7 @@ from agentbounty.api.schemas import (
     SponsorCreate,
     SponsorCreated,
     StateOut,
+    ToolCallOut,
     ToolOut,
 )
 from agentbounty.api.session import COOKIE, seal_sponsor, set_session_cookie
@@ -72,10 +84,13 @@ from agentbounty.models import (
     Sponsor,
 )
 from agentbounty.money import format_amount
+from agentbounty.services import attempts as attempt_service
 from agentbounty.services import bounty as bounty_service
 from agentbounty.services import (
     credits,
     endpoint,
+    hunts,
+    notify,
     pictures,
     playbook,
     provider,
@@ -227,6 +242,128 @@ async def new_api_key(
         # is re-issued to name the account instead, which no key change can break.
         set_session_cookie(request, response, seal_sponsor(request.app.state.cipher, sponsor.id))
     return ApiKeyOut(api_key=api_key)
+
+
+@router.get("/account/attempts")
+async def my_attempts(session: Transaction, sponsor: SponsorDep) -> HuntsOut:
+    """Every attack this account made, newest first: what was sent, how it was judged and
+    what it was paid, with totals over all of them."""
+    counted = await hunts.totals(session, sponsor.id)
+    return HuntsOut(
+        totals=HuntTotals(
+            attempts=counted.attempts,
+            verified=counted.verified,
+            earned_zatoshi=counted.earned_zatoshi,
+            pending_zatoshi=counted.pending_zatoshi,
+            credits_spent=counted.credits_spent,
+        ),
+        items=[
+            HuntOut(
+                id=hunt.attempt.id,
+                bounty_id=hunt.bounty.id,
+                bounty_title=hunt.bounty.title,
+                bounty_state=hunt.bounty.state,
+                reward_zatoshi=hunt.bounty.reward_zatoshi,
+                state=hunt.attempt.state,
+                verdict=hunt.verdict,
+                tripped_runs=hunt.tripped_runs,
+                total_runs=hunt.total_runs,
+                canary=None
+                if hunt.canary is None
+                else CanaryPublic(type=hunt.canary.type, public_label=hunt.canary.public_label),
+                attack=[FillIn(**fill) for fill in hunt.attempt.payload_json],
+                payout_address=hunt.attempt.payout_address,
+                cost_credits=hunt.attempt.cost_credits,
+                submitted_at=hunt.attempt.submitted_at,
+                verified_at=hunt.finding.verified_at if hunt.finding else None,
+                payout=None
+                if hunt.payout is None
+                else HuntPayoutOut(
+                    state=hunt.payout.state,
+                    amount_zatoshi=hunt.payout.amount_zatoshi,
+                    txid=hunt.payout.txid,
+                    to_address=hunt.payout.to_address,
+                    created_at=hunt.payout.created_at,
+                ),
+            )
+            for hunt in await hunts.listing(session, sponsor.id)
+        ],
+    )
+
+
+@router.get("/account/attempts/{attempt_id}")
+async def my_attempt(
+    attempt_id: uuid.UUID, session: Transaction, sponsor: SponsorDep, cipher: CipherDep
+) -> AttemptStatusOut:
+    """One of this account's attempts in full, with what the agent said and did. The same
+    answer its status token reads, for an account that no longer holds the token."""
+    status = await attempt_service.own_attempt_status(session, cipher, attempt_id, sponsor.id)
+    return AttemptStatusOut(
+        state=status.state,
+        verdict=status.verdict,
+        tripped_runs=status.tripped_runs,
+        total_runs=status.total_runs,
+        canary=None
+        if status.canary is None
+        else CanaryPublic(type=status.canary.type, public_label=status.canary.public_label),
+        replies=[
+            ReplyOut(
+                text=reply["content"],
+                tool_calls=[ToolCallOut(**call) for call in reply["tool_calls"]],
+            )
+            for reply in status.replies
+        ],
+        payout=None
+        if status.payout is None
+        else PayoutOut(
+            state=status.payout.state,
+            amount_zatoshi=status.payout.amount_zatoshi,
+            txid=status.payout.txid,
+        ),
+    )
+
+
+async def _notifications(session: Transaction, sponsor: Sponsor) -> NotificationsOut:
+    shown, unread = await notify.listing(session, sponsor.id)
+    return NotificationsOut(
+        unread=unread,
+        items=[
+            NotificationOut(
+                id=line.notification.id,
+                kind=line.notification.kind,  # type: ignore[arg-type]
+                bounty_id=line.notification.bounty_id,
+                bounty_title=line.bounty_title,
+                actor=None
+                if line.actor is None
+                else ActorOut(
+                    name=line.actor.name,
+                    picture_url=line.actor.uploaded_picture_url or line.actor.picture_url,
+                    github=line.actor.github,
+                ),
+                amount_zatoshi=line.notification.amount_zatoshi,
+                txid=line.notification.txid,
+                read=line.notification.read_at is not None,
+                created_at=line.notification.created_at,
+            )
+            for line in shown
+        ],
+    )
+
+
+@router.get("/notifications")
+async def notifications(session: Transaction, sponsor: SponsorDep) -> NotificationsOut:
+    """What this account has been told: breaks of its bounties, and what became of the
+    breaks it made. Newest first, with how many it has not read."""
+    return await _notifications(session, sponsor)
+
+
+@router.post("/notifications/read")
+async def read_notifications(
+    body: NotificationsRead, session: Transaction, sponsor: SponsorDep
+) -> NotificationsOut:
+    """Mark notifications read: the ones named, or all of them."""
+    await notify.mark_read(session, sponsor.id, body.ids)
+    return await _notifications(session, sponsor)
 
 
 @router.get("/referral-codes")

@@ -129,6 +129,17 @@ class Settings(BaseSettings):
     # this machine during development and must stay off anywhere real.
     allow_private_model_endpoints: bool = False
 
+    # Email about breaks and payouts. "none" sends nothing; "fake" logs what it would
+    # send; "cloudflare" sends through Cloudflare Email Service, which needs the account,
+    # a token allowed to send email for it, and an address on a domain onboarded there.
+    # Notifications appear on the site whatever this is.
+    email_backend: Literal["none", "fake", "cloudflare"] = "none"
+    cloudflare_account_id: str | None = None
+    cloudflare_email_token: SecretStr | None = None
+    email_from: str | None = None
+    email_from_name: str = "trycanari"
+    email_poll_seconds: float = Field(default=10.0, gt=0)
+
     worker_poll_seconds: float = Field(default=2.0, gt=0)
     # A running attempt older than this is taken to belong to a dead worker and is retried.
     attempt_timeout_seconds: float = Field(default=900.0, gt=0)
@@ -150,6 +161,9 @@ class Settings(BaseSettings):
         "public_url",
         "proxy_secret",
         "cloudinary_url",
+        "cloudflare_account_id",
+        "cloudflare_email_token",
+        "email_from",
         "payout_max_zatoshi",
         "payout_daily_max_zatoshi",
         mode="before",
@@ -223,6 +237,21 @@ class Settings(BaseSettings):
             # The session cookie is marked Secure in production, so it needs HTTPS.
             if self.app_env == "production" and not self.public_url.startswith("https://"):
                 raise ValueError("PUBLIC_URL must be https when APP_ENV=production")
+        return self
+
+    @model_validator(mode="after")
+    def _email_backend_is_usable(self) -> Self:
+        if self.email_backend == "cloudflare":
+            if not (self.cloudflare_account_id and self.cloudflare_email_token):
+                raise ValueError(
+                    "EMAIL_BACKEND=cloudflare needs CLOUDFLARE_ACCOUNT_ID and"
+                    " CLOUDFLARE_EMAIL_TOKEN"
+                )
+            if not self.email_from or "@" not in self.email_from:
+                raise ValueError("EMAIL_BACKEND=cloudflare needs EMAIL_FROM, an email address")
+            # The emails link back to the site.
+            if self.public_url is None:
+                raise ValueError("EMAIL_BACKEND=cloudflare needs PUBLIC_URL")
         return self
 
     @property

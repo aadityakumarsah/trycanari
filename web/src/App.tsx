@@ -5,6 +5,7 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-r
 import { pictureOf, useAccount, useProviders } from "./account.tsx";
 import { messageOf } from "./api.ts";
 import { Icon, Wordmark } from "./components/Brand.tsx";
+import { NotificationBell } from "./components/Notifications.tsx";
 import { Avatar, ErrorNote, firstName, Skeleton } from "./components/ui.tsx";
 import { BountyPage } from "./pages/BountyPage.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
@@ -242,6 +243,7 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
         </a>
         {session?.signed_in ? (
           <>
+            <NotificationBell />
             <Link className="btn-nav mint" to="/dashboard" onClick={onNavigate}>
               Dashboard
             </Link>

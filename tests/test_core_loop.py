@@ -61,6 +61,7 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
             ],
             "attempts": 0,
             "breaks": 0,
+            "broken_by": [],
             "created_at": listing.json()[0]["created_at"],
         }
     ]

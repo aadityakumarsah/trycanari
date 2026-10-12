@@ -24,7 +24,21 @@ export interface BountyPublic {
   canaries: CanaryPublic[];
   attempts: number;
   breaks: number;
+  /** The hunters who broke it, newest first. */
+  broken_by: Breaker[];
   created_at: string;
+}
+
+/** Who broke a bounty: what the hunter chose to show on their profile. Never the attack. */
+export interface Breaker {
+  name: string | null;
+  picture_url: string | null;
+  github: string | null;
+  canary: CanaryPublic;
+  reward_zatoshi: number;
+  tripped_runs: number;
+  paid: boolean;
+  verified_at: string;
 }
 
 export interface Stats {
@@ -352,4 +366,60 @@ export interface Funding {
   deposit_code: string;
   amount_due_zatoshi: number;
   confirmations_required: number;
+}
+
+export interface HuntPayout extends PayoutInfo {
+  to_address: string;
+  created_at: string;
+}
+
+/** One attack the signed-in account made: what was sent, how it was judged, what it paid. */
+export interface Hunt {
+  id: string;
+  bounty_id: string;
+  bounty_title: string;
+  bounty_state: BountyState;
+  reward_zatoshi: number;
+  state: "queued" | "running" | "done" | "error";
+  verdict: Verdict | null;
+  tripped_runs: number | null;
+  total_runs: number | null;
+  canary: CanaryPublic | null;
+  attack: { slot: EntryPoint; content: string }[];
+  payout_address: string;
+  cost_credits: number;
+  submitted_at: string;
+  verified_at: string | null;
+  payout: HuntPayout | null;
+}
+
+export interface Hunts {
+  totals: {
+    attempts: number;
+    verified: number;
+    earned_zatoshi: number;
+    pending_zatoshi: number;
+    credits_spent: number;
+  };
+  items: Hunt[];
+}
+
+export type NotificationKind = "bounty_broken" | "break_verified" | "payout_held" | "payout_sent" | "reward_paid";
+
+export interface Notification {
+  id: string;
+  kind: NotificationKind;
+  bounty_id: string;
+  bounty_title: string;
+  /** The hunter, on a sponsor's notification. */
+  actor: { name: string | null; picture_url: string | null; github: string | null } | null;
+  amount_zatoshi: number | null;
+  txid: string | null;
+  read: boolean;
+  created_at: string;
+}
+
+export interface Notifications {
+  unread: number;
+  items: Notification[];
 }

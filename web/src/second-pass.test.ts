@@ -26,6 +26,7 @@ function bounty(over: Partial<BountyPublic>): BountyPublic {
     canaries: [],
     attempts: 0,
     breaks: 0,
+  broken_by: [],
     created_at: "2026-01-01T00:00:00Z",
     ...over,
   };

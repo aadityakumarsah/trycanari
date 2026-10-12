@@ -14,6 +14,7 @@ const BOUNTY: BountyPublic = {
   canaries: [],
   attempts: 4,
   breaks: 0,
+  broken_by: [],
   created_at: "2026-10-01T00:00:00Z",
 };
 

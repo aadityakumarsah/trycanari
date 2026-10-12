@@ -564,6 +564,21 @@ class LedgerOut(BaseModel):
 # --- public -----------------------------------------------------------------------------
 
 
+class BreakerOut(BaseModel):
+    """Who broke a bounty, as the public sees it: what the hunter put on their profile,
+    which canary fell and what it paid. Never the attack."""
+
+    # All three are null for a hunter with no account, or who gave their profile none.
+    name: str | None
+    picture_url: str | None
+    github: str | None
+    canary: CanaryPublic
+    reward_zatoshi: int
+    tripped_runs: int
+    paid: bool
+    verified_at: datetime
+
+
 class BountyPublic(BaseModel):
     id: uuid.UUID
     title: str
@@ -576,6 +591,8 @@ class BountyPublic(BaseModel):
     # How many attacks hunters have submitted, and how many were verified breaks.
     attempts: int = 0
     breaks: int = 0
+    # The hunters who broke it, newest first.
+    broken_by: list[BreakerOut] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -645,3 +662,78 @@ class AttemptStatusOut(BaseModel):
     replies: list[ReplyOut] = Field(default_factory=list)
     # Set for a verified attempt once its payout has been created.
     payout: PayoutOut | None = None
+
+
+# --- an account's own attempts and notifications ----------------------------------------
+
+
+class HuntPayoutOut(PayoutOut):
+    to_address: str
+    created_at: datetime
+
+
+class HuntOut(BaseModel):
+    """One attack the account made: what was sent, how it was judged, what it was paid."""
+
+    id: uuid.UUID
+    bounty_id: uuid.UUID
+    bounty_title: str
+    bounty_state: BountyState
+    # What the bounty pays for a verified break.
+    reward_zatoshi: int
+    state: AttemptState
+    verdict: Literal["verified", "not_verified", "not_counted"] | None
+    tripped_runs: int | None
+    total_runs: int | None
+    canary: CanaryPublic | None
+    attack: list[FillIn]
+    payout_address: str
+    cost_credits: int
+    submitted_at: datetime
+    verified_at: datetime | None
+    payout: HuntPayoutOut | None
+
+
+class HuntTotals(BaseModel):
+    attempts: int
+    verified: int
+    earned_zatoshi: int
+    pending_zatoshi: int
+    credits_spent: int
+
+
+class HuntsOut(BaseModel):
+    totals: HuntTotals
+    # The latest attempts, newest first.
+    items: list[HuntOut]
+
+
+class ActorOut(BaseModel):
+    name: str | None
+    picture_url: str | None
+    github: str | None
+
+
+class NotificationOut(BaseModel):
+    id: uuid.UUID
+    # bounty_broken and reward_paid are for a bounty's sponsor; break_verified,
+    # payout_held and payout_sent for the hunter who broke it.
+    kind: Literal["bounty_broken", "break_verified", "payout_held", "payout_sent", "reward_paid"]
+    bounty_id: uuid.UUID
+    bounty_title: str
+    # The hunter, on a sponsor's notification. Null when they attacked without an account.
+    actor: ActorOut | None
+    amount_zatoshi: int | None
+    txid: str | None
+    read: bool
+    created_at: datetime
+
+
+class NotificationsOut(BaseModel):
+    unread: int
+    items: list[NotificationOut]
+
+
+class NotificationsRead(Body):
+    # Without ids, everything is marked read.
+    ids: list[uuid.UUID] | None = Field(default=None, max_length=100)

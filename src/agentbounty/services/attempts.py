@@ -28,7 +28,7 @@ from agentbounty.models import (
     Run,
 )
 from agentbounty.models import TargetConfig as TargetConfigRow
-from agentbounty.services import judge
+from agentbounty.services import judge, notify
 from agentbounty.services.bounty import LoadedCanary, LoadedTarget, hash_token, lock_bounty
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
@@ -399,6 +399,9 @@ async def record_result(
         # One payout per hole: no further attempt is accepted or counted until the sponsor
         # activates a patched config.
         bounty.state = BountyState.PAUSED
+        await session.flush()
+        # In this transaction, so both sides are told exactly when the break exists.
+        await notify.on_break(session, bounty, attempt, finding)
     await session.flush()
     return finding
 
@@ -426,6 +429,20 @@ async def attempt_status(
     attempt = await session.get(Attempt, attempt_id)
     if attempt is None or not secrets.compare_digest(attempt.status_token, hash_token(token)):
         raise ServiceError(404, "attempt not found")
+    return await status_of(session, cipher, attempt)
+
+
+async def own_attempt_status(
+    session: AsyncSession, cipher: Cipher, attempt_id: uuid.UUID, account_id: uuid.UUID
+) -> AttemptStatus:
+    """The same, for the account that made the attempt. Someone else's is a 404."""
+    attempt = await session.get(Attempt, attempt_id)
+    if attempt is None or attempt.account_id != account_id:
+        raise ServiceError(404, "attempt not found")
+    return await status_of(session, cipher, attempt)
+
+
+async def status_of(session: AsyncSession, cipher: Cipher, attempt: Attempt) -> AttemptStatus:
     if attempt.state is not AttemptState.DONE:
         return AttemptStatus(attempt.state)
 
