@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
 import { NotFound } from "../App.tsx";
-import { accountChanged, costOf, useAccount, useProviders } from "../account.tsx";
+import { accountChanged, attackCost, costOf, useAccount, useProviders } from "../account.tsx";
 import { api } from "../api.ts";
 import { saveAttempt, savedPayoutAddress, savePayoutAddress } from "../attempts.ts";
 import { AttemptTracker } from "../components/AttemptStatus.tsx";
@@ -153,10 +153,12 @@ function Counter({ used }: { used: number }) {
 
 function AttemptForm({
   bounty,
+  firstOnBounty,
   onSubmitted,
   onCost,
 }: {
   bounty: BountyPublic;
+  firstOnBounty: boolean;
   onSubmitted: (a: AttemptAccepted) => void;
   onCost: (cost: number) => void;
 }) {
@@ -168,7 +170,8 @@ function AttemptForm({
   const account = useAccount().data;
   const metered = account?.invite_only === true;
   const size = slots.reduce((sum, slot) => sum + fills[slot].length, 0);
-  const cost = account ? costOf(size, account.credits.costs) : 0;
+  const cost = account ? attackCost(size, account.credits, firstOnBounty) : 0;
+  const premium = account && firstOnBounty ? account.credits.new_bounty_premium : 0;
   const short = metered && account !== null && cost > account.credits.balance;
 
   // The sidebar's token meter shows what this attack would leave.
@@ -256,6 +259,15 @@ function AttemptForm({
           <input type="checkbox" checked={keep} onChange={(event) => setKeep(event.target.checked)} />
           Remember this address in this browser
         </label>
+        {metered && premium > 0 && !short && (
+          <p className="cost premium">
+            <Icon name="zap" size={14} />
+            <span>
+              First attack on this bounty: <b>+{premium}</b> {premium === 1 ? "token" : "tokens"}. Later attacks
+              here cost only their length price.
+            </span>
+          </p>
+        )}
         {short && account && (
           <p className="cost short">
             <Icon name="zap" size={14} />
@@ -310,14 +322,22 @@ function Tokens({ account, cost }: { account: Account; cost: number }) {
             : `This attack: −${cost}. You will have ${after} left.`}
       </p>
       <ul className="tokens-costs">
-        {costs.map((step, index) => (
-          <li key={step.up_to_characters} className={cost === step.credits ? "now" : undefined}>
+        {costs.map((step) => (
+          <li key={step.up_to_characters}>
             <span>
-              {index === costs.length - 1 ? "Longer" : `Up to ${step.up_to_characters.toLocaleString()} characters`}
+              {step === costs[costs.length - 1]
+                ? "Longer"
+                : `Up to ${step.up_to_characters.toLocaleString()} characters`}
             </span>
             <b>{step.credits}</b>
           </li>
         ))}
+        {account.credits.new_bounty_premium > 0 && (
+          <li className="premium">
+            <span>First attack on a new bounty</span>
+            <b>+{account.credits.new_bounty_premium}</b>
+          </li>
+        )}
       </ul>
       <p className="tokens-foot">
         Tokens come back by themselves as your attempts get older than {hours} hours. An attempt the platform
@@ -504,6 +524,7 @@ export function BountyPage() {
           ) : data.accepting_attempts ? (
             <AttemptForm
               bounty={data}
+              firstOnBounty={history.length === 0}
               onCost={setCost}
               onSubmitted={(accepted) => {
                 saveAttempt({

@@ -52,6 +52,8 @@ class CreditsOut(BaseModel):
     next_tier: str | None
     next_cap: int | None
     costs: list[CostStep]
+    # Extra tokens the first attack on a bounty costs, on top of its length price.
+    new_bounty_premium: int = 0
 
 
 def _tidy(value: object) -> object:

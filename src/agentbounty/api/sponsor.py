@@ -157,6 +157,7 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
             next_tier=allowed.next_tier,
             next_cap=allowed.next_cap,
             costs=[CostStep(up_to_characters=size, credits=cost) for size, cost in credits.COSTS],
+            new_bounty_premium=allowed.new_bounty_premium,
         ),
     )
 

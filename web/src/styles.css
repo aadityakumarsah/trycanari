@@ -1743,3 +1743,10 @@ li.check.open .check-chevron { transform: rotate(180deg); }
 @media (max-width: 860px) {
   .page form.code-maker { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ============ the first-attack premium ============ */
+.cost.premium { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0 0; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent); border-radius: 8px; background: var(--gold-bg); color: var(--warn); font-size: 13px; line-height: 19px; }
+.cost.premium svg { flex: none; margin-top: 2px; }
+.cost.premium b { color: var(--foreground); }
+.tokens-costs li.premium { color: var(--warn); }
+.tokens-costs li.premium b { color: var(--warn); }

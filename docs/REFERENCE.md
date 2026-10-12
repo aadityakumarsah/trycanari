@@ -151,6 +151,9 @@ to start, naming the variable, if a required one is missing or invalid.
 | `RATE_LIMIT_PER_MINUTE` | app | Requests a minute per client address on public endpoints. Default `120` |
 | `ATTEMPTS_PER_ADDRESS_PER_HOUR`, `ATTEMPTS_PER_BOUNTY_PER_HOUR` | app | Attempt caps. Defaults `20`, `60` |
 | `BOUNTY_DAILY_TOKEN_BUDGET` | app | Model tokens a bounty's replays may use in 24 hours. Default `2000000` |
+| `STARTER_CREDITS` | app | Attack tokens a day before a verified break. Default `8` |
+| `PROVEN_CREDITS` | app | Attack tokens a day after a verified break. Default `40` |
+| `NEW_BOUNTY_PREMIUM` | app | Extra tokens the first attack on a bounty costs. Default `2` |
 | `FEE_RATE` | app | The platform fee as a fraction of the reward. Default `0.1` |
 | `WORKER_POLL_SECONDS`, `ATTEMPT_TIMEOUT_SECONDS`, `ATTEMPT_MAX_TRIES` | worker | Queue polling interval, how long a running attempt may go before its worker is taken for dead, and how many tries an attempt gets. Defaults `2`, `900`, `3` |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Compose | Credentials and database for the `db` service |
@@ -539,8 +542,12 @@ the hunter, the canary and how many replays tripped, and carries the attack itse
 - A code admits one account. It is used when an account holds it, and a unique constraint
   on that column makes a second use impossible whatever two requests do at once.
 - Each attack costs 1, 2 or 4 tokens by its length (up to 2,000 characters, up to 8,000,
-  longer). An account's allowance is its tier's cap, 25 or 200 after a verified break,
-  minus what its attempts of the last 24 hours cost. Nothing is stored as a balance.
+  longer). The first attack on each bounty costs `NEW_BOUNTY_PREMIUM` extra tokens (default
+  2) on top of that; repeat attacks on a bounty the account has already engaged cost only
+  the length price, so spreading across many bounties is dearer than focusing on one.
+- An account's allowance is its tier's cap, 8 (Starter) or 40 after a verified break
+  (Proven), minus what its attempts of the last 24 hours cost. Nothing is stored as a
+  balance. `GET /v1/account` returns `credits.new_bounty_premium`.
 - All replays together are capped by `PLATFORM_DAILY_TOKEN_BUDGET` model tokens a day.
 
 ## Admins

@@ -166,6 +166,8 @@ export interface Credits {
   next_tier: string | null;
   next_cap: number | null;
   costs: CostStep[];
+  /** Extra tokens the first attack on a bounty costs, on top of its length price. */
+  new_bounty_premium: number;
 }
 
 export interface Account {

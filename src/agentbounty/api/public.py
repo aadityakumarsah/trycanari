@@ -413,7 +413,7 @@ async def submit_attempt(
 
     async def charge() -> int:
         assert account_id is not None  # noqa: S101 - set whenever charging is on
-        return await credits.charge(session, account_id, fills, settings)
+        return await credits.charge(session, account_id, bounty_id, fills, settings)
 
     attempt, token = await attempt_service.submit_attempt(
         session,

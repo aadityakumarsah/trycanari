@@ -396,11 +396,16 @@ export function Docs() {
               ["Anything longer", "4 tokens"],
             ]}
           />
+          <p>
+            The <strong>first attack on each bounty costs 2 extra tokens</strong>, on top of its length price.
+            Every attack after that on the same bounty costs only the length price. So spreading yourself thin
+            across many bounties is expensive, and staying with one until you break it is cheap.
+          </p>
           <Table
             head={["Tier", "Allowance", "How you get it"]}
             rows={[
-              ["Starter", "25 tokens in any 24 hours", "Everyone starts here"],
-              ["Proven", "200 tokens in any 24 hours", "Have one attack verified"],
+              ["Starter", "8 tokens in any 24 hours", "Everyone starts here"],
+              ["Proven", "40 tokens in any 24 hours", "Have one attack verified"],
             ]}
           />
           <p>

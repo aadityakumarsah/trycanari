@@ -25,7 +25,14 @@ from .test_google import CLIENT_ID, CLIENT_SECRET, Google, come_back, leave_for_
 async def club(service_settings: Settings) -> AsyncIterator[Platform]:
     """The platform in invite-only mode, with a small allowance."""
     settings = service_settings.model_copy(
-        update={"invite_only": True, "starter_credits": 3, "proven_credits": 10}
+        update={
+            "invite_only": True,
+            "starter_credits": 3,
+            "proven_credits": 10,
+            # These tests are about the length price and the window; the per-bounty
+            # premium has a test of its own below.
+            "new_bounty_premium": 0,
+        }
     )
     async with platform_on(settings) as platform:
         yield platform
@@ -205,6 +212,7 @@ async def test_an_attack_needs_an_account_and_spends_its_credits(club: Platform)
             {"up_to_characters": 8_000, "credits": 2},
             {"up_to_characters": 40_000, "credits": 4},
         ],
+        "new_bounty_premium": 0,
     }
     assert (account["invite_only"], account["is_ambassador"], account["verified_breaks"]) == (
         True,
@@ -577,3 +585,48 @@ async def member_without_code(platform: Platform, email: str) -> dict[str, str]:
     joined = await join(platform, email, None)
     assert joined.status_code == 201, joined.text
     return {"Authorization": f"Bearer {joined.json()['api_key']}"}
+
+
+async def test_the_first_attack_on_a_new_bounty_costs_the_premium(
+    service_settings: Settings,
+) -> None:
+    """The first attack on each bounty costs extra; a repeat on the same bounty does not,
+    so spreading across many bounties is dearer than focusing on one."""
+    settings = service_settings.model_copy(
+        update={
+            "invite_only": True,
+            "starter_credits": 20,
+            "proven_credits": 20,
+            "new_bounty_premium": 2,
+        }
+    )
+    async with platform_on(settings) as club:
+        sponsor = await member(club, "sponsor@example.com", await sponsor_code(club))
+        from .platform import Sponsor as SponsorClient
+
+        maker = SponsorClient(club.client, sponsor)
+        one = await maker.live()
+        two = await maker.live()
+        hunter = await member(club, "hunter@example.com", await operator_code(club))
+
+        async def cost_of_last() -> int:
+            async with club.sessions.begin() as session:
+                row = await session.scalar(
+                    select(Attempt.cost_credits).order_by(Attempt.submitted_at.desc()).limit(1)
+                )
+                return int(row or 0)
+
+        # A short attack is 1 token of length. The first on a bounty adds the +2 premium.
+        assert (await attack(club, one, hunter)).status_code == 202
+        assert await cost_of_last() == 3
+        # A second attack on the same bounty is just the length price.
+        assert (await attack(club, one, hunter)).status_code == 202
+        assert await cost_of_last() == 1
+        # A different bounty is new again, so it pays the premium.
+        assert (await attack(club, two, hunter)).status_code == 202
+        assert await cost_of_last() == 3
+
+        told = (await club.client.get("/v1/account", headers=hunter)).json()["credits"]
+        assert told["new_bounty_premium"] == 2
+        # 3 + 1 + 3 spent of 20.
+        assert told["balance"] == 13

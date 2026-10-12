@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { api } from "./api.ts";
 import { useLoad, type Loaded } from "./hooks.ts";
 import { useSession } from "./session.tsx";
-import type { Account, CostStep, Providers } from "./types.ts";
+import type { Account, CostStep, Credits, Providers } from "./types.ts";
 
 const CHANGED = "trycanari:account";
 
@@ -71,8 +71,14 @@ export function completeness(account: Account): { done: number; total: number; p
   return { done, total: PROFILE_FIELDS.length, percent: Math.round((done / PROFILE_FIELDS.length) * 100) };
 }
 
-/** Credits an attack of this many characters costs. */
+/** Credits an attack of this many characters costs, by length alone. */
 export function costOf(characters: number, steps: CostStep[]): number {
   const last = steps[steps.length - 1];
   return steps.find((step) => characters <= step.up_to_characters)?.credits ?? last?.credits ?? 0;
+}
+
+/** The whole cost of an attack: its length price, plus the new-bounty premium when this
+ * is the first attack the account makes on the bounty. */
+export function attackCost(characters: number, credits: Credits, firstOnBounty: boolean): number {
+  return costOf(characters, credits.costs) + (firstOnBounty ? credits.new_bounty_premium : 0);
 }

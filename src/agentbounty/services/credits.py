@@ -62,6 +62,8 @@ class Allowance:
     # What the next tier allows, if there is one.
     next_tier: str | None
     next_cap: int | None
+    # Extra tokens the first attack on a bounty costs, on top of its length price.
+    new_bounty_premium: int = 0
 
     @property
     def balance(self) -> int:
@@ -92,11 +94,48 @@ async def allowance(session: AsyncSession, account: Sponsor, settings: Settings)
         breaks=int(breaks or 0),
         next_tier=None if proven else "Proven",
         next_cap=None if proven else settings.proven_credits,
+        new_bounty_premium=settings.new_bounty_premium,
     )
 
 
+async def attacked_before(
+    session: AsyncSession, account_id: uuid.UUID, bounty_id: uuid.UUID
+) -> bool:
+    """Whether the account has already attacked this bounty, so a new one costs the
+    premium and a repeat does not. A replay the platform could not run is not engagement."""
+    seen = await session.scalar(
+        select(Attempt.id)
+        .where(
+            Attempt.account_id == account_id,
+            Attempt.bounty_id == bounty_id,
+            Attempt.state != AttemptState.ERROR,
+        )
+        .limit(1)
+    )
+    return seen is not None
+
+
+async def quote(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    bounty_id: uuid.UUID,
+    fills: Sequence[SlotFill],
+    settings: Settings,
+) -> int:
+    """What an attack would cost this account: its length price, plus the new-bounty
+    premium when the account has not attacked this bounty before."""
+    base = cost_of(fills)
+    if await attacked_before(session, account_id, bounty_id):
+        return base
+    return base + settings.new_bounty_premium
+
+
 async def charge(
-    session: AsyncSession, account_id: uuid.UUID, fills: Sequence[SlotFill], settings: Settings
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    bounty_id: uuid.UUID,
+    fills: Sequence[SlotFill],
+    settings: Settings,
 ) -> int:
     """What this attack costs the account, or 402 if it cannot afford it.
 
@@ -110,7 +149,7 @@ async def charge(
         raise ServiceError(401, "sign in to attack")
     if not can_hunt(account, settings):
         raise ServiceError(403, "enter a referral code to take part in bounties")
-    cost = cost_of(fills)
+    cost = await quote(session, account_id, bounty_id, fills, settings)
     left = (await allowance(session, account, settings)).balance
     if cost > left:
         raise ServiceError(

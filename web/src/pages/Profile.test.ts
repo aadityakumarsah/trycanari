@@ -24,7 +24,7 @@ const account: Account = {
   is_owner: false,
   invite_only: true,
   verified_breaks: 0,
-  credits: { balance: 25, cap: 25, window_hours: 24, tier: "Starter", next_tier: "Proven", next_cap: 200, costs: [] },
+  credits: { balance: 8, cap: 8, window_hours: 24, tier: "Starter", next_tier: "Proven", next_cap: 40, costs: [], new_bounty_premium: 2 },
 };
 
 describe("profile", () => {
