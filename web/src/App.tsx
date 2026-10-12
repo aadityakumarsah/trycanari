@@ -19,6 +19,7 @@ import { Profile } from "./pages/Profile.tsx";
 import { Report } from "./pages/Report.tsx";
 import { useSession } from "./session.tsx";
 import { dismissSplash } from "./splash.ts";
+import { useTheme } from "./theme.ts";
 
 type Mode = "human" | "agent";
 
@@ -147,6 +148,17 @@ function Account({ email, onNavigate }: { email: string; onNavigate: () => void 
   );
 }
 
+/** Switches the page between its dark and light themes. */
+function ThemeSwitch() {
+  const [theme, flip] = useTheme();
+  const next = theme === "light" ? "dark" : "light";
+  return (
+    <button type="button" className="bell-button theme-switch" aria-label={`Switch to the ${next} theme`} title={`Switch to the ${next} theme`} onClick={flip}>
+      <Icon name={theme === "light" ? "moon" : "sun"} size={19} />
+    </button>
+  );
+}
+
 function Header({ onNavigate }: { onNavigate: () => void }) {
   const { session } = useSession();
   const location = useLocation();
@@ -241,6 +253,7 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
           <Icon name="github" size={20} />
           <span>GitHub</span>
         </a>
+        <ThemeSwitch />
         {session?.signed_in ? (
           <>
             <NotificationBell />

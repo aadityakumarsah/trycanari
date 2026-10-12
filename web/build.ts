@@ -27,6 +27,8 @@ await cp("./public", outdir, { recursive: true });
 // every URL in the HTML it is given, and these files are copied, not bundled.
 const shell = `${outdir}/index.html`;
 const icons =
+  // First in the head's scripts, and not deferred: it sets the theme before anything is drawn.
+  '<script src="/app/theme.js"></script>' +
   '<link rel="icon" href="/app/brand/favicon.png" type="image/png" />' +
   '<link rel="apple-touch-icon" href="/app/brand/apple-touch-icon.png" />';
 await Bun.write(shell, (await Bun.file(shell).text()).replace("</head>", `${icons}</head>`));

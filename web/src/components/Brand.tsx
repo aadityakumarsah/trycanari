@@ -4,19 +4,20 @@
 /** The trycanari mascot with its name, as it appears in the navigation bar. */
 export function Wordmark({ height = 30 }: { height?: number }) {
   // The artwork is 388 x 90.
+  const width = Math.round((height * 388) / 90);
+  // Two drawings of the same mark, one for each theme. The stylesheet shows the right one.
   return (
-    <img
-      className="wordmark"
-      src="/app/brand/wordmark.png"
-      alt="trycanari"
-      height={height}
-      width={Math.round((height * 388) / 90)}
-    />
+    <>
+      <img className="wordmark on-dark" src="/app/brand/wordmark.png" alt="trycanari" height={height} width={width} />
+      <img className="wordmark on-light" src="/app/brand/wordmark-light.png" alt="trycanari" height={height} width={width} />
+    </>
   );
 }
 
 const ICONS = {
   x: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM9 9l6 6M15 9l-6 6",
+  sun: "M15.500 12a3.500 3.500 0 1 1-7 0 3.500 3.500 0 0 1 7 0zM12 3v2M12 19v2M3 12h2M19 12h2M5.600 5.600l1.400 1.400M17 17l1.400 1.400M5.600 18.400l1.400-1.400M17 7l1.400-1.400",
+  moon: "M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z",
   bell: "M6 16V11a6 6 0 0 1 12 0v5l1.500 2h-15zM10 20.500a2.200 2.200 0 0 0 4 0",
   ban: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM5.6 5.6l12.8 12.8",
   box: "M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10",
