@@ -29,7 +29,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentbounty.api.ratelimit import limit_by_client
+from agentbounty.api.ratelimit import limit_by_client, visited_host
 from agentbounty.api.session import seal_sponsor, set_session_cookie
 from agentbounty.db import get_transaction
 from agentbounty.services import bounty as bounty_service
@@ -220,7 +220,7 @@ async def start(request: Request, code: str | None = None) -> RedirectResponse:
     public = urlsplit(settings.public_url or "")
     referral = (code or "")[:40]
     # Cookies belong to a host. Google answers to PUBLIC_URL, so begin there too.
-    if request.headers.get("host") != public.netloc:
+    if visited_host(request) != public.netloc:
         onward = f"{(settings.public_url or '').rstrip('/')}{START_PATH}"
         return RedirectResponse(
             f"{onward}?{urlencode({'code': referral})}" if referral else onward, 307

@@ -112,5 +112,8 @@ async def agent_guide(
 ) -> PlainTextResponse:
     live = and_(Bounty.state == BountyState.LIVE, Bounty.close_requested_at.is_(None))
     bounties = await cached(request, "bounties", lambda: public_views(session, live))
-    text = guide(str(request.base_url), bounties, request.app.state.settings)
+    settings: Settings = request.app.state.settings
+    # The address people use, which behind a proxy is not the one this process hears.
+    base = f"{settings.public_url.rstrip('/')}/" if settings.public_url else str(request.base_url)
+    text = guide(base, bounties, settings)
     return PlainTextResponse(text, media_type="text/markdown; charset=utf-8")

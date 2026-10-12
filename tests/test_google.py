@@ -321,6 +321,43 @@ async def test_starting_on_another_host_moves_to_the_public_one(
     assert "set-cookie" not in moved.headers
 
 
+async def test_behind_the_sites_own_proxy_the_public_host_is_the_one_visited(
+    service_settings: Settings,
+) -> None:
+    """The proxy reaches the API at another host and says which host the browser asked for.
+    That is believed only with the shared secret, or anyone could claim to be the site."""
+    settings = service_settings.model_copy(
+        update={
+            "google_client_id": CLIENT_ID,
+            "google_client_secret": SecretStr(CLIENT_SECRET),
+            "public_url": "https://trycanari.example",
+            "proxy_secret": SecretStr("shared-with-the-proxy"),
+        }
+    )
+    async with platform_on(settings) as platform:
+        api = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=platform.app), base_url="http://api.internal"
+        )
+        said = {"x-forwarded-host": "trycanari.example"}
+
+        proxied = await api.get(
+            "/v1/auth/google/start", headers={**said, "x-proxy-secret": "shared-with-the-proxy"}
+        )
+        assert proxied.status_code == 302
+        assert proxied.headers["location"].startswith("https://accounts.google.com/")
+        assert "set-cookie" in proxied.headers
+
+        for headers in (said, {**said, "x-proxy-secret": "a guess"}, {}):
+            moved = await api.get("/v1/auth/google/start", headers=headers)
+            assert moved.status_code == 307
+            assert moved.headers["location"] == "https://trycanari.example/v1/auth/google/start"
+
+        # The guide for agents names the address people use, not the one the API hears.
+        guide = (await api.get("/agent.md")).text
+        assert "Base URL: https://trycanari.example/" in guide
+        assert "api.internal" not in guide
+
+
 def settings_with(**values: object) -> Settings:
     base: dict[str, Any] = {
         "app_env": "development",

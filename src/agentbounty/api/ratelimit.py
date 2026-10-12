@@ -40,21 +40,34 @@ class RateLimiter:
         return True
 
 
+def from_our_proxy(request: Request) -> bool:
+    """Whether the request came through the site's own proxy, proved by the shared secret."""
+    secret = request.app.state.settings.proxy_secret
+    offered = request.headers.get("x-proxy-secret")
+    return (
+        secret is not None
+        and offered is not None
+        and secrets.compare_digest(offered.encode(), secret.get_secret_value().encode())
+    )
+
+
 def client_address(request: Request) -> str:
     """Who is calling. A proxy that proves itself with the shared secret may say who it
     is calling for; anyone else's claim is ignored, or the limit could be dodged by
     inventing an address per request."""
-    secret = request.app.state.settings.proxy_secret
-    offered = request.headers.get("x-proxy-secret")
     claimed = request.headers.get("x-client-address", "").strip()
-    if (
-        secret is not None
-        and offered is not None
-        and claimed
-        and secrets.compare_digest(offered.encode(), secret.get_secret_value().encode())
-    ):
+    if claimed and from_our_proxy(request):
         return claimed[:64]
     return request.client.host if request.client else "unknown"
+
+
+def visited_host(request: Request) -> str:
+    """The host the browser asked for. Behind the site's proxy that is the host the
+    proxy was reached at, which it passes on; a stranger's claim to one is ignored."""
+    forwarded = request.headers.get("x-forwarded-host", "").strip()
+    if forwarded and from_our_proxy(request):
+        return forwarded
+    return request.headers.get("host", "")
 
 
 def limit_by_client(request: Request) -> None:

@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="569 tests" src="https://img.shields.io/badge/tests-569%20passing-6ee7b7" />
+  <img alt="570 tests" src="https://img.shields.io/badge/tests-570%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -52,7 +52,7 @@
 |---:|---|
 | **47** | API endpoints |
 | **17** | database migrations |
-| **466** | Python tests |
+| **467** | Python tests |
 | **103** | web tests |
 | **~9,700** | lines of Python |
 | **~7,900** | lines of TypeScript |
@@ -332,7 +332,7 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 466 Python tests, each on its own scratch database
+make test         # 467 Python tests, each on its own scratch database
 make web-test     # 103 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
