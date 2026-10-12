@@ -819,7 +819,7 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
               ["A sponsor's script", <>The API key from sign-up: <code>Authorization: Bearer &lt;api_key&gt;</code></>],
               [
                 "A sponsor in the browser",
-                "A session cookie, set by signing in on this site with an API key or with Google. It lasts 12 hours.",
+                "A session cookie, set by signing in on this site with an API key or with Google. It lasts 30 days from your last visit.",
               ],
             ]}
           />

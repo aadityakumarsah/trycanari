@@ -165,10 +165,21 @@ async def process(
             await attempts.record_result(session, cipher, claim)
         return
     target, fills = loaded
+
+    async def progress(runs_done: int) -> None:
+        # A short transaction of its own, between model calls. Nothing depends on it.
+        async with sessions.begin() as session:
+            await attempts.note_progress(session, claim, runs_done)
+
     try:
         async with model_for(target, model, own) as chosen:
             results = await run_attempt(
-                target.config, fills, chosen, runs=RUNS_PER_ATTEMPT, limits=limits
+                target.config,
+                fills,
+                chosen,
+                runs=RUNS_PER_ATTEMPT,
+                limits=limits,
+                on_run=progress,
             )
     except Exception:
         logger.exception("replay of attempt %s failed", claim.attempt_id)

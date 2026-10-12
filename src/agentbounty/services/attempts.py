@@ -199,6 +199,7 @@ async def claim_next(session: AsyncSession) -> Claim | None:
     attempt.state = AttemptState.RUNNING
     attempt.started_at = datetime.now(UTC)
     attempt.tries += 1
+    attempt.runs_done = 0
     await session.flush()
     return Claim(attempt.id, attempt.started_at)
 
@@ -215,6 +216,20 @@ async def _held(session: AsyncSession, claim: Claim) -> Attempt | None:
     if attempt is None or attempt.state is not AttemptState.RUNNING:
         return None
     return attempt if attempt.started_at == claim.started_at else None
+
+
+async def note_progress(session: AsyncSession, claim: Claim, runs_done: int) -> None:
+    """Record how many replays of a claimed attempt have finished, for whoever is watching.
+    A claim that has been lost changes nothing."""
+    await session.execute(
+        update(Attempt)
+        .where(
+            Attempt.id == claim.attempt_id,
+            Attempt.state == AttemptState.RUNNING,
+            Attempt.started_at == claim.started_at,
+        )
+        .values(runs_done=runs_done)
+    )
 
 
 async def release(session: AsyncSession, claim: Claim, *, max_tries: int) -> None:
@@ -410,6 +425,19 @@ async def record_result(
 
 
 @dataclass(frozen=True)
+class RunSummary:
+    """What one replay came to, without its transcript."""
+
+    run_index: int
+    # Public labels of the canaries the run tripped.
+    tripped: tuple[str, ...]
+    # How many times the agent spoke, and the tools it called, in order.
+    replies: int
+    tool_calls: tuple[str, ...]
+    tokens: int
+
+
+@dataclass(frozen=True)
 class AttemptStatus:
     state: AttemptState
     verdict: Verdict | None = None
@@ -420,6 +448,13 @@ class AttemptStatus:
     replies: tuple[dict[str, Any], ...] = ()
     # The payout for a verified attempt, once the payment process has created it.
     payout: Payout | None = None
+    # While queued: attempts on the same bounty that will be replayed before this one.
+    queue_ahead: int | None = None
+    # While running: replays finished so far.
+    runs_done: int = 0
+    # Once done: each replay, and how many of them each canary of the config tripped in.
+    runs: tuple[RunSummary, ...] = ()
+    canaries: tuple[tuple[Canary, int], ...] = ()
 
 
 async def attempt_status(
@@ -442,9 +477,31 @@ async def own_attempt_status(
     return await status_of(session, cipher, attempt)
 
 
+async def _queue_ahead(session: AsyncSession, attempt: Attempt) -> int:
+    """Attempts on the same bounty that run before this one: the queue is per bounty."""
+    ahead = await session.scalar(
+        select(func.count())
+        .select_from(Attempt)
+        .where(
+            Attempt.bounty_id == attempt.bounty_id,
+            or_(
+                Attempt.state == AttemptState.RUNNING,
+                and_(
+                    Attempt.state == AttemptState.QUEUED,
+                    tuple_(Attempt.submitted_at, Attempt.id)
+                    < tuple_(attempt.submitted_at, attempt.id),
+                ),
+            ),
+        )
+    )
+    return int(ahead or 0)
+
+
 async def status_of(session: AsyncSession, cipher: Cipher, attempt: Attempt) -> AttemptStatus:
+    if attempt.state is AttemptState.QUEUED:
+        return AttemptStatus(attempt.state, queue_ahead=await _queue_ahead(session, attempt))
     if attempt.state is not AttemptState.DONE:
-        return AttemptStatus(attempt.state)
+        return AttemptStatus(attempt.state, runs_done=attempt.runs_done)
 
     runs = list(
         await session.scalars(
@@ -478,7 +535,48 @@ async def status_of(session: AsyncSession, cipher: Cipher, attempt: Attempt) -> 
     )
     transcript = read_transcript(cipher, shown) if shown else []
     replies = tuple(message for message in transcript if message["role"] == "assistant")
+
+    # Every canary of the config the attempt was bound to, in the config's own order.
+    config_id = await session.scalar(
+        select(TargetConfigRow.id)
+        .where(
+            TargetConfigRow.bounty_id == attempt.bounty_id,
+            TargetConfigRow.config_hash == attempt.config_hash,
+        )
+        .order_by(TargetConfigRow.version.desc())
+        .limit(1)
+    )
+    planted = (
+        list(
+            await session.scalars(
+                select(Canary)
+                .where(Canary.config_id == config_id)
+                .order_by(Canary.public_label, Canary.id)
+            )
+        )
+        if config_id and runs
+        else []
+    )
+    labels = {str(canary.id): canary.public_label for canary in planted}
+    summaries = []
+    for run in runs:
+        said = [m for m in read_transcript(cipher, run) if m["role"] == "assistant"]
+        summaries.append(
+            RunSummary(
+                run_index=run.run_index,
+                tripped=tuple(
+                    labels[canary_id]
+                    for canary_id in run.tripped_canaries_json
+                    if canary_id in labels
+                ),
+                replies=len(said),
+                tool_calls=tuple(call["name"] for m in said for call in m["tool_calls"]),
+                tokens=run.token_usage,
+            )
+        )
     return AttemptStatus(
+        runs=tuple(summaries),
+        canaries=tuple((canary, counts.get(str(canary.id), 0)) for canary in planted),
         state=attempt.state,
         verdict=verdict,
         tripped_runs=tripped,

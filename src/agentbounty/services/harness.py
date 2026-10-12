@@ -13,7 +13,7 @@ so the model API is the only way out.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -300,14 +300,18 @@ async def run_attempt(
     *,
     runs: int = RUNS_PER_ATTEMPT,
     limits: SandboxLimits = DEFAULT_LIMITS,
+    on_run: Callable[[int], Awaitable[None]] | None = None,
 ) -> tuple[RunResult, ...]:
-    """Replay the attempt `runs` times, each from scratch, one after another."""
+    """Replay the attempt `runs` times, each from scratch, one after another.
+
+    `on_run` is told how many runs have finished, after each one.
+    """
     if runs < 1:
         raise ValueError("runs must be at least 1")
     validate_attempt(config, attempt)
-    return tuple(
-        [
-            await run_once(config, attempt, model, limits=limits, run_index=index)
-            for index in range(runs)
-        ]
-    )
+    results = []
+    for index in range(runs):
+        results.append(await run_once(config, attempt, model, limits=limits, run_index=index))
+        if on_run is not None:
+            await on_run(index + 1)
+    return tuple(results)

@@ -93,6 +93,22 @@ export interface PayoutInfo {
   txid: string | null;
 }
 
+/** One replay in brief: what it tripped and what the agent did. */
+export interface RunSummary {
+  run_index: number;
+  /** Public labels of the canaries this run tripped. */
+  tripped: string[];
+  /** How many times the agent spoke, and the tools it called, in order. */
+  replies: number;
+  tool_calls: string[];
+  tokens: number;
+}
+
+export interface CanaryTally {
+  canary: CanaryPublic;
+  tripped_runs: number;
+}
+
 export interface AttemptStatus {
   state: "queued" | "running" | "done" | "error";
   verdict: Verdict | null;
@@ -101,6 +117,16 @@ export interface AttemptStatus {
   canary: CanaryPublic | null;
   replies: Reply[];
   payout: PayoutInfo | null;
+  /** While queued: attempts on this bounty replayed before this one. */
+  queue_ahead: number | null;
+  /** Replays finished so far, out of `runs_total`. */
+  runs_done: number;
+  runs_total: number;
+  /** Runs one canary has to trip in for the break to be verified. */
+  threshold: number;
+  /** Once done: every replay in brief, and how each canary of the agent fared. */
+  runs: RunSummary[];
+  canaries: CanaryTally[];
 }
 
 export interface AttemptAccepted {

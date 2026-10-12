@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import func, select
 
 from agentbounty.api.deps import CipherDep, OwnBounty, SettingsDep, SponsorDep, Transaction
+from agentbounty.api.public import status_out
 from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import (
     AccountOut,
@@ -60,7 +61,6 @@ from agentbounty.api.schemas import (
     ReferralCodeCreate,
     ReferralCodeOut,
     ReferralRedeem,
-    ReplyOut,
     RunOut,
     ScanOut,
     SecretCanaryIn,
@@ -69,7 +69,6 @@ from agentbounty.api.schemas import (
     SponsorCreate,
     SponsorCreated,
     StateOut,
-    ToolCallOut,
     ToolOut,
 )
 from agentbounty.api.session import COOKIE, seal_sponsor, set_session_cookie
@@ -297,29 +296,8 @@ async def my_attempt(
 ) -> AttemptStatusOut:
     """One of this account's attempts in full, with what the agent said and did. The same
     answer its status token reads, for an account that no longer holds the token."""
-    status = await attempt_service.own_attempt_status(session, cipher, attempt_id, sponsor.id)
-    return AttemptStatusOut(
-        state=status.state,
-        verdict=status.verdict,
-        tripped_runs=status.tripped_runs,
-        total_runs=status.total_runs,
-        canary=None
-        if status.canary is None
-        else CanaryPublic(type=status.canary.type, public_label=status.canary.public_label),
-        replies=[
-            ReplyOut(
-                text=reply["content"],
-                tool_calls=[ToolCallOut(**call) for call in reply["tool_calls"]],
-            )
-            for reply in status.replies
-        ],
-        payout=None
-        if status.payout is None
-        else PayoutOut(
-            state=status.payout.state,
-            amount_zatoshi=status.payout.amount_zatoshi,
-            txid=status.payout.txid,
-        ),
+    return status_out(
+        await attempt_service.own_attempt_status(session, cipher, attempt_id, sponsor.id)
     )
 
 

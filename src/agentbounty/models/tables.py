@@ -234,6 +234,8 @@ class Attempt(Base):
     # credits. An account's allowance is what it has not spent lately (services/credits.py).
     account_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"), index=True)
     cost_credits: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    # Replays finished so far in the current try, for the hunter watching. Decides nothing.
+    runs_done: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
 
 
 class Run(Base):

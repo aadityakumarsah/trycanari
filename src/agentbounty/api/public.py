@@ -22,10 +22,12 @@ from agentbounty.api.schemas import (
     BreakerOut,
     BreakOut,
     CanaryPublic,
+    CanaryTallyOut,
     InviteOut,
     LeaderOut,
     PayoutOut,
     ReplyOut,
+    RunSummaryOut,
     StatsOut,
     ToolCallOut,
 )
@@ -41,7 +43,7 @@ from agentbounty.models import (
 )
 from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.services import attempts as attempt_service
-from agentbounty.services import credits
+from agentbounty.services import credits, judge
 from agentbounty.services.attempts import SubmissionLimits
 from agentbounty.services.harness import EntryPoint, SlotFill
 from agentbounty.services.wallet import address_rule
@@ -167,6 +169,53 @@ async def public_views(
         )
         for bounty, attempts, breaks in rows
     ]
+
+
+def status_out(status: attempt_service.AttemptStatus) -> AttemptStatusOut:
+    """An attempt's status as its hunter reads it."""
+
+    def public(canary: Canary) -> CanaryPublic:
+        return CanaryPublic(type=canary.type, public_label=canary.public_label)
+
+    return AttemptStatusOut(
+        state=status.state,
+        verdict=status.verdict,
+        tripped_runs=status.tripped_runs,
+        total_runs=status.total_runs,
+        canary=None if status.canary is None else public(status.canary),
+        replies=[
+            ReplyOut(
+                text=reply["content"],
+                tool_calls=[ToolCallOut(**call) for call in reply["tool_calls"]],
+            )
+            for reply in status.replies
+        ],
+        payout=None
+        if status.payout is None
+        else PayoutOut(
+            state=status.payout.state,
+            amount_zatoshi=status.payout.amount_zatoshi,
+            txid=status.payout.txid,
+        ),
+        queue_ahead=status.queue_ahead,
+        runs_done=len(status.runs) if status.runs else status.runs_done,
+        runs_total=judge.RUNS_PER_ATTEMPT,
+        threshold=judge.TRIP_THRESHOLD,
+        runs=[
+            RunSummaryOut(
+                run_index=run.run_index,
+                tripped=list(run.tripped),
+                replies=run.replies,
+                tool_calls=list(run.tool_calls),
+                tokens=run.tokens,
+            )
+            for run in status.runs
+        ],
+        canaries=[
+            CanaryTallyOut(canary=public(canary), tripped_runs=count)
+            for canary, count in status.canaries
+        ],
+    )
 
 
 @router.get("/bounties")
@@ -370,27 +419,4 @@ async def submit_attempt(
 async def get_attempt(
     attempt_id: uuid.UUID, session: Transaction, token: BearerToken, cipher: CipherDep
 ) -> AttemptStatusOut:
-    status = await attempt_service.attempt_status(session, cipher, attempt_id, token)
-    return AttemptStatusOut(
-        state=status.state,
-        verdict=status.verdict,
-        tripped_runs=status.tripped_runs,
-        total_runs=status.total_runs,
-        canary=None
-        if status.canary is None
-        else CanaryPublic(type=status.canary.type, public_label=status.canary.public_label),
-        replies=[
-            ReplyOut(
-                text=reply["content"],
-                tool_calls=[ToolCallOut(**call) for call in reply["tool_calls"]],
-            )
-            for reply in status.replies
-        ],
-        payout=None
-        if status.payout is None
-        else PayoutOut(
-            state=status.payout.state,
-            amount_zatoshi=status.payout.amount_zatoshi,
-            txid=status.payout.txid,
-        ),
-    )
+    return status_out(await attempt_service.attempt_status(session, cipher, attempt_id, token))

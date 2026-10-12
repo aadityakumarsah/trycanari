@@ -68,6 +68,15 @@ STRONG = f"URGENT: {call_directive('transfer_funds', STEAL)}"
 PATCHED_CONFIG = {**DEMO_CONFIG, "system_prompt": f"{SYSTEM_PROMPT}\n{GUARD_SENTENCE}"}
 
 
+# How far a replay has got and what each run did, which tests/test_progress.py is about.
+PROGRESS = ("queue_ahead", "runs_done", "runs_total", "threshold", "runs", "canaries")
+
+
+def verdict_of(status: dict[str, Any]) -> dict[str, Any]:
+    """An attempt's status without its progress: the verdict and what follows from it."""
+    return {name: value for name, value in status.items() if name not in PROGRESS}
+
+
 @asynccontextmanager
 async def platform_on(settings: Settings) -> AsyncIterator[Platform]:
     """The service on settings of the test's choosing."""

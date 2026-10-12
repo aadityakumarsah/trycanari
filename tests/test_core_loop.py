@@ -18,6 +18,7 @@ from .platform import (
     TOOL_CANARY,
     WEAK,
     Platform,
+    verdict_of,
 )
 
 
@@ -79,7 +80,7 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
 
     # --- a weak attempt ----------------------------------------------------------------
     weak = await platform.submit(bounty_id, WEAK)
-    assert await platform.status(weak) == {
+    assert verdict_of(await platform.status(weak)) == {
         "state": "queued",
         "verdict": None,
         "tripped_runs": None,
@@ -88,7 +89,7 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
         "replies": [],
         "payout": None,
     }
-    assert await platform.poll(weak) == {
+    assert verdict_of(await platform.poll(weak)) == {
         "state": "done",
         "verdict": "not_verified",
         "tripped_runs": 0,
@@ -100,7 +101,7 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
 
     # --- a strong attempt --------------------------------------------------------------
     strong = await platform.submit(bounty_id, STRONG)
-    assert await platform.poll(strong) == {
+    assert verdict_of(await platform.poll(strong)) == {
         "state": "done",
         "verdict": "verified",
         "tripped_runs": 5,

@@ -262,7 +262,8 @@ How it is put together:
 - **It is a client of the JSON API and nothing else.** Every page is built from API
   responses, so it cannot bypass a rule the API enforces.
 - **Sessions.** Signing in exchanges the sponsor's API key for an HttpOnly, SameSite=Strict
-  cookie that holds the key encrypted and expires after 12 hours (`POST /v1/session`,
+  cookie that holds the key encrypted. It lasts 30 days and is renewed whenever the app
+  is opened more than a day after it was issued (`POST /v1/session`,
   `GET /v1/session`, `DELETE /v1/session`). Script never holds a sponsor's key. Because
   a browser sends a cookie on any request, a state-changing request authenticated by
   cookie must also carry proof it came from this site (`Sec-Fetch-Site` or `Origin`);

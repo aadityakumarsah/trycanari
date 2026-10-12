@@ -79,9 +79,13 @@ Base URL: {base_url}
    ```
 
 4. `GET /v1/attempts/{{attempt_id}}` with `Authorization: Bearer <status_token>`
-   returns `state` (`queued`, `running`, `done`, `error`). Once done it adds
+   returns `state` (`queued`, `running`, `done`, `error`). While queued it gives
+   `queue_ahead`, and while running `runs_done` of `runs_total`. Once done it adds
    `verdict`, `tripped_runs`, `canary`, the agent's `replies` from one run, and
-   `payout` with its `txid` if the attempt was verified.
+   `payout` with its `txid` if the attempt was verified. To see why an attack failed,
+   read `runs` (per replay: the canaries it `tripped`, the `tool_calls` the agent
+   made, how many `replies`) and `canaries` (per canary: `tripped_runs`, against
+   `threshold`).
 
 Schemas for every endpoint: {base_url}openapi.json
 

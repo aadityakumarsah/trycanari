@@ -6,7 +6,7 @@ import { useInterval, useLoad, type Loaded } from "../hooks.ts";
 import { formatZec, sym } from "../money.ts";
 import type { AttemptStatus, Hunt, Hunts } from "../types.ts";
 import { Icon } from "./Brand.tsx";
-import { Replies } from "./Transcript.tsx";
+import { AttackRun } from "./AttackRun.tsx";
 import { Ago, Badge, Copyable, ErrorNote, Skeleton, when, words } from "./ui.tsx";
 
 const POLL_MS = 4000;
@@ -74,16 +74,16 @@ function PayoutSteps({ hunt }: { hunt: Hunt }) {
   );
 }
 
-/** What the agent said and did, fetched when the attack is opened. */
+/** Every check the attack went through and what the agent did, fetched when it is opened. */
 function AgentSide({ hunt }: { hunt: Hunt }) {
   const status = useLoad(
     (signal) => api<AttemptStatus>("GET", `/v1/account/attempts/${hunt.id}`, { signal }),
-    `${hunt.id}:${hunt.state}`,
+    `${hunt.id}:${hunt.state}:${hunt.payout?.state ?? ""}`,
   );
   if (status.error) return <ErrorNote>{status.error}</ErrorNote>;
   if (!status.data) return <Skeleton lines={3} />;
-  if (status.data.replies.length === 0) return <p className="muted">The attack was not replayed, so the agent said nothing.</p>;
-  return <Replies replies={status.data.replies} />;
+  // The payout has its own section on the card.
+  return <AttackRun status={status.data} withPayout={false} />;
 }
 
 function HuntCard({ hunt }: { hunt: Hunt }) {
@@ -220,12 +220,10 @@ function HuntCard({ hunt }: { hunt: Hunt }) {
             )}
           </section>
 
-          {hunt.state === "done" && (
-            <section className="hunt-section">
-              <h3>What the agent did in one run</h3>
-              <AgentSide hunt={hunt} />
-            </section>
-          )}
+          <section className="hunt-section">
+            <h3>How it went, check by check</h3>
+            <AgentSide hunt={hunt} />
+          </section>
         </div>
       )}
     </li>

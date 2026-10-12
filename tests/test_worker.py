@@ -24,7 +24,7 @@ from agentbounty.services.model import (
 )
 from agentbounty.workers import replay
 
-from .platform import PATCHED_CONFIG, STRONG, WEAK, Platform
+from .platform import PATCHED_CONFIG, STRONG, WEAK, Platform, verdict_of
 
 
 class CountingModel(FakeModel):
@@ -69,7 +69,7 @@ async def test_only_the_first_hunter_to_break_a_config_is_paid(platform: Platfor
 
     assert (await platform.status(first))["verdict"] == "verified"
     # Queued before the pause, but the hole was already paid for: it is not even replayed.
-    assert await platform.status(second) == {
+    assert verdict_of(await platform.status(second)) == {
         "state": "done",
         "verdict": "not_counted",
         "tripped_runs": 0,
@@ -282,7 +282,7 @@ async def test_an_attempt_that_keeps_failing_ends_in_error(platform: Platform) -
     assert await platform.work(broken, max_tries=2) == 4
     row = await attempt_row(platform, attempt)
     assert (row.state, row.tries) == (AttemptState.ERROR, 2)
-    assert await platform.status(attempt) == {
+    assert verdict_of(await platform.status(attempt)) == {
         "state": "error",
         "verdict": None,
         "tripped_runs": None,

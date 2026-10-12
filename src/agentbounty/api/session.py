@@ -32,7 +32,11 @@ from agentbounty.services import bounty as bounty_service
 from agentbounty.services.crypto import Cipher, DecryptionError
 
 COOKIE = "ab_session"
-MAX_AGE_SECONDS = 12 * 60 * 60
+# A session lasts thirty days from when it was last renewed, and it is renewed whenever
+# the app is opened more than a day after that. So someone who keeps coming back stays
+# signed in, and a browser left alone for a month is signed out.
+MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+RENEW_AFTER_SECONDS = 24 * 60 * 60
 _PURPOSE = "web.session"
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -58,6 +62,15 @@ def _open(cipher: Cipher, cookie: str | None) -> dict[str, Any] | None:
         return payload
     except (DecryptionError, binascii.Error, ValueError, KeyError, TypeError):
         return None
+
+
+def renewed(cipher: Cipher, cookie: str | None) -> str | None:
+    """The same session with its clock restarted, if it is old enough to be worth it."""
+    payload = _open(cipher, cookie)
+    if payload is None or time.time() - int(payload["issued"]) < RENEW_AFTER_SECONDS:
+        return None
+    fresh = {**payload, "issued": int(time.time())}
+    return base64.urlsafe_b64encode(cipher.encrypt_json(fresh, purpose=_PURPOSE)).decode()
 
 
 def unseal(cipher: Cipher, cookie: str | None) -> str | None:
@@ -150,10 +163,17 @@ class SessionOut(BaseModel):
 
 
 @router.get("/session")
-async def read_session(request: Request, session: Transaction) -> SessionOut:
-    """Whether this browser is signed in. The page cannot read the cookie itself."""
-    identity = identify(request.app.state.cipher, request.cookies.get(COOKIE))
-    sponsor = await sponsor_of(session, identity)
+async def read_session(request: Request, response: Response, session: Transaction) -> SessionOut:
+    """Whether this browser is signed in. The page cannot read the cookie itself.
+
+    The app asks this every time it is opened, which is when a session is renewed.
+    """
+    cipher: Cipher = request.app.state.cipher
+    cookie = request.cookies.get(COOKIE)
+    sponsor = await sponsor_of(session, identify(cipher, cookie))
+    fresh = renewed(cipher, cookie) if sponsor is not None else None
+    if fresh is not None:
+        set_session_cookie(request, response, fresh)
     return SessionOut(signed_in=sponsor is not None, email=sponsor.email if sponsor else None)
 
 

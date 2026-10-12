@@ -650,6 +650,25 @@ class ReplyOut(BaseModel):
     tool_calls: list[ToolCallOut]
 
 
+class RunSummaryOut(BaseModel):
+    """One replay in brief: what it tripped and what the agent did. Not its transcript."""
+
+    run_index: int
+    # Public labels of the canaries this run tripped. Empty when the agent held.
+    tripped: list[str]
+    # How many times the agent spoke, and the names of the tools it called, in order.
+    replies: int
+    tool_calls: list[str]
+    # Model tokens the run used.
+    tokens: int
+
+
+class CanaryTallyOut(BaseModel):
+    canary: CanaryPublic
+    # How many of the runs tripped it. `threshold` or more is a verified break.
+    tripped_runs: int
+
+
 class AttemptStatusOut(BaseModel):
     state: AttemptState
     # Set once the attempt is done. "not_counted": the bounty was no longer live on the
@@ -662,6 +681,16 @@ class AttemptStatusOut(BaseModel):
     replies: list[ReplyOut] = Field(default_factory=list)
     # Set for a verified attempt once its payout has been created.
     payout: PayoutOut | None = None
+    # While queued: attempts on this bounty that are replayed before this one.
+    queue_ahead: int | None = None
+    # While running: replays finished so far, out of `runs_total`.
+    runs_done: int = 0
+    runs_total: int = 5
+    # Runs a single canary has to trip in for the break to be verified.
+    threshold: int = 3
+    # Once done: every replay in brief, and how each canary of the agent fared.
+    runs: list[RunSummaryOut] = Field(default_factory=list)
+    canaries: list[CanaryTallyOut] = Field(default_factory=list)
 
 
 # --- an account's own attempts and notifications ----------------------------------------

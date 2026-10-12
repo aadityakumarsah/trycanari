@@ -136,10 +136,38 @@ async def test_a_forged_or_expired_cookie_is_worth_nothing(
     client.cookies.set("ab_session", genuine[:-4] + "AAAA")
     assert (await client.get("/v1/sponsor/bounties")).status_code == 401
 
-    # Twelve hours on, the same cookie no longer opens anything.
+    # Thirty days on, the same cookie no longer opens anything.
     later = time.time() + sessions.MAX_AGE_SECONDS + 1
     monkeypatch.setattr("agentbounty.api.session.time.time", lambda: later)
     assert sessions.unseal(platform.cipher, genuine) is None
+
+
+async def test_a_session_survives_reloads_and_is_renewed_as_it_is_used(
+    platform: Platform, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = browser(platform)
+    await sign_up(client)
+    first = client.cookies.get("ab_session")
+
+    # Opening the app again the same day: still signed in, and the cookie is left alone.
+    again = await client.get("/v1/session")
+    assert again.json()["signed_in"] is True
+    assert "set-cookie" not in again.headers
+
+    # Two days later it is renewed, so the thirty days count from this visit.
+    start = time.time()
+    monkeypatch.setattr("agentbounty.api.session.time.time", lambda: start + 2 * 86_400)
+    later = await client.get("/v1/session")
+    assert later.json()["signed_in"] is True
+    assert "Max-Age=2592000" in later.headers["set-cookie"]
+    renewed = client.cookies.get("ab_session")
+    assert renewed
+    assert renewed != first
+
+    # Day 31: the first cookie would be dead, the renewed one is not.
+    monkeypatch.setattr("agentbounty.api.session.time.time", lambda: start + 31 * 86_400)
+    assert sessions.unseal(platform.cipher, first) is None
+    assert (await client.get("/v1/session")).json()["signed_in"] is True
 
 
 # --- serving the app ------------------------------------------------------------------------
