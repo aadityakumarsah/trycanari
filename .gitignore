@@ -13,3 +13,4 @@ web/node_modules/
 web/.pages/
 .wrangler/
 render.env
+demo-sponsor-key.txt
