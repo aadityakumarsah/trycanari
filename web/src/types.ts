@@ -1,4 +1,7 @@
-// The shapes the JSON API returns. Money is integer zatoshi (1 ZEC = 100,000,000).
+import type { Currency } from "./money.ts";
+
+// The shapes the JSON API returns. Money is an integer of the currency's smallest unit;
+// the fields are named *_zatoshi whichever currency that is.
 
 export type BountyState = "draft" | "awaiting_deposit" | "live" | "paused" | "closed";
 export type CanaryType = "secret_leak" | "forbidden_tool";
@@ -94,6 +97,7 @@ export interface AttemptAccepted {
 export interface Providers {
   google: boolean;
   invite_only: boolean;
+  currency: Currency;
 }
 
 export interface CostStep {

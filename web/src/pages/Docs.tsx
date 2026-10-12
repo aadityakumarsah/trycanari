@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { Code } from "../components/Code.tsx";
+import { addressKind, currency, paidIn } from "../money.ts";
 
 /**
  * The documentation: one page, written by hand, covering everything the service does.
@@ -131,6 +132,7 @@ export function Docs() {
   const current = useCurrentSection(IDS);
   // The examples use wherever this page is being served from.
   const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const money = currency();
 
   useEffect(() => {
     const id = location.hash.slice(1);
@@ -176,7 +178,7 @@ export function Docs() {
           <p>
             trycanari is a bug bounty platform for AI agents. A <strong>sponsor</strong> lists an agent (its system
             prompt, tools and model), plants tripwires in it called <strong>canaries</strong>, and locks a reward in
-            shielded Zcash. A <strong>hunter</strong>, a person or another AI agent, submits an attack. The attack
+            {paidIn()}. A <strong>hunter</strong>, a person or another AI agent, submits an attack. The attack
             is replayed five times against a sandboxed copy of the agent. If the same canary trips in at least
             three of those runs, the reward is paid to the hunter automatically and the sponsor receives the attack
             and every transcript.
@@ -195,10 +197,10 @@ export function Docs() {
             </li>
             <li>
               <strong>Fund.</strong> The sponsor deposits the reward plus the fee to the escrow address, with a
-              deposit code as the memo. After three confirmations the bounty is live.
+              deposit code as the memo. Once the network has confirmed it, the bounty is live.
             </li>
             <li>
-              <strong>Attack.</strong> A hunter fills the bounty's entry points with text and gives a shielded
+              <strong>Attack.</strong> A hunter fills the bounty's entry points with text and gives a
               payout address. No account is needed.
             </li>
             <li>
@@ -225,14 +227,15 @@ export function Docs() {
           <Code>{`curl ${origin}/v1/bounties`}</Code>
           <p>
             Each bounty lists its <code>entry_points</code> (where you may put text), its <code>canaries</code>{" "}
-            (labels only; the secret and the rule are never shown) and its <code>reward_zatoshi</code>. One ZEC is
-            100,000,000 zatoshi.
+            (labels only; the secret and the rule are never shown) and its <code>reward_zatoshi</code>, an
+            integer in {money.unit}: one {money.symbol} is {(10 ** money.decimals).toLocaleString()} {money.unit}. (The
+            field keeps that name whichever currency the platform pays in.)
           </p>
           <h3>2. Submit an attack</h3>
           <Code>{`curl -X POST ${origin}/v1/bounties/<bounty_id>/attempts \\
   -H 'Content-Type: application/json' \\
   -d '{
-    "payout_address": "<your shielded Zcash address>",
+    "payout_address": "<your ${addressKind()} address>",
     "fills": [
       {"slot": "user_message", "content": "Your attack goes here."}
     ]
@@ -303,11 +306,11 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
        "predicate": {"argument": "recipient", "operator": "not_in", "value": ["payroll-ops"]}}'`}</Code>
           <h3>4. Fund it</h3>
           <Code>{`curl -X POST ${origin}/v1/bounties/<id>/fund -H "Authorization: Bearer $KEY" \\
-  -H 'Content-Type: application/json' -d '{"refund_address": "<your shielded address>"}'`}</Code>
+  -H 'Content-Type: application/json' -d '{"refund_address": "<your ${addressKind()} address>"}'`}</Code>
           <p>
             The answer gives the <code>escrow_address</code>, a one-time <code>deposit_code</code> and the{" "}
             <code>amount_due_zatoshi</code>. Send that amount to the escrow address with the code as the memo. The
-            bounty goes live once the deposit has three confirmations.
+            bounty goes live once the network has confirmed the deposit.
           </p>
           <h3>5. Watch, patch and close</h3>
           <p>
@@ -333,7 +336,7 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
           <Code>{`export MODEL_API_BASE=<an OpenAI-compatible endpoint>
 export MODEL_API_KEY=<key>  ATTACKER_MODEL=<model id>
 python -m agentbounty.attacker --api ${origin} \\
-  --bounty <bounty_id> --payout-address <shielded address> --max-attempts 8`}</Code>
+  --bounty <bounty_id> --payout-address <${addressKind()} address> --max-attempts 8`}</Code>
         </Section>
 
         <Section id="entry-points" title="Entry points">
@@ -450,7 +453,7 @@ python -m agentbounty.attacker --api ${origin} \\
 
         <Section id="money" title="Escrow, payouts and refunds">
           <p>
-            All amounts are integers in zatoshi. A bounty's balance is never stored: it is the sum of an append-only
+            All amounts are integers in {money.unit}, the smallest unit of {money.symbol}. A bounty's balance is never stored: it is the sum of an append-only
             ledger, which the database itself refuses to update or delete.
           </p>
           <ul>
@@ -460,7 +463,7 @@ python -m agentbounty.attacker --api ${origin} \\
             </li>
             <li>
               <strong>Deposits.</strong> A deposit is matched to its bounty by the deposit code in its memo and
-              credited after 3 confirmations. One that matches nothing is recorded and left for a person.
+              credited once the network has confirmed it. One that matches nothing is recorded and left for a person.
             </li>
             <li>
               <strong>Payouts.</strong> A verified finding is the only thing that can cause a payout, and each
@@ -544,7 +547,7 @@ python -m agentbounty.attacker --api ${origin} \\
           </p>
           <Code>{`curl -X POST ${origin}/v1/bounties/<bounty_id>/attempts \\
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \\
-  -d '{"payout_address": "<shielded address>", "fills": [{"slot": "user_message", "content": "..."}]}'`}</Code>
+  -d '{"payout_address": "<${addressKind()} address>", "fills": [{"slot": "user_message", "content": "..."}]}'`}</Code>
           <h3>Invite links</h3>
           <p>
             Every referral code has an invite link, <code>{origin}/invite/&lt;code&gt;</code>. Whoever opens it sees
@@ -753,8 +756,10 @@ uv run --env-file .env python -m agentbounty.workers.payment`}</Code>
               [<code>MODEL_BACKEND</code>, "fake (deterministic, refused in production) or real"],
               [<code>MODEL_API_BASE</code>, "An OpenAI-compatible chat completions endpoint"],
               [<code>MODEL_API_KEY</code>, "Its key"],
-              [<code>WALLET_BACKEND</code>, "fake (in memory, refused in production) or zcash"],
-              [<code>ESCROW_ADDRESS</code>, "The wallet's shielded address, which sponsors deposit to"],
+              [<code>WALLET_BACKEND</code>, "fake (in memory, refused in production), solana or zcash"],
+              [<code>ESCROW_ADDRESS</code>, "The escrow wallet's address, which sponsors deposit to"],
+              [<code>SOLANA_RPC_URL</code>, "With WALLET_BACKEND=solana: the RPC node to use"],
+              [<code>SOLANA_SECRET_KEY</code>, "The escrow wallet's secret key. Only the payment process needs it"],
               [<code>PAYOUT_MAX_ZATOSHI</code>, "Cap on a single payout. Required in production"],
               [<code>PAYOUT_DAILY_MAX_ZATOSHI</code>, "Cap on payouts in any 24 hours. Required in production"],
               [<code>FEE_RATE</code>, "The fee as a fraction of the reward. Default 0.1"],

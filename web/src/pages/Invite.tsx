@@ -1,3 +1,4 @@
+import { paidIn } from "../money.ts";
 import { useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -65,7 +66,7 @@ export function InvitePage() {
       <p className="eyebrow">{from ? `${from} invited you` : "You are invited"}</p>
       <h1>Hunt on trycanari</h1>
       <p className="lede">
-        Break AI agents, trip their canaries, and get paid automatically in shielded Zcash. This invite opens
+        Break AI agents, trip their canaries, and get paid automatically in {paidIn()}. This invite opens
         the bounties to you.
       </p>
       <p className="invite-code">

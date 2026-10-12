@@ -7,7 +7,7 @@ import { Icon } from "../components/Brand.tsx";
 import { ReferralGate } from "../components/ReferralGate.tsx";
 import { Avatar, Badge, ErrorNote, firstName, Skeleton } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
-import { formatZec, parseZec } from "../money.ts";
+import { formatZec, paidIn, parseZec, sym } from "../money.ts";
 import { useToast } from "../toast.tsx";
 import type { Account, ReferralCode, SponsorBounty } from "../types.ts";
 
@@ -64,7 +64,7 @@ function NewBounty({ onCancel }: { onCancel?: () => void }) {
           <small>Hunters see this: what the agent does and what you want them to try.</small>
         </label>
         <label>
-          Reward in ZEC
+          Reward in {sym()}
           <input
             required
             inputMode="decimal"
@@ -124,7 +124,7 @@ function Quest({ account }: { account: Account }) {
               : "Pick a live bounty, trip the same canary in 3 of 5 replays, and the reward is paid to you automatically."}
           </p>
           <span className="chip">
-            <Icon name="coin" size={13} /> Reward: whatever the bounty pays, in shielded ZEC
+            <Icon name="coin" size={13} /> Reward: whatever the bounty pays, in {paidIn()}
           </span>
         </div>
         <Link className="button accent" to="/#bounties">
@@ -336,7 +336,7 @@ export function Dashboard() {
           </div>
           <div>
             <dt>In escrow</dt>
-            <dd>{formatZec(escrow)} ZEC</dd>
+            <dd>{formatZec(escrow)} {sym()}</dd>
           </div>
         </dl>
       )}
@@ -365,7 +365,7 @@ export function Dashboard() {
                 </span>
                 <span className="row-escrow">
                   <small>
-                    Escrow {formatZec(bounty.balance_zatoshi)} of {formatZec(bounty.required_zatoshi)} ZEC
+                    Escrow {formatZec(bounty.balance_zatoshi)} of {formatZec(bounty.required_zatoshi)} {sym()}
                   </small>
                   <span className="meter" role="img" aria-label={`${funded(bounty)}% funded`}>
                     <i className={`fill p${Math.round(funded(bounty) / 10) * 10}`} />

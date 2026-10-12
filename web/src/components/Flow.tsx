@@ -27,7 +27,7 @@ const PROOF: Cell[][] = [
     ["repeat", "Five replays"],
     ["ban", "Canary tripped"],
     ["check", "3-of-5 verdict"],
-    ["coin", "Shielded payout"],
+    ["coin", "Automatic payout"],
     ["clock", "Paid in minutes"],
   ],
   [

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, messageOf } from "../api.ts";
 import { settleAttempt } from "../attempts.ts";
 import { useInterval } from "../hooks.ts";
-import { formatZec } from "../money.ts";
+import { formatZec, sym } from "../money.ts";
 import type { AttemptAccepted, AttemptStatus } from "../types.ts";
 import { Replies } from "./Transcript.tsx";
 import { Badge, ErrorNote } from "./ui.tsx";
@@ -65,7 +65,7 @@ export function AttemptResult({ status }: { status: AttemptStatus }) {
       {status.verdict === "verified" &&
         (payout?.txid ? (
           <p className="paid">
-            A payout of {formatZec(payout.amount_zatoshi)} ZEC was sent. Transaction <code>{payout.txid}</code>
+            A payout of {formatZec(payout.amount_zatoshi)} {sym()} was sent. Transaction <code>{payout.txid}</code>
           </p>
         ) : (
           <p className="muted">Verified. The payout is being sent.</p>

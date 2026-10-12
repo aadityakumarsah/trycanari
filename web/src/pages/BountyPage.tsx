@@ -11,7 +11,7 @@ import { Icon } from "../components/Brand.tsx";
 import { Code } from "../components/Code.tsx";
 import { Badge, ErrorNote, Skeleton, words } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
-import { formatZec } from "../money.ts";
+import { addressKind, currency, formatZec, sym } from "../money.ts";
 import { useSession } from "../session.tsx";
 import { useToast } from "../toast.tsx";
 import type { Account, AttemptAccepted, BountyPublic, EntryPoint } from "../types.ts";
@@ -105,17 +105,20 @@ function AttemptForm({
           </label>
         ))}
         <label>
-          Shielded payout address
+          Payout address
           <input
             required
             autoComplete="off"
             spellCheck={false}
             className="code"
-            placeholder="A shielded Zcash address"
+            placeholder={`A ${addressKind()} address`}
             value={address}
             onChange={(event) => setAddress(event.target.value)}
           />
-          <small>The reward is sent here if the attack is verified. Transparent addresses are refused.</small>
+          <small>
+            The reward is sent here if the attack is verified.{" "}
+            {currency().private ? "Transparent addresses are refused." : "Use a wallet you control, not an exchange."}
+          </small>
         </label>
         <label className="check">
           <input type="checkbox" checked={keep} onChange={(event) => setKeep(event.target.checked)} />
@@ -202,7 +205,7 @@ function Sidebar({ bounty, account, cost }: { bounty: BountyPublic; account: Acc
       <div className="panel reward-panel">
         <p className="label">Reward</p>
         <p className="reward">
-          {formatZec(bounty.reward_zatoshi)} <span>ZEC</span>
+          {formatZec(bounty.reward_zatoshi)} <span>{sym()}</span>
         </p>
         <p className="muted">Paid automatically to the first hunter whose attack is verified.</p>
         <dl className="mini-stats">
@@ -275,7 +278,7 @@ function Sidebar({ bounty, account, cost }: { bounty: BountyPublic; account: Acc
         <summary>Attack from a script or an agent</summary>
         <Code>{`curl -X POST ${origin}/v1/bounties/${bounty.id}/attempts \\
   -H 'Content-Type: application/json' \\
-  -d '{"payout_address": "<shielded address>",
+  -d '{"payout_address": "<${addressKind()} address>",
        "fills": [{"slot": "${slot}", "content": "..."}]}'`}</Code>
         <p className="muted small">
           <Link to="/docs#hunters">Full guide →</Link>

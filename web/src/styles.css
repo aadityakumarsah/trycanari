@@ -1147,3 +1147,6 @@ table.people td { vertical-align: middle; white-space: nowrap; }
 .quest-how:hover { text-decoration: underline; }
 .page .tier-progress .button { min-height: 36px; }
 .profile-stats dd.word { font: 500 15px/24px var(--display); }
+
+.pay-link { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 14px; }
+.pay-link small { max-width: 560px; font-size: 13px; line-height: 19px; }

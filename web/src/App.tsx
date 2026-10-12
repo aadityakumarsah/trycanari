@@ -1,7 +1,8 @@
+import { paidIn, setCurrency } from "./money.ts";
 import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import { pictureOf, useAccount } from "./account.tsx";
+import { pictureOf, useAccount, useProviders } from "./account.tsx";
 import { messageOf } from "./api.ts";
 import { Icon, Wordmark } from "./components/Brand.tsx";
 import { Avatar, ErrorNote, firstName, Skeleton } from "./components/ui.tsx";
@@ -292,8 +293,8 @@ function Footer({ onNavigate }: { onNavigate: () => void }) {
         </a>
       </nav>
       <p>
-        Every attack runs against a sandboxed copy of the agent with mock tools. Rewards are paid in shielded
-        Zcash.
+        Every attack runs against a sandboxed copy of the agent with mock tools. Rewards are paid in{" "}
+        {paidIn()}.
       </p>
     </footer>
   );
@@ -388,11 +389,15 @@ function ToTop() {
 export function App() {
   const [mode, setMode] = useState<Mode>("human");
   const { session } = useSession();
+  // What the server pays in. Set before anything below is drawn, so every amount and
+  // every sentence about money is right from the first paint.
+  const providers = useProviders();
+  if (providers) setCurrency(providers.currency);
   // The app is ready once it knows whether someone is signed in: until then the bar
   // cannot be drawn correctly, and a signed-in page would flash its signed-out form.
   useEffect(() => {
-    if (session !== null) dismissSplash();
-  }, [session]);
+    if (session !== null && providers !== null) dismissSplash();
+  }, [session, providers]);
   // Following any link in the page chrome goes back to the pages people read.
   const human = () => setMode("human");
 

@@ -8,7 +8,7 @@ import { Transcript } from "../components/Transcript.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { Ago, Avatar, Badge, Copyable, ErrorNote, Skeleton, when, words } from "../components/ui.tsx";
 import { useAction, useInterval, useLoad } from "../hooks.ts";
-import { formatZec } from "../money.ts";
+import { currency, formatZec, sym } from "../money.ts";
 import type { AttemptActivity, EntryPoint, Finding, Hunter, Ledger, SponsorBountyDetail } from "../types.ts";
 
 interface Everything {
@@ -149,16 +149,33 @@ function Funding({ bounty, act }: Props) {
       {bounty.state === "awaiting_deposit" ? (
         <>
           <p>
-            Send <strong>{formatZec(due)} ZEC</strong> to the escrow address, with the deposit code as the memo.
-            The bounty goes live after {bounty.confirmations_required} confirmations. This page updates by itself.
+            Send <strong>{formatZec(due)} {sym()}</strong> to the escrow address, with the deposit code as the memo.
+            The bounty goes live once the network has confirmed it. This page updates by itself.
           </p>
           <Copyable label="Escrow address" value={bounty.escrow_address} />
           <Copyable label="Deposit code (memo)" value={bounty.deposit_code} />
+          {!currency().private && (
+            // A Solana Pay link carries the address, the amount and the memo together, so a
+            // wallet that opens it cannot leave the memo out.
+            <p className="pay-link">
+              <a
+                className="button secondary"
+                href={`solana:${bounty.escrow_address}?amount=${formatZec(due)}&memo=${encodeURIComponent(bounty.deposit_code)}&label=trycanari`}
+              >
+                Open in a Solana wallet
+              </a>
+              <small className="muted">
+                The memo matters: it is how your deposit is matched to this bounty. If your wallet has no memo
+                field, use this button, which fills it in.
+                {currency().network ? ` This is Solana ${currency().network}: use test SOL, not real funds.` : ""}
+              </small>
+            </p>
+          )}
         </>
       ) : editable(bounty) ? (
         <ActionForm submit={() => act("fund", { refund_address: refund.trim() })} label="Fund this bounty">
           <label>
-            Shielded refund address
+            Refund address
             <input
               required
               spellCheck={false}
@@ -445,7 +462,7 @@ function Findings({ findings }: { findings: Finding[] }) {
             Tripped in {finding.tripped_runs} of {finding.runs.length} runs. Verified {when(finding.verified_at)}.{" "}
             {finding.payout?.txid && (
               <>
-                Paid {formatZec(finding.payout.amount_zatoshi)} ZEC, transaction <code>{finding.payout.txid}</code>.
+                Paid {formatZec(finding.payout.amount_zatoshi)} {sym()}, transaction <code>{finding.payout.txid}</code>.
               </>
             )}
           </p>
@@ -486,14 +503,14 @@ function LedgerTable({ ledger }: { ledger: Ledger }) {
     <section>
       <h2>Ledger</h2>
       {ledger.entries.length === 0 ? (
-        <p className="muted">No money has moved. Balance {formatZec(ledger.balance_zatoshi)} ZEC.</p>
+        <p className="muted">No money has moved. Balance {formatZec(ledger.balance_zatoshi)} {sym()}.</p>
       ) : (
         <div className="scroll">
           <table>
             <thead>
               <tr>
                 <th>Entry</th>
-                <th className="num">ZEC</th>
+                <th className="num">{sym()}</th>
                 <th>Transaction</th>
                 <th>When</th>
               </tr>
@@ -672,12 +689,12 @@ export function DashboardBounty() {
       <dl className="facts">
         <div>
           <dt>Reward</dt>
-          <dd>{formatZec(bounty.reward_zatoshi)} ZEC</dd>
+          <dd>{formatZec(bounty.reward_zatoshi)} {sym()}</dd>
         </div>
         <div>
           <dt>Escrow</dt>
           <dd>
-            {formatZec(bounty.balance_zatoshi)} of {formatZec(bounty.required_zatoshi)} ZEC
+            {formatZec(bounty.balance_zatoshi)} of {formatZec(bounty.required_zatoshi)} {sym()}
           </dd>
         </div>
         <div>

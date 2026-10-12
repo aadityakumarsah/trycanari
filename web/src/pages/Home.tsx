@@ -7,7 +7,7 @@ import { Flow } from "../components/Flow.tsx";
 import { WalkingMascot } from "../components/WalkingMascot.tsx";
 import { Ago, ErrorNote, Skeleton, words } from "../components/ui.tsx";
 import { useLoad } from "../hooks.ts";
-import { formatZec } from "../money.ts";
+import { currency, formatZec, paidIn, sym } from "../money.ts";
 import type { Activity, BountyPublic } from "../types.ts";
 
 const VERIFIED_BY: [IconName, string][] = [
@@ -16,7 +16,7 @@ const VERIFIED_BY: [IconName, string][] = [
   ["box", "Sandboxed mock tools"],
   ["lock", "Pinned agent config"],
   ["key", "Encrypted transcripts"],
-  ["coin", "Automatic shielded payout"],
+  ["coin", "Automatic payout"],
 ];
 
 const FAQ: [string, string][] = [
@@ -34,7 +34,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "How and when am I paid?",
-    "You give a shielded Zcash address with each attempt. When an attempt is verified, the payment service sends the full reward to that address with the finding ID in the memo. The first hunter to break a config takes the reward, and the bounty pauses.",
+    "You give a payout address with each attempt. When an attempt is verified, the payment service sends the full reward to that address with the finding ID in the memo. The first hunter to break a config takes the reward, and the bounty pauses.",
   ],
   [
     "Can my attack do real damage?",
@@ -108,7 +108,7 @@ function BountyCard({ bounty }: { bounty: BountyPublic }) {
   return (
     <li className="card">
       <p className="reward">
-        {formatZec(bounty.reward_zatoshi)} <span>ZEC</span>
+        {formatZec(bounty.reward_zatoshi)} <span>{sym()}</span>
       </p>
       <div>
         <h3>
@@ -216,13 +216,13 @@ export function Home() {
             {live.length > 0 ? `${live.length} live ${live.length === 1 ? "bounty" : "bounties"}` : "Live now"}
           </span>
           <span className="pill-text">
-            Rewards paid in <b>shielded Zcash</b>
+            Rewards paid in <b>{paidIn()}</b>
           </span>
           <Icon name="chevron" size={14} />
         </Link>
         <h1>
           <span className="mint">Break the Agent</span>
-          <span>Get Paid in Shielded ZEC</span>
+          <span>{currency().private ? "Get Paid in Shielded ZEC" : `Get Paid in ${sym()}`}</span>
         </h1>
         <p className="sub">
           Sponsors plant canaries in their AI agents and lock a reward in escrow. Trip the same canary in three of
@@ -243,7 +243,7 @@ export function Home() {
       <section className="sec" id="bounties">
         <div className="sec-head">
           <h2>Live Bounties</h2>
-          <p>{live.length ? `${live.length} open, ${formatZec(pool)} ZEC in rewards` : "Agents you can attack right now"}</p>
+          <p>{live.length ? `${live.length} open, ${formatZec(pool)} ${sym()} in rewards` : "Agents you can attack right now"}</p>
         </div>
         <ErrorNote>{bounties.error}</ErrorNote>
         {live.length > 1 && (
@@ -329,7 +329,7 @@ export function Home() {
                   </small>
                 </span>
                 <span className="feed-side">
-                  <b>+{formatZec(item.reward_zatoshi)} ZEC</b>
+                  <b>+{formatZec(item.reward_zatoshi)} {sym()}</b>
                   <small>
                     <Ago iso={item.verified_at} />
                   </small>
@@ -483,7 +483,7 @@ export function Home() {
           <div>
             <small>Reward pool</small>
             <b>{formatZec(stats?.reward_pool_zatoshi ?? pool)}</b>
-            <span>ZEC</span>
+            <span>{sym()}</span>
           </div>
           <div>
             <small>Attacks run</small>
@@ -494,7 +494,7 @@ export function Home() {
             <small>Paid to hunters</small>
             <b>{formatZec(stats?.paid_zatoshi ?? 0)}</b>
             <span>
-              ZEC, {stats?.verified_breaks ?? 0} {stats?.verified_breaks === 1 ? "break" : "breaks"}
+              {sym()}, {stats?.verified_breaks ?? 0} {stats?.verified_breaks === 1 ? "break" : "breaks"}
             </span>
           </div>
         </div>
