@@ -225,9 +225,11 @@ ESCROW_ADDRESS=<the wallet's address>
 SOLANA_SECRET_KEY=<its secret key>               # payment process only
 ```
 
-A sponsor's deposit is matched to its bounty by the memo it carries. The funding page gives
-a Solana Pay link that fills in the address, the amount and the memo, because most wallets
-have no memo box.
+A sponsor's deposit is matched to its bounty by the memo it carries. On the funding page a
+sponsor connects Phantom or Solflare and presses one button: the page builds the deposit
+with the address, amount and memo filled in, the wallet signs it, and the server hands it
+to the network. The bounty goes live by itself when the deposit is finalized. There is
+also a Solana Pay link and plain instructions for paying any other way.
 
 **Invite-only hunting.** `INVITE_ONLY=true`. Anyone can make an account and list an agent;
 attacking needs a referral code, used once, and spends tokens from a rolling 24-hour

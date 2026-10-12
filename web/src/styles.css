@@ -1150,3 +1150,29 @@ table.people td { vertical-align: middle; white-space: nowrap; }
 
 .pay-link { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 14px; }
 .pay-link small { max-width: 560px; font-size: 13px; line-height: 19px; }
+
+/* ============ paying a deposit from a wallet ============ */
+.wallet-steps { display: grid; gap: 0; margin: 4px 0 0; padding: 0; list-style: none; counter-reset: step; }
+.wallet-steps > li { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 0 0 26px 44px; counter-increment: step; color: var(--muted); }
+.wallet-steps > li::before { content: counter(step); position: absolute; left: 0; top: -2px; display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--surface); color: var(--muted); font: 600 13px/1 var(--mono); transition: background 0.25s, border-color 0.25s, color 0.25s; }
+.wallet-steps > li::after { content: ""; position: absolute; left: 13.500px; top: 30px; bottom: 4px; width: 1px; background: var(--border); }
+.wallet-steps > li:last-child { padding-bottom: 4px; }
+.wallet-steps > li:last-child::after { display: none; }
+.wallet-steps > li.step-now::before { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 4px var(--accent-bg); }
+.wallet-steps > li.step-done::before { content: "✓"; border-color: var(--accent); background: var(--accent); color: #06130d; }
+.wallet-steps > li.step-done::after { background: #6ee7b766; }
+.wallet-steps b { color: var(--foreground); font: 500 15px/24px var(--display); }
+.wallet-steps .small { max-width: 560px; line-height: 19px; }
+.wallet-steps a { color: var(--accent); }
+.page .wallet-steps .error { margin: 0; }
+.wallet-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.page .wallet-chip { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 5px 6px 5px 12px; border: 1px solid #6ee7b755; border-radius: 999px; background: var(--accent-bg); color: var(--foreground); font-size: 13.500px; }
+.wallet-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.wallet-chip code { border: 0; background: none; color: var(--accent); font: 500 13px/1 var(--mono); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border: 2px solid #6ee7b740; border-top-color: var(--accent); border-radius: 50%; vertical-align: -1px; animation: spin 0.8s linear infinite; }
+.by-hand { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.by-hand summary { color: var(--muted); font-size: 13.500px; cursor: pointer; }
+.by-hand[open] summary { margin-bottom: 14px; }
+.from-wallet { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }

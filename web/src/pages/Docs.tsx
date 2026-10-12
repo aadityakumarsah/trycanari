@@ -309,7 +309,14 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
           <Code>{`curl -X POST ${origin}/v1/bounties/<id>/fund -H "Authorization: Bearer $KEY" \\
   -H 'Content-Type: application/json' -d '{"refund_address": "<your ${addressKind()} address>"}'`}</Code>
           <p>
-            The answer gives the <code>escrow_address</code>, a one-time <code>deposit_code</code> and the{" "}
+            <strong>From the dashboard, with a wallet.</strong> Where rewards are paid on Solana, the Funding tab
+            does this for you: connect Phantom or Solflare, press <em>Fund with wallet</em>, and approve once in
+            your wallet. The address, the amount and the deposit code are filled in, the bounty goes live by itself
+            when the network confirms the deposit, and an unbroken bounty's escrow is returned to the same wallet
+            when you close it. The wallet only ever signs that one payment.
+          </p>
+          <p>
+            <strong>From a script.</strong> The answer gives the <code>escrow_address</code>, a one-time <code>deposit_code</code> and the{" "}
             <code>amount_due_zatoshi</code>. Send that amount to the escrow address with the code as the memo. The
             bounty goes live once the network has confirmed the deposit.
           </p>

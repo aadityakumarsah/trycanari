@@ -6,6 +6,7 @@ import { pictureOf } from "../account.tsx";
 import { api } from "../api.ts";
 import { Transcript } from "../components/Transcript.tsx";
 import { Icon } from "../components/Brand.tsx";
+import { WalletFunding } from "../components/WalletFunding.tsx";
 import { Ago, Avatar, Badge, Copyable, ErrorNote, Skeleton, when, words } from "../components/ui.tsx";
 import { useAction, useInterval, useLoad } from "../hooks.ts";
 import { currency, formatZec, sym } from "../money.ts";
@@ -140,58 +141,74 @@ function Rearm({ bounty, act }: Props) {
   );
 }
 
-function Funding({ bounty, act }: Props) {
+function Funding({ bounty, act, base, reload }: Props & { base: string; reload: () => Promise<void> }) {
   const [refund, setRefund] = useState(bounty.refund_address ?? "");
   const due = Math.max(bounty.required_zatoshi - bounty.balance_zatoshi, 0);
+  const onSolana = !currency().private;
+  const canFund = bounty.state === "awaiting_deposit" || editable(bounty);
+
+  const byHand =
+    bounty.state === "awaiting_deposit" ? (
+      <>
+        <p>
+          Send <strong>{formatZec(due)} {sym()}</strong> to the escrow address, with the deposit code as the memo.
+          The bounty goes live once the network has confirmed it. This page updates by itself.
+        </p>
+        <Copyable label="Escrow address" value={bounty.escrow_address} />
+        <Copyable label="Deposit code (memo)" value={bounty.deposit_code} />
+        {onSolana && (
+          <p className="pay-link">
+            <a
+              className="button secondary"
+              href={`solana:${bounty.escrow_address}?amount=${formatZec(due)}&memo=${encodeURIComponent(bounty.deposit_code)}&label=trycanari`}
+            >
+              Open in a Solana wallet app
+            </a>
+            <small className="muted">
+              The memo matters: it is how your deposit is matched to this bounty.
+            </small>
+          </p>
+        )}
+      </>
+    ) : editable(bounty) ? (
+      <ActionForm submit={() => act("fund", { refund_address: refund.trim() })} label="Get deposit instructions">
+        <label>
+          Refund address
+          <input
+            required
+            spellCheck={false}
+            autoComplete="off"
+            className="code"
+            value={refund}
+            onChange={(e) => setRefund(e.target.value)}
+          />
+          <small>
+            Unspent escrow returns here when you close. You escrow the reward plus the fee; the fee is charged only
+            if a payout is made.
+          </small>
+        </label>
+      </ActionForm>
+    ) : null;
+
   return (
     <section>
       <h2>Funding</h2>
-      {bounty.state === "awaiting_deposit" ? (
+      {!canFund ? (
+        <p className="muted">
+          {bounty.state === "live"
+            ? `This bounty is funded and live. Escrow holds ${formatZec(bounty.balance_zatoshi)} ${sym()}.`
+            : "Funding is available while the bounty is a draft or paused."}
+        </p>
+      ) : onSolana ? (
         <>
-          <p>
-            Send <strong>{formatZec(due)} {sym()}</strong> to the escrow address, with the deposit code as the memo.
-            The bounty goes live once the network has confirmed it. This page updates by itself.
-          </p>
-          <Copyable label="Escrow address" value={bounty.escrow_address} />
-          <Copyable label="Deposit code (memo)" value={bounty.deposit_code} />
-          {!currency().private && (
-            // A Solana Pay link carries the address, the amount and the memo together, so a
-            // wallet that opens it cannot leave the memo out.
-            <p className="pay-link">
-              <a
-                className="button secondary"
-                href={`solana:${bounty.escrow_address}?amount=${formatZec(due)}&memo=${encodeURIComponent(bounty.deposit_code)}&label=trycanari`}
-              >
-                Open in a Solana wallet
-              </a>
-              <small className="muted">
-                The memo matters: it is how your deposit is matched to this bounty. If your wallet has no memo
-                field, use this button, which fills it in.
-                {currency().network ? ` This is Solana ${currency().network}: use test SOL, not real funds.` : ""}
-              </small>
-            </p>
-          )}
+          <WalletFunding bounty={bounty} base={base} onMoved={reload} />
+          <details className="by-hand">
+            <summary>Pay another way: send it yourself</summary>
+            {byHand}
+          </details>
         </>
-      ) : editable(bounty) ? (
-        <ActionForm submit={() => act("fund", { refund_address: refund.trim() })} label="Fund this bounty">
-          <label>
-            Refund address
-            <input
-              required
-              spellCheck={false}
-              autoComplete="off"
-              className="code"
-              value={refund}
-              onChange={(e) => setRefund(e.target.value)}
-            />
-            <small>
-              Unspent escrow returns here when you close. You escrow the reward plus the fee; the fee is charged
-              only if a payout is made.
-            </small>
-          </label>
-        </ActionForm>
       ) : (
-        <p className="muted">Funding is available while the bounty is a draft or paused.</p>
+        byHand
       )}
     </section>
   );
@@ -745,7 +762,7 @@ export function DashboardBounty() {
         )}
         {tab === "agent" && <Config bounty={bounty} act={act} />}
         {tab === "canaries" && <CanarySection bounty={bounty} act={act} />}
-        {tab === "funding" && <Funding bounty={bounty} act={act} />}
+        {tab === "funding" && <Funding bounty={bounty} act={act} base={base} reload={page.reload} />}
         {tab === "activity" && <ActivityTab bountyId={bounty.id} watching={isMoving(bounty)} />}
         {tab === "findings" && <Findings findings={findings} />}
         {tab === "ledger" && <LedgerTable ledger={ledger} />}

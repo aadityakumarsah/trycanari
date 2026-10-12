@@ -15,7 +15,17 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from agentbounty.api import admin, agent_guide, google, health, public, session, spa, sponsor
+from agentbounty.api import (
+    admin,
+    agent_guide,
+    chain,
+    google,
+    health,
+    public,
+    session,
+    spa,
+    sponsor,
+)
 from agentbounty.api.ratelimit import RateLimiter
 from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
@@ -80,6 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Tests put a transport here to stand in for Google. None means the real network.
     app.state.google_transport = None
     app.state.cloudinary_transport = None
+    app.state.solana_transport = None
     # Public answers kept for a few seconds (see api/public.py).
     app.state.public_cache = {}
 
@@ -112,6 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(session.router)
     app.include_router(google.router)
     app.include_router(admin.router)
+    app.include_router(chain.router)
     app.include_router(agent_guide.router)
     # Last: it answers every path the routes above did not claim.
     spa.install(app)

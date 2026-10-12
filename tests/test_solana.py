@@ -291,3 +291,69 @@ async def test_the_site_still_speaks_zec_by_default(platform: Platform) -> None:
         True,
         "demo",
     )
+
+
+async def test_the_server_fetches_a_blockhash_and_forwards_a_signed_deposit(
+    site: Platform, node: Node
+) -> None:
+    site.app.state.solana_transport = httpx.MockTransport(node.handle)
+    sponsor = await site.sponsor()
+    assert (await site.client.get("/v1/solana/blockhash")).status_code == 401
+    got = await sponsor.call("GET", "/v1/solana/blockhash")
+    assert got == {"blockhash": node.blockhash, "cluster": "devnet"}
+
+    # What the page builds and the sponsor's wallet signs: a transfer to the escrow.
+    payer = Keypair()
+    from solders.message import Message
+    from solders.system_program import TransferParams, transfer
+
+    message = Message.new_with_blockhash(
+        [
+            transfer(
+                TransferParams(from_pubkey=payer.pubkey(), to_pubkey=ESCROW.pubkey(), lamports=5)
+            )
+        ],
+        payer.pubkey(),
+        Hash.from_string(node.blockhash),
+    )
+    signed = Transaction([payer], message, Hash.from_string(node.blockhash))
+    wire = base64.b64encode(bytes(signed)).decode()
+    sent = await sponsor.call("POST", "/v1/solana/send", json={"transaction": wire})
+    assert sent == {"signature": str(signed.signatures[0])}
+    assert bytes(node.sent[-1]) == bytes(signed)
+
+    # Anything that is not a properly signed transaction is refused before the network sees it.
+    unsigned = Transaction.new_unsigned(message)
+    for bad in (
+        "not base64!",
+        base64.b64encode(b"junk").decode(),
+        base64.b64encode(bytes(unsigned)).decode(),
+    ):
+        refused = await sponsor.call("POST", "/v1/solana/send", 422, json={"transaction": bad})
+        assert refused["detail"] == "that is not a fully signed Solana transaction"
+    await sponsor.call("POST", "/v1/solana/send", 422, json={"transaction": "A" * 1700})
+    assert len(node.sent) == 1
+    assert (
+        await site.client.post("/v1/solana/send", json={"transaction": wire})
+    ).status_code == 401
+
+    # The network saying the wallet is empty is put in words a sponsor can act on.
+    class Broke(Node):
+        def handle(self, request: httpx.Request) -> httpx.Response:
+            if json.loads(request.content)["method"] == "sendTransaction":
+                message = (
+                    "Transaction simulation failed: Attempt to debit an account but found"
+                    " no record of a prior credit. AccountNotFound"
+                )
+                return httpx.Response(200, json={"error": {"code": -32002, "message": message}})
+            return super().handle(request)
+
+    site.app.state.solana_transport = httpx.MockTransport(Broke().handle)
+    empty = await sponsor.call("POST", "/v1/solana/send", 402, json={"transaction": wire})
+    assert empty["detail"] == "that wallet does not have enough SOL on devnet for this deposit"
+
+
+async def test_wallet_helpers_do_not_exist_off_solana(platform: Platform) -> None:
+    sponsor = await platform.sponsor()
+    await sponsor.call("GET", "/v1/solana/blockhash", 404)
+    await sponsor.call("POST", "/v1/solana/send", 404, json={"transaction": "AAAA"})

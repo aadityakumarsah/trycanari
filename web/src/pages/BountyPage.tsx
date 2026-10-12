@@ -14,6 +14,7 @@ import { useAction, useLoad } from "../hooks.ts";
 import { addressKind, currency, formatZec, sym } from "../money.ts";
 import { useSession } from "../session.tsx";
 import { useToast } from "../toast.tsx";
+import { connectWallet, installedWallets } from "../wallet.ts";
 import type { Account, AttemptAccepted, BountyPublic, EntryPoint } from "../types.ts";
 import { AttemptRow, useSavedAttempts } from "./MyAttempts.tsx";
 
@@ -115,6 +116,24 @@ function AttemptForm({
             value={address}
             onChange={(event) => setAddress(event.target.value)}
           />
+          {!currency().private && installedWallets().length > 0 && (
+            <span className="from-wallet">
+              {installedWallets().map((choice) => (
+                <button
+                  key={choice.name}
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    connectWallet(choice)
+                      .then((wallet) => setAddress(wallet.address))
+                      .catch(() => undefined);
+                  }}
+                >
+                  Use my {choice.name} address
+                </button>
+              ))}
+            </span>
+          )}
           <small>
             The reward is sent here if the attack is verified.{" "}
             {currency().private ? "Transparent addresses are refused." : "Use a wallet you control, not an exchange."}

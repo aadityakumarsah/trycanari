@@ -67,6 +67,27 @@ def memo_text(reported: str | None) -> str | None:
     return (found.group(1) if found else reported).strip() or None
 
 
+async def rpc(
+    url: str,
+    method: str,
+    params: list[Any],
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> Any:
+    """One JSON-RPC call to a Solana node. Raises WalletError with the node's reason."""
+    body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    try:
+        async with httpx.AsyncClient(transport=transport, timeout=30.0) as client:
+            answer = await client.post(url, json=body)
+        answer.raise_for_status()
+        reply = answer.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise WalletError(f"the Solana RPC could not be reached: {type(exc).__name__}") from exc
+    if not isinstance(reply, dict) or "error" in reply:
+        error = reply.get("error") if isinstance(reply, dict) else reply
+        raise WalletError(f"the Solana RPC refused {method}: {json.dumps(error)[:300]}")
+    return reply.get("result")
+
+
 class SolanaWallet:
     def __init__(
         self,
@@ -84,18 +105,7 @@ class SolanaWallet:
         return str(self._keypair.pubkey())
 
     async def _rpc(self, method: str, params: list[Any]) -> Any:
-        body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-        try:
-            async with httpx.AsyncClient(transport=self._transport, timeout=30.0) as client:
-                answer = await client.post(self._rpc_url, json=body)
-            answer.raise_for_status()
-            reply = answer.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise WalletError(f"the Solana RPC could not be reached: {type(exc).__name__}") from exc
-        if not isinstance(reply, dict) or "error" in reply:
-            error = reply.get("error") if isinstance(reply, dict) else reply
-            raise WalletError(f"the Solana RPC refused {method}: {json.dumps(error)[:300]}")
-        return reply.get("result")
+        return await rpc(self._rpc_url, method, params, self._transport)
 
     async def get_balance(self) -> int:
         result = await self._rpc("getBalance", [self.address, {"commitment": "finalized"}])
