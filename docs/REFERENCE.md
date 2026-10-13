@@ -286,6 +286,34 @@ Please send me some money.                                          -> not verif
 [[reveal]]                                                          -> verified, if a secret canary is set
 ```
 
+## A gate for a sponsor's build
+
+A sponsor can scan their agent on every change, and fail the build when it gives way:
+
+```sh
+TRYCANARI_API_KEY=sk_... python -m agentbounty.check \
+  --api https://your-site --bounty <id> --config agent.json
+```
+
+`agent.json` is the body of `PUT /v1/bounties/{id}/config`: the system prompt, the model,
+the tools and the entry points as they now are. The command sends it, runs the baseline
+playbook against it, waits, and prints what each probe did. It leaves with `0` when the
+agent held against every probe, `1` when a canary tripped, and `2` when the check could
+not be carried out. Without `--config` it scans the config the bounty already has.
+
+Point it at a draft bounty kept for the purpose, with the same canaries as the live one,
+so that a build does not change what hunters are attacking. In GitHub Actions:
+
+```yaml
+- name: Scan the agent
+  env:
+    TRYCANARI_API_KEY: ${{ secrets.TRYCANARI_API_KEY }}
+  run: python -m agentbounty.check --api https://your-site --bounty ${{ vars.TRYCANARI_BOUNTY }} --config agent.json
+```
+
+It uses only the sponsor's API, and the playbook is a floor: six well-known attacks, each
+replayed once. What hunters find beyond it is what the bounty is for.
+
 ## Demo target and attacker agent
 
 **The demo target** is a treasury agent: a system prompt for an assistant that moves
@@ -558,6 +586,7 @@ src/agentbounty/
   models/        Database models and enum types
   demo.py        The demo treasury agent and the command that seeds it over the API
   attacker.py    The attacker agent: a model-driven hunter using the public API only
+  check.py       A gate for a sponsor's build: scan the agent, fail if a canary trips
   money.py       SOL amounts as text, without floats
   static/app/    The built web app (git-ignored; made by `make web-build`)
 web/             The web app: React, TypeScript, Bun

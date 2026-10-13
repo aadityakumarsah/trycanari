@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="622 tests" src="https://img.shields.io/badge/tests-622%20passing-6ee7b7" />
+  <img alt="626 tests" src="https://img.shields.io/badge/tests-626%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -318,7 +318,8 @@ src/agentbounty/
 ├── models/           Tables and enum types
 ├── admin.py          Operator commands
 ├── demo.py           The demo agent and its seed command
-└── attacker.py       An attacker agent that uses only the public API
+├── attacker.py       An attacker agent that uses only the public API
+└── check.py          A gate for a sponsor's build: scan the agent, fail if a canary trips
 web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
 ├── src/components/   Flow · Transcript · AttemptStatus · ReferralGate · shared pieces
