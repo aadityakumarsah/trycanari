@@ -5,7 +5,7 @@ import type { Currency } from "./money.ts";
 
 export type BountyState = "draft" | "awaiting_deposit" | "live" | "paused" | "closed";
 export type CanaryType = "secret_leak" | "forbidden_tool";
-export type EntryPoint = "user_message" | "document";
+export type EntryPoint = "user_message" | "document" | "tool_result";
 export type Verdict = "verified" | "not_verified" | "not_counted";
 
 export interface CanaryPublic {
@@ -23,6 +23,8 @@ export interface BountyPublic {
   accepting_attempts: boolean;
   reward_zatoshi: number;
   entry_points: EntryPoint[];
+  /** What the agent is asked to do when the hunter does not write the user's message. */
+  task?: string;
   canaries: CanaryPublic[];
   attempts: number;
   breaks: number;
@@ -44,6 +46,8 @@ export type CodeKind = "hunter" | "sponsor";
 
 /** Who broke a bounty: what the hunter chose to show on their profile. Never the attack. */
 export interface Breaker {
+  /** The break's own page: /break/{id}. */
+  id?: string | null;
   name: string | null;
   picture_url: string | null;
   github: string | null;
@@ -63,6 +67,7 @@ export interface Stats {
 }
 
 export interface Break {
+  id?: string | null;
   bounty_id: string;
   bounty_title: string;
   canary: CanaryPublic;
@@ -191,6 +196,9 @@ export interface Account {
   is_ambassador: boolean;
   is_admin: boolean;
   is_owner: boolean;
+  /** Whether the account has what the Watch plan gives, and until when it has paid. */
+  plan_active?: boolean;
+  plan_until?: string | null;
   invite_only: boolean;
   verified_breaks: number;
   credits: Credits;
@@ -231,6 +239,7 @@ export interface Person {
   /** The cap an admin set by hand in place of the tier's, if any. */
   credit_limit: number | null;
   verified_breaks: number;
+  plan_until?: string | null;
   created_at: string;
 }
 
@@ -279,6 +288,8 @@ export interface Tool {
   description: string;
   parameters: Record<string, unknown>;
   result: string;
+  /** It reads from somewhere a stranger can write; a hunter's planted text comes back from it. */
+  untrusted?: boolean;
 }
 
 export interface ConfigDetail {
@@ -290,6 +301,8 @@ export interface ConfigDetail {
   tools: Tool[];
   params: Record<string, unknown>;
   entry_points: EntryPoint[];
+  /** What the agent is asked to do when the hunter does not write the user's message. */
+  task?: string;
   /** The sponsor's own model endpoint, when the agent runs there. */
   endpoint_base: string | null;
   endpoint_key_set: boolean;
@@ -339,6 +352,35 @@ export interface SponsorBountyDetail extends SponsorBounty {
   rearm: Rearm | null;
   config: ConfigDetail | null;
   canaries: CanaryDetail[];
+  /** Whether its breaks are replayed against other sponsors' agents, and whether it is scanned daily. */
+  shares_breaks: boolean;
+  watch: boolean;
+}
+
+export interface Plan {
+  offered: boolean;
+  active: boolean;
+  until: string | null;
+  price_zatoshi: number;
+  days: number;
+  escrow_address: string;
+  code: string | null;
+  confirmations_required: number;
+}
+
+export interface BreakPage {
+  id: string;
+  bounty_id: string;
+  bounty_title: string;
+  sponsor: SponsorPublic | null;
+  hunter: Hunter | null;
+  canary: CanaryPublic;
+  tripped_runs: number;
+  total_runs: number;
+  reward_zatoshi: number;
+  payout_state: string | null;
+  txid: string | null;
+  verified_at: string;
 }
 
 export interface Message {
@@ -366,6 +408,8 @@ export interface Probe {
   name: string;
   technique: string;
   aimed_at: string;
+  /** Where it comes from: the playbook, a break this bounty paid for, or the shared library. */
+  source?: "playbook" | "past_break" | "library";
   tripped: string[];
   attack: { slot: EntryPoint; content: string }[];
   reply: string;
@@ -380,6 +424,8 @@ export interface Scan {
   total: number;
   risks: Record<string, string>;
   requested_at: string | null;
+  finished_at?: string | null;
+  with_library?: boolean;
 }
 
 export interface Leader {

@@ -27,6 +27,11 @@ interface Props {
 const SLOTS: [EntryPoint, string, string][] = [
   ["user_message", "The user's message", "Hunters type what a user would say to your agent."],
   ["document", "A document it reads", "Hunters supply a file or page your agent is given before the user speaks."],
+  [
+    "tool_result",
+    "What one of its tools returns",
+    "Hunters plant text in a web page, inbox or file your agent goes and reads while doing its job. The hardest test: they never speak to it.",
+  ],
 ];
 
 /** The agent a sponsor lists: what it is told, where it runs, what it can do. */
@@ -40,6 +45,7 @@ export function AgentForm({ bounty, act }: Props) {
   const [base, setBase] = useState(config?.endpoint_base ?? "");
   const [key, setKey] = useState("");
   const [slots, setSlots] = useState<EntryPoint[]>(config?.entry_points ?? ["user_message"]);
+  const [task, setTask] = useState(config?.task ?? "");
 
   const saved = rowsOf(config?.tools ?? []);
   const [asJson, setAsJson] = useState(saved === null);
@@ -126,6 +132,13 @@ export function AgentForm({ bounty, act }: Props) {
       if (problem) throw new Error(problem);
       tools = toolsOf(rows);
     }
+    if (slots.includes("tool_result")) {
+      const reads = Array.isArray(tools) && tools.some((tool: { untrusted?: boolean }) => tool.untrusted);
+      if (!reads) {
+        throw new Error("Hunters can only plant text in a tool that reads untrusted content. Tick that on one of your tools.");
+      }
+      if (!task.trim()) throw new Error("Say what your agent is asked to do, so that it goes and reads what hunters plant.");
+    }
     // Options this form has no box for (top_p, stop, seed) are kept as they were.
     const options: Record<string, unknown> = { ...params };
     delete options.temperature;
@@ -141,6 +154,7 @@ export function AgentForm({ bounty, act }: Props) {
       tools,
       params: options,
       entry_points: slots,
+      task: task.trim(),
     };
     if (own) {
       body.endpoint_base = base.trim();
@@ -316,7 +330,8 @@ export function AgentForm({ bounty, act }: Props) {
             <textarea rows={10} spellCheck={false} value={json} onChange={(e) => setJson(e.target.value)} />
             <small>
               A list of objects with <code>name</code>, <code>description</code>, <code>parameters</code> (JSON
-              Schema) and <code>result</code>.
+              Schema) and <code>result</code>. Add <code>"untrusted": true</code> to a tool that reads from
+              the web, an inbox or a shared file.
             </small>
           </label>
         ) : (
@@ -415,6 +430,17 @@ export function AgentForm({ bounty, act }: Props) {
                   />
                   <small>Your agent gets this back whenever it calls the tool.</small>
                 </label>
+                <label className="check untrusted">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(row.untrusted)}
+                    onChange={(e) => setTool(index, { untrusted: e.target.checked })}
+                  />
+                  <span>
+                    It reads content a stranger could have written
+                    <small>A web page, an inbox, a shared file. Hunters can plant their text in what this tool returns.</small>
+                  </span>
+                </label>
               </div>
             ))}
             <div className="tool-add">
@@ -459,6 +485,21 @@ export function AgentForm({ bounty, act }: Props) {
             </label>
           ))}
         </div>
+        {(slots.includes("tool_result") || task) && (
+          <label>
+            The task your agent is given
+            <textarea
+              rows={3}
+              placeholder="Read our help page at https://example.com/help and tell me the opening hours."
+              value={task}
+              onChange={(e) => setTask(e.target.value)}
+            />
+            <small>
+              What the user asks when the hunter does not write the message. It should make your agent use the tool
+              that reads untrusted content. Hunters see this task.
+            </small>
+          </label>
+        )}
       </div>
 
       <details className="advanced">

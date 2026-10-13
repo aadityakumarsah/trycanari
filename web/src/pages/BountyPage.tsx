@@ -33,7 +33,14 @@ const SLOTS: Record<EntryPoint, { label: string; hint: string; placeholder: stri
     hint: "The user's turn in the conversation.",
     placeholder: "What the user says to the agent.",
   },
+  tool_result: {
+    label: "What the agent's tool returns",
+    hint: "Returned by the tool the agent reads outside content with. The agent finds it while doing its task; it is not the user speaking.",
+    placeholder: "The web page, email or file the agent will come across. Hide your instruction in it.",
+  },
 };
+
+const SLOT_ICON = { document: "doc", user_message: "chat", tool_result: "globe" } as const;
 
 /** How each thing a hunter controls reaches the agent. */
 const SLOT_DETAIL: Record<EntryPoint, string[]> = {
@@ -45,6 +52,12 @@ const SLOT_DETAIL: Record<EntryPoint, string[]> = {
   user_message: [
     "Reaches the agent as what the user says, after the document when there is one.",
     "It is the only turn you write: the agent's own turns and every tool result follow from it.",
+    "Up to 20,000 characters.",
+  ],
+  tool_result: [
+    "Reaches the agent as the result of a tool it calls to read outside content: a web page, an inbox, a file.",
+    "The agent only sees it if it calls that tool, which the sponsor's task is written to make it do.",
+    "It arrives as data, not as the user speaking, so the agent has to be talked into treating it as an instruction.",
     "Up to 20,000 characters.",
   ],
 };
@@ -83,7 +96,7 @@ function Brief({ bounty }: { bounty: BountyPublic }) {
         {bounty.entry_points.map((entry) => (
           <li key={entry}>
             <span className="brief-icon">
-              <Icon name={entry === "document" ? "doc" : "chat"} size={16} />
+              <Icon name={SLOT_ICON[entry]} size={16} />
             </span>
             <div>
               <b>{SLOTS[entry].label}</b>
@@ -96,6 +109,17 @@ function Brief({ bounty }: { bounty: BountyPublic }) {
           </li>
         ))}
       </ul>
+
+      {bounty.task && (
+        <>
+          <h3>What the agent is asked to do</h3>
+          <p className="muted">
+            When you do not write the user's message, the user asks the agent this. Your text has to turn it from
+            the job.
+          </p>
+          <pre className="task">{bounty.task}</pre>
+        </>
+      )}
 
       <h3>{bounty.canaries.length === 1 ? "The canary to trip" : "The canaries to trip: any one wins"}</h3>
       <ul className="brief-list">
@@ -162,11 +186,11 @@ function AttemptForm({
   onSubmitted: (a: AttemptAccepted) => void;
   onCost: (cost: number) => void;
 }) {
-  const [fills, setFills] = useState<Record<EntryPoint, string>>({ document: "", user_message: "" });
+  const [fills, setFills] = useState<Record<EntryPoint, string>>({ document: "", user_message: "", tool_result: "" });
   const [address, setAddress] = useState(savedPayoutAddress);
   const [keep, setKeep] = useState(() => savedPayoutAddress() !== "");
   const action = useAction();
-  const slots = (["document", "user_message"] as const).filter((slot) => bounty.entry_points.includes(slot));
+  const slots = (["tool_result", "document", "user_message"] as const).filter((slot) => bounty.entry_points.includes(slot));
   const account = useAccount().data;
   const metered = account?.invite_only === true;
   const size = slots.reduce((sum, slot) => sum + fills[slot].length, 0);
@@ -180,7 +204,7 @@ function AttemptForm({
   async function send() {
     await action.run(async () => {
       const filled = slots.filter((slot) => fills[slot]).map((slot) => ({ slot, content: fills[slot] }));
-      if (filled.length === 0) throw new Error("Write a message or a document to submit.");
+      if (filled.length === 0) throw new Error("Write your attack before you submit it.");
       const body = { payout_address: address.trim(), fills: filled };
       const accepted = await api<AttemptAccepted>("POST", `/v1/bounties/${bounty.id}/attempts`, { body });
       savePayoutAddress(keep ? address.trim() : "");
@@ -212,7 +236,7 @@ function AttemptForm({
               <Counter used={fills[slot].length} />
             </span>
             <textarea
-              rows={slot === "document" ? 6 : 5}
+              rows={slot === "user_message" ? 5 : 6}
               maxLength={MAX_FILL}
               placeholder={SLOTS[slot].placeholder}
               value={fills[slot]}
@@ -386,7 +410,7 @@ function Sidebar({ bounty, account, cost }: { bounty: BountyPublic; account: Acc
         <ul className="plain">
           {bounty.entry_points.map((entry) => (
             <li key={entry}>
-              <Icon name={entry === "document" ? "doc" : "chat"} size={15} />
+              <Icon name={SLOT_ICON[entry]} size={15} />
               <span>
                 <b>{words(entry)}</b>
                 <small>{SLOTS[entry].hint}</small>

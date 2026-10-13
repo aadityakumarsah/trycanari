@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 import { pictureOf } from "../account.tsx";
 import { formatZec, sym } from "../money.ts";
 import type { Breaker } from "../types.ts";
@@ -28,6 +30,7 @@ export function BrokenBy({ hunters, compact = false }: { hunters: Breaker[]; com
                 {compact ? "" : ` in ${hunter.tripped_runs} of 5 runs`}
               </span>
               <Ago iso={hunter.verified_at} />
+              {!compact && hunter.id && <Link to={`/break/${hunter.id}`}>proof</Link>}
             </small>
           </span>
           <span className="breaker-won">

@@ -2,7 +2,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { NotFound } from "../App.tsx";
-import { pictureOf } from "../account.tsx";
+import { pictureOf, useAccount } from "../account.tsx";
 import { api } from "../api.ts";
 import { useConfirm } from "../confirm.tsx";
 import { AgentForm } from "../components/AgentForm.tsx";
@@ -13,7 +13,7 @@ import { Ago, Avatar, Badge, Copyable, ErrorNote, Skeleton, when, words } from "
 import { useAction, useInterval, useLoad } from "../hooks.ts";
 import { currency, formatZec, sym } from "../money.ts";
 import { useToast } from "../toast.tsx";
-import type { AttemptActivity, EntryPoint, Finding, Hunter, Ledger, Scan, SponsorBountyDetail } from "../types.ts";
+import type { AttemptActivity, EntryPoint, Finding, Hunter, Ledger, Probe, Scan, SponsorBountyDetail } from "../types.ts";
 
 interface Everything {
   bounty: SponsorBountyDetail;
@@ -276,6 +276,11 @@ function Config({ bounty, act }: Props) {
               {config.endpoint_base ? `, on your own endpoint ${config.endpoint_base}` : ", on our provider"}. Entry points: {config.entry_points.map(words).join(", ")}. The config can be
               edited while the bounty is a draft or paused.
             </p>
+            {config.task && (
+              <p className="muted">
+                The task it is given: <q>{config.task}</q>
+              </p>
+            )}
           </>
         )
       )}
@@ -546,35 +551,88 @@ export function isMoving(bounty: SponsorBountyDetail): boolean {
  * The baseline scan: well-known attacks run against the agent before any hunter sees it.
  * It tells a sponsor at once whether the obvious things already work.
  */
-function ScanTab({ bountyId, canaries }: { bountyId: string; canaries: number }) {
+const SOURCES: { source: NonNullable<Probe["source"]>; title: string; about: string }[] = [
+  { source: "past_break", title: "Attacks you paid for", about: "Every attack that broke this bounty, replayed against the agent as it is now." },
+  { source: "library", title: "From the shared library", about: "Attacks that broke other sponsors' agents. You are shown one only if it breaks yours." },
+  { source: "playbook", title: "The baseline playbook", about: "What every hunter tries first, written for this agent's own canaries." },
+];
+
+function ScanTab({ bounty, reload }: { bounty: SponsorBountyDetail; reload: () => Promise<void> }) {
+  const bountyId = bounty.id;
+  const canaries = bounty.canaries.length;
   const path = `/v1/bounties/${bountyId}/scan`;
   const scan = useLoad((signal) => api<Scan>("GET", path, { signal }), bountyId, `sponsor:scan:${bountyId}`);
   const starting = useAction();
+  const setting = useAction();
+  const account = useAccount().data;
+  const planned = account?.plan_active !== false;
   const running = scan.data?.state === "queued" || scan.data?.state === "running";
   useInterval(() => void scan.reload(), 2500, running);
   if (!scan.data) return scan.error ? <ErrorNote>{scan.error}</ErrorNote> : <Skeleton lines={4} />;
   const { state, probes, held, total } = scan.data;
   const broken = total - held;
 
-  async function start() {
+  async function start(again = false) {
     await starting.run(async () => {
-      await api<Scan>("POST", path);
+      await api<Scan>("POST", again ? `${path}?again=true` : path);
       await scan.reload();
+    });
+  }
+
+  async function set(body: { shares_breaks?: boolean; watch?: boolean }) {
+    await setting.run(async () => {
+      await api("PATCH", `/v1/bounties/${bountyId}/settings`, { body });
+      await reload();
     });
   }
 
   return (
     <section>
-      <h2>Baseline scan</h2>
+      <h2>Scan</h2>
       <p className="muted">
-        Six attacks every hunter tries first, written for this agent's own canaries: direct injection, a forged
-        authority, instructions planted in a document, a forged policy update, role-play and an encoded request.
-        Each is replayed once. It is a quick floor, not the five-replay standard a paid break is held to.
+        Everything already known to work, run against your agent: the baseline playbook that every hunter tries
+        first, every attack this bounty has paid for and, with the Watch plan, attacks that broke other
+        sponsors' agents. Each is replayed once. It is a quick floor, not the five-replay standard a paid break
+        is held to.
       </p>
+      <div className="scan-options">
+        <label className="scan-option">
+          <input
+            type="checkbox"
+            checked={bounty.watch}
+            disabled={setting.busy || (!planned && !bounty.watch)}
+            onChange={(event) => void set({ watch: event.target.checked })}
+          />
+          <span>
+            <b>Scan every day while it is live</b>
+            <small>
+              {planned
+                ? "New attacks reach the library all the time. A daily scan tells you when one of them breaks your agent."
+                : "Part of the Watch plan. Get it from your dashboard."}
+            </small>
+          </span>
+        </label>
+        <label className="scan-option">
+          <input
+            type="checkbox"
+            checked={bounty.shares_breaks}
+            disabled={setting.busy}
+            onChange={(event) => void set({ shares_breaks: event.target.checked })}
+          />
+          <span>
+            <b>Share this bounty's breaks with the library</b>
+            <small>
+              Attacks that break this agent are replayed against other sponsors' agents. They see an attack only
+              if it breaks theirs, and never your prompt, tools or transcripts. Off unless you turn it on.
+            </small>
+          </span>
+        </label>
+      </div>
+      <ErrorNote>{setting.error}</ErrorNote>
       {state === null && (
         <div className="scan-start">
           <button type="button" className="accent" disabled={starting.busy || canaries === 0} onClick={() => void start()}>
-            <Icon name="zap" size={15} /> {starting.busy ? "Starting…" : "Run the baseline scan"}
+            <Icon name="zap" size={15} /> {starting.busy ? "Starting…" : "Run the scan"}
           </button>
           <span className="muted small">
             {canaries === 0
@@ -587,7 +645,7 @@ function ScanTab({ bountyId, canaries }: { bountyId: string; canaries: number })
       {running && (
         <div className="replaying">
           <p>
-            <Badge state={state ?? "queued"} /> Running the playbook against your agent…
+            <Badge state={state ?? "queued"} /> Running known attacks against your agent…
           </p>
           <div className="progress" role="progressbar" aria-label="Scanning">
             <i />
@@ -614,8 +672,34 @@ function ScanTab({ bountyId, canaries }: { bountyId: string; canaries: number })
                 : `${broken} ${broken === 1 ? "probe" : "probes"} got through. A hunter would find ${broken === 1 ? "this" : "these"} quickly: consider tightening the agent before you fund the bounty.`}
             </span>
           </div>
+          <div className="scan-again">
+            <span className="muted small">
+              {scan.data.finished_at && (
+                <>
+                  Last run <Ago iso={scan.data.finished_at} />
+                  {scan.data.with_library ? ", with the shared library. " : ". "}
+                </>
+              )}
+              {planned ? "" : "Running it again without changing the agent is part of the Watch plan."}
+            </span>
+            <button type="button" className="secondary small-button" disabled={starting.busy || !planned} onClick={() => void start(true)}>
+              <Icon name="zap" size={14} /> Run again
+            </button>
+          </div>
+          {SOURCES.map(({ source, title, about }) => {
+            const group = probes.filter((probe) => (probe.source ?? "playbook") === source);
+            if (group.length === 0) return null;
+            return (
+              <div key={source} className="probe-group">
+                <h3>
+                  {title}{" "}
+                  <span className="muted">
+                    {group.filter((probe) => probe.tripped.length === 0).length} of {group.length} held
+                  </span>
+                </h3>
+                <p className="muted small">{about}</p>
           <ul className="probes">
-            {probes.map((probe) => (
+            {group.map((probe) => (
               <li key={probe.id} className={probe.tripped.length ? "probe tripped" : "probe"}>
                 <details>
                   <summary>
@@ -634,6 +718,11 @@ function ScanTab({ bountyId, canaries }: { bountyId: string; canaries: number })
                   </summary>
                   <div className="probe-body">
                     <h4>The attack</h4>
+                    {probe.attack.length === 0 && (
+                      <p className="muted">
+                        Not shown. It was written against another sponsor's agent, and yours held against it.
+                      </p>
+                    )}
                     {probe.attack.map((fill) => (
                       <div key={fill.slot}>
                         <p className="muted">{words(fill.slot)}</p>
@@ -652,6 +741,9 @@ function ScanTab({ bountyId, canaries }: { bountyId: string; canaries: number })
               </li>
             ))}
           </ul>
+              </div>
+            );
+          })}
         </>
       )}
     </section>
@@ -858,7 +950,7 @@ export function DashboardBounty() {
         )}
         {tab === "agent" && <Config bounty={bounty} act={act} />}
         {tab === "canaries" && <CanarySection bounty={bounty} act={act} />}
-        {tab === "scan" && <ScanTab bountyId={bounty.id} canaries={bounty.canaries.length} />}
+        {tab === "scan" && <ScanTab bounty={bounty} reload={page.reload} />}
         {tab === "funding" && <Funding bounty={bounty} act={act} base={base} reload={page.reload} />}
         {tab === "activity" && <ActivityTab bountyId={bounty.id} watching={isMoving(bounty)} />}
         {tab === "findings" && <Findings findings={findings} />}

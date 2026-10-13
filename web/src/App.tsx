@@ -8,6 +8,7 @@ import { Icon, Wordmark } from "./components/Brand.tsx";
 import { NotificationBell } from "./components/Notifications.tsx";
 import { Avatar, ErrorNote, firstName, Skeleton } from "./components/ui.tsx";
 import { BountyPage } from "./pages/BountyPage.tsx";
+import { BreakPage } from "./pages/Break.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
 import { Docs } from "./pages/Docs.tsx";
 import { DashboardBounty } from "./pages/DashboardBounty.tsx";
@@ -441,6 +442,14 @@ export function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/docs" element={<Docs />} />
+            <Route
+              path="/break/:breakId"
+              element={
+                <Page>
+                  <BreakPage />
+                </Page>
+              }
+            />
             <Route
               path="/b/:bountyId"
               element={

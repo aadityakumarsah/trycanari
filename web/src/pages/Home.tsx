@@ -34,7 +34,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "What do I control as a hunter?",
-    "Only the entry points a bounty lists. A user-message entry point is the user's turn. A document entry point is one document the agent reads before that turn. Each is capped at 20,000 characters.",
+    "Only the entry points a bounty lists. A user-message entry point is the user's turn. A document entry point is one document the agent reads before that turn. A tool-result entry point is what one of the agent's tools returns, such as a web page it fetches, while it does a task the sponsor set. Each is capped at 20,000 characters.",
   ],
   [
     "How and when am I paid?",
@@ -137,7 +137,7 @@ function BountyCard({ bounty, over = false }: { bounty: BountyPublic; over?: boo
         <p className="label">You control</p>
         {bounty.entry_points.map((slot) => (
           <span key={slot} className="tag">
-            <Icon name={slot === "document" ? "doc" : "chat"} size={13} />
+            <Icon name={slot === "document" ? "doc" : slot === "tool_result" ? "globe" : "chat"} size={13} />
             {words(slot)}
           </span>
         ))}
@@ -413,6 +413,12 @@ export function Home() {
                   <Link to={`/b/${item.bounty_id}`}>{item.bounty_title}</Link>
                   <small>
                     tripped <code>{item.canary.public_label}</code> in {item.tripped_runs} of 5 runs
+                    {item.id && (
+                      <>
+                        {" · "}
+                        <Link to={`/break/${item.id}`}>proof</Link>
+                      </>
+                    )}
                   </small>
                 </span>
                 <span className="feed-side">

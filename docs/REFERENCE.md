@@ -153,6 +153,7 @@ to start, naming the variable, if a required one is missing or invalid.
 | `STARTER_CREDITS` | app | Attack tokens a day before a verified break. Default `5` |
 | `PROVEN_CREDITS` | app | Attack tokens a day after a verified break. Default `25` |
 | `NEW_BOUNTY_PREMIUM` | app | Extra tokens the first attack on a bounty costs. Default `2` |
+| `PLAN_PRICE_ZATOSHI`, `PLAN_DAYS` | app, payment | What the Watch plan costs, in the smallest unit, and how many days that buys. Defaults `0` (no plan is sold; everyone has what it gives) and `30` |
 | `FEE_RATE` | app | The platform fee as a fraction of the reward. Default `0.1` |
 | `WORKER_POLL_SECONDS`, `ATTEMPT_TIMEOUT_SECONDS`, `ATTEMPT_MAX_TRIES` | worker | Queue polling interval, how long a running attempt may go before its worker is taken for dead, and how many tries an attempt gets. Defaults `2`, `900`, `3` |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Compose | Credentials and database for the `db` service |
@@ -297,9 +298,10 @@ TRYCANARI_API_KEY=sk_... python -m agentbounty.check \
 
 `agent.json` is the body of `PUT /v1/bounties/{id}/config`: the system prompt, the model,
 the tools and the entry points as they now are. The command sends it, runs the baseline
-playbook against it, waits, and prints what each probe did. It leaves with `0` when the
-agent held against every probe, `1` when a canary tripped, and `2` when the check could
-not be carried out. Without `--config` it scans the config the bounty already has.
+playbook and the bounty's own paid breaks against it, waits, and prints what each probe
+did. It leaves with `0` when the agent held against every probe, `1` when a canary
+tripped, and `2` when the check could not be carried out. Without `--config` it scans the
+config the bounty already has, and `--again` runs that scan afresh.
 
 Point it at a draft bounty kept for the purpose, with the same canaries as the live one,
 so that a build does not change what hunters are attacking. In GitHub Actions:
@@ -311,8 +313,58 @@ so that a build does not change what hunters are attacking. In GitHub Actions:
   run: python -m agentbounty.check --api https://your-site --bounty ${{ vars.TRYCANARI_BOUNTY }} --config agent.json
 ```
 
-It uses only the sponsor's API, and the playbook is a floor: six well-known attacks, each
-replayed once. What hunters find beyond it is what the bounty is for.
+It uses only the sponsor's API, and a scan is a floor: known attacks, each replayed once.
+What hunters find beyond it is what the bounty is for.
+
+## Scans, the shared library and the Watch plan
+
+There is one scan per config of a bounty (`POST /v1/bounties/{id}/scan`). It replays, once
+each:
+
+- the baseline playbook: six well-known attacks written for the agent's own canaries, and
+  a seventh, planted in a tool's result, for a config with that entry point;
+- every attack the bounty has paid for, refitted to the entry points the config has now;
+- the newest 20 attacks of the shared library, for a sponsor who may draw on it.
+
+Each probe in the answer has a `source`: `playbook`, `past_break` or `library`.
+
+The library is the attacks that broke other sponsors' bounties, and only those whose
+sponsor turned sharing on (`PATCH /v1/bounties/{id}/settings` with `shares_breaks`). It is
+off until they do. A sponsor whose agent holds against a library attack is told only that
+it held; the attack is shown once it breaks their agent, as any break of it would be.
+Nothing else of the bounty it came from is shown: not its prompt, its tools or its
+transcripts. **Hunters' attacks are replayed this way, so the terms hunters accept should
+say so before sponsors are invited to share.**
+
+`POST .../scan?again=true` runs a finished scan afresh. A bounty with `watch` on is scanned
+again every 24 hours while it is live; the replay worker queues it.
+
+The Watch plan is what a sponsor pays for by the month: `again`, `watch`, and the library.
+With `PLAN_PRICE_ZATOSHI` unset there is no plan and everyone has all three. With a
+price, `POST /v1/account/plan` answers with a code; a deposit of at least the price to
+the escrow address, with that code as its memo, moves the account's plan on by `PLAN_DAYS`
+once it has confirmed (twice the price, twice as long). Without the plan those calls
+answer 402. An admin can give or end a plan from the People tab. Plan payments are kept
+in `deposits` and the payment audit log; they are not part of any bounty's ledger.
+
+## Attacks planted in what a tool returns
+
+The `tool_result` entry point is for the attack a hunter cannot type at the agent: an
+instruction in a web page it fetches, an email it opens, a file it reads. A sponsor marks
+a tool `"untrusted": true` and sets the config's `task`, what the agent is asked to do.
+When an attempt fills `tool_result`, every untrusted tool returns the hunter's text in
+place of its canned result, and the user's turn is the task unless the hunter also wrote
+a user message. The task is shown to hunters; which tool is untrusted is not.
+
+A config with this entry point needs both an untrusted tool and a task, and the API
+answers 422 without them.
+
+## A page for each break
+
+`GET /v1/breaks/{id}` and the page `/break/{id}` show one verified break to anyone: the
+hunter and the sponsor as they describe themselves, the canary, how many of the five
+replays tripped, the reward and the payout's transaction. Never the attack. The ids are
+in `GET /v1/activity` and in a bounty's `broken_by`.
 
 ## Demo target and attacker agent
 

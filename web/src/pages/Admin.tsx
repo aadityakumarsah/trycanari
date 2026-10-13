@@ -129,6 +129,32 @@ function Tokens({
   );
 }
 
+/** Whether someone holds the Watch plan, and a way to give it to them or take it back. */
+function PlanCell({ person, onDays }: { person: Person; onDays: (days: number) => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const until = person.plan_until ? new Date(person.plan_until) : null;
+  const active = until !== null && until.getTime() > Date.now();
+  const give = (days: number) => {
+    setBusy(true);
+    void onDays(days).finally(() => setBusy(false));
+  };
+  return (
+    <span className="tokens-cell">
+      <span className="tokens-left" title={active && until ? `Until ${until.toLocaleDateString()}` : "No plan"}>
+        {active && until ? `to ${until.toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : "none"}
+      </span>
+      <button type="button" className="secondary small-button" title="Add 30 days of the Watch plan, without a payment" disabled={busy} onClick={() => give(30)}>
+        +30 days
+      </button>
+      {active && (
+        <button type="button" className="secondary small-button" disabled={busy} onClick={() => give(0)}>
+          End
+        </button>
+      )}
+    </span>
+  );
+}
+
 function People() {
   const [typed, setTyped] = useState("");
   const [query, setQuery] = useState("");
@@ -208,6 +234,7 @@ function People() {
                 <th>Ambassador</th>
                 <th>Admin</th>
                 <th>Tokens</th>
+                <th>Watch plan</th>
                 <th />
               </tr>
             </thead>
@@ -321,6 +348,18 @@ function People() {
                         )
                       }
                       onReset={() => change(person, { reset_credits: true }, `${who(person)} has a full allowance again`)}
+                    />
+                  </td>
+                  <td>
+                    <PlanCell
+                      person={person}
+                      onDays={(days) =>
+                        change(
+                          person,
+                          { plan_days: days },
+                          days ? `${who(person)} has the Watch plan for ${days} more days` : `${who(person)} no longer has the Watch plan`,
+                        )
+                      }
                     />
                   </td>
                   <td className="num">
@@ -632,6 +671,7 @@ const WHAT: Record<string, string> = {
   "banned=true": "banned",
   "banned=false": "no longer banned",
   credits_reset: "given a full token allowance again",
+  plan_ended: "taken off the Watch plan",
 };
 
 /** What admins have done. It is written once and cannot be changed by anyone. */
@@ -662,6 +702,10 @@ function Activity() {
                   ) : item.action === "codes_deleted" ? (
                     <>
                       <b>{item.admin_email}</b> deleted {item.detail}
+                    </>
+                  ) : item.action === "plan_extended" ? (
+                    <>
+                      <b>{item.target_email ?? "Someone"}</b> was given the Watch plan until {item.detail}
                     </>
                   ) : item.action === "credit_limit" ? (
                     <>

@@ -4,10 +4,12 @@
         --api https://your-site --bounty <id> --config agent.json
 
 It sends the agent as it now is (the file is the body of `PUT /v1/bounties/{id}/config`),
-runs the baseline playbook against it, waits for the result and prints what each probe
-did. It leaves with 0 when the agent held against all of them, 1 when a canary tripped,
-and 2 when the check could not be carried out. Without `--config` it scans the config
-the bounty already has.
+scans it, waits for the result and prints what each probe did: the baseline playbook,
+every attack the bounty has paid for and, with the Watch plan, the shared library. It
+leaves with 0 when the agent held against all of them, 1 when a canary tripped, and 2
+when the check could not be carried out. Without `--config` it scans the config the
+bounty already has; `--again` runs that scan afresh where it has been run before, so
+that attacks added since are tried too.
 
 It uses only the sponsor's API, as a sponsor's own script would. Point it at a draft
 bounty kept for the purpose, so that the bounty hunters see is not changed by a build.
@@ -72,6 +74,7 @@ async def check(
     bounty_id: str,
     config: dict[str, Any] | None = None,
     *,
+    again: bool = False,
     within: float = 300,
     wait: Callable[[], Awaitable[None]] | None = None,
 ) -> Verdict:
@@ -88,7 +91,7 @@ async def check(
         saved = await http.put(f"{path}/config", json=config)
         if saved.status_code != 200:
             return Verdict(FAILED, (f"The config was refused: {_refusal(saved)}",))
-    started = await http.post(f"{path}/scan")
+    started = await http.post(f"{path}/scan", params={"again": "true"} if again else None)
     if started.status_code != 202:
         return Verdict(FAILED, (f"The scan could not be started: {_refusal(started)}",))
     scan = started.json()
@@ -108,11 +111,16 @@ async def check(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Scan an agent with the baseline playbook and fail if a canary trips."
+        description="Scan an agent with every known attack and fail if a canary trips."
     )
     parser.add_argument("--api", default="http://127.0.0.1:8000", help="base URL of the service")
     parser.add_argument("--bounty", required=True, help="bounty ID, best a draft kept for this")
     parser.add_argument("--config", type=Path, help="a JSON file with the agent's config to send")
+    parser.add_argument(
+        "--again",
+        action="store_true",
+        help="run the scan afresh even if this config has been scanned (the Watch plan)",
+    )
     parser.add_argument("--timeout", type=float, default=300, help="seconds to wait for the scan")
     args = parser.parse_args()
     key = os.environ.get("TRYCANARI_API_KEY")
@@ -129,7 +137,7 @@ def main() -> None:
     async def run() -> Verdict:
         headers = {"Authorization": f"Bearer {key}"}
         async with httpx.AsyncClient(base_url=args.api, timeout=30, headers=headers) as http:
-            return await check(http, args.bounty, config, within=args.timeout)
+            return await check(http, args.bounty, config, again=args.again, within=args.timeout)
 
     try:
         verdict = asyncio.run(run())

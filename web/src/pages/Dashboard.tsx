@@ -5,6 +5,7 @@ import { completeness, inviteLink, pictureOf, useAccount } from "../account.tsx"
 import { api } from "../api.ts";
 import { Icon } from "../components/Brand.tsx";
 import { ReferralGate } from "../components/ReferralGate.tsx";
+import { WatchPlan } from "../components/WatchPlan.tsx";
 import { Avatar, Badge, ErrorNote, firstName, Skeleton } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
 import { formatZec, paidIn, parseZec, sym } from "../money.ts";
@@ -323,6 +324,8 @@ export function Dashboard() {
           <Link to="/docs#sponsors">Need help? Read the guide</Link>
         </div>
       </section>
+
+      {account?.can_sponsor && <WatchPlan />}
 
       <div className="page-head sub">
         <h2>Your bounties</h2>

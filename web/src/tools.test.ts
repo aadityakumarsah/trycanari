@@ -22,6 +22,10 @@ describe("the tools form", () => {
       { name: "amount", type: "number", required: true, description: "" },
     ]);
     expect(toolsOf(rows ?? [])).toEqual([TRANSFER]);
+    // A tool that reads untrusted content keeps that mark both ways; one that does not has none.
+    const reader = { ...TRANSFER, name: "fetch_page", untrusted: true };
+    expect(toolsOf(rowsOf([reader]) ?? [])).toEqual([reader]);
+    expect("untrusted" in (toolsOf(rows ?? [])[0] ?? {})).toBe(false);
   });
 
   test("a tool with no arguments keeps the plain schema", () => {

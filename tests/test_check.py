@@ -86,3 +86,23 @@ async def test_the_gate_says_so_when_the_check_could_not_be_carried_out(
         verdict = await check.check(http, bounty_id)
     assert verdict.code == check.FAILED
     assert verdict.lines[0].startswith("The scan could not be started")
+
+
+async def test_the_gate_can_run_a_finished_scan_afresh(platform: Platform) -> None:
+    sponsor = await platform.sponsor(f"team-{next(TEAMS)}@example.com")
+    bounty_id = await sponsor.draft()
+    models: list[Any] = [FakeModel(), Obedient()]
+
+    async def work() -> None:
+        await replay.work_once(platform.sessions, platform.cipher, models.pop(0), max_tries=3)
+
+    transport = httpx.ASGITransport(app=platform.app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=sponsor.headers
+    ) as http:
+        assert (await check.check(http, bounty_id, wait=work)).code == check.HELD
+        # Asked the plain way again, the answer is the scan there already is.
+        assert (await check.check(http, bounty_id, wait=work)).code == check.HELD
+        assert len(models) == 1
+        # Asked afresh, it is run again, and this time the agent gives way.
+        assert (await check.check(http, bounty_id, again=True, wait=work)).code == check.TRIPPED

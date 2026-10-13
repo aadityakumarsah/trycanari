@@ -19,6 +19,8 @@ export interface ToolRow {
   description: string;
   result: string;
   args: ArgRow[];
+  /** It reads from somewhere a stranger can write: a web page, an inbox, a shared file. */
+  untrusted?: boolean;
 }
 
 const NAME = /^[A-Za-z0-9_.-]{1,64}$/;
@@ -70,7 +72,13 @@ export function rowsOf(tools: Tool[]): ToolRow[] | null {
   for (const tool of tools) {
     const args = argsOf(tool.parameters);
     if (!args) return null;
-    rows.push({ name: tool.name, description: tool.description, result: tool.result, args });
+    rows.push({
+      name: tool.name,
+      description: tool.description,
+      result: tool.result,
+      args,
+      ...(tool.untrusted ? { untrusted: true } : {}),
+    });
   }
   return rows;
 }
@@ -81,6 +89,7 @@ export function toolsOf(rows: ToolRow[]): Tool[] {
     description: row.description.trim(),
     parameters: schemaOf(row.args),
     result: row.result,
+    ...(row.untrusted ? { untrusted: true } : {}),
   }));
 }
 
@@ -139,6 +148,16 @@ export const TEMPLATES: { label: string; tool: ToolRow }[] = [
       description: "Look up a customer record by ID.",
       result: '{"id": "C-1042", "name": "Dana Reyes", "plan": "pro"}',
       args: [{ name: "customer_id", type: "string", required: true, description: "" }],
+    },
+  },
+  {
+    label: "Read a web page",
+    tool: {
+      name: "fetch_page",
+      description: "Fetch a web page and return its text.",
+      result: "Our opening hours are 9 to 5 on weekdays.",
+      untrusted: true,
+      args: [{ name: "url", type: "string", required: true, description: "" }],
     },
   },
   {

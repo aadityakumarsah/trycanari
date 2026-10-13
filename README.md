@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="626 tests" src="https://img.shields.io/badge/tests-626%20passing-6ee7b7" />
+  <img alt="638 tests" src="https://img.shields.io/badge/tests-638%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -117,6 +117,8 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 - A plain-markdown guide for AI agents at `/agent.md`
 - An attacker agent that hunts by itself
 - A public leaderboard of verified breaks
+- A page for each break, to share: who, which canary, how surely, and the payout
+- Three ways in: the user's message, a document, or a page the agent fetches
 - A Completed list of agents that were broken or closed unbroken
 
 </td>
@@ -128,7 +130,12 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 - Connect your own model: any OpenAI-compatible endpoint, key stored encrypted
 - Canaries: a secret that must not leak, a tool call that must not happen
 - A check that every canary can actually trip
-- Baseline scan: six well-known attacks, run before any hunter arrives
+- Scan: the baseline playbook, every attack you have paid for and, if you opt in to
+  the Watch plan, attacks that broke other sponsors' agents
+- A build gate: `python -m agentbounty.check` fails your build when a canary trips
+- Harder targets: mark a tool as reading untrusted content and hunters must plant
+  their attack in what it returns
+- A daily scan of watched bounties, and a shared library of breaks you choose to join
 - A printable evidence report, with risks named after OWASP's lists
 - One-click funding from a browser wallet
 - Escrow with a deposit code
@@ -143,7 +150,8 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 
 - Invite-only hunting with referral codes
 - Credits: a rolling 24-hour allowance per account
-- Admin page: people, roles, codes
+- Admin page: people, roles, codes, bans, token limits and plans
+- An optional monthly plan for sponsors, paid in SOL
 - The owner can change the model provider and its key from the admin page, with no redeploy
 - Rate limits and a daily token budget
 - Append-only ledger and payment audit
@@ -285,6 +293,7 @@ Everything comes from environment variables; `.env.example` lists them all with 
 | `WALLET_BACKEND` | `fake`, or `solana` with `SOLANA_RPC_URL`, `SOLANA_CLUSTER`, `SOLANA_SECRET_KEY` and `ESCROW_ADDRESS` |
 | `CLOUDINARY_URL` | Turns on profile picture uploads |
 | `INVITE_ONLY` | `true`: hunting needs a referral code and spends credits |
+| `PLAN_PRICE_ZATOSHI`, `PLAN_DAYS` | What the Watch plan costs and for how long. Unset: no plan is sold |
 | `ADMIN_EMAILS` | The owners' Google addresses, separated by commas |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_URL` | Turn on sign in with Google |
 
@@ -390,6 +399,12 @@ for anything sensitive.
   Zcash backend it started with is not supported and is to be removed.
 - **The free model tier is small.** Each attack is replayed five times, so a free Groq or
   OpenRouter key covers a limited number of attacks a day.
+- **Nobody is told when a daily scan finds something.** A watched bounty is scanned
+  every day and the result is on its Scan tab, but no notification or email is sent.
+- **The Watch plan is paid by hand.** A sponsor sends the price with a memo; there is no
+  connect-wallet button for it, and no renewal reminder.
+- **Hunters have not been asked about the shared library.** A sponsor opts in to sharing
+  breaks; the terms hunters accept do not yet say their attacks may be replayed elsewhere.
 - **Field names still say `zatoshi`.** `reward_zatoshi` and its kin hold lamports, the
   smallest unit of SOL. The name is left over from that first wallet.
 - **Email addresses are not verified** at sign-up. Only Google sign-in proves one.

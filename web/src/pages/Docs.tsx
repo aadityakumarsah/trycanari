@@ -611,6 +611,14 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
                   the start of the user turn.
                 </>,
               ],
+              [
+                <code>tool_result</code>,
+                <>
+                  What one of the agent's tools returns: a web page it fetches, an email it opens, a file it reads.
+                  The sponsor sets a task that makes the agent use that tool, and the bounty's page shows the
+                  task. You do not speak to the agent; it comes across your text while doing its job.
+                </>,
+              ],
             ]}
           />
           <p>
