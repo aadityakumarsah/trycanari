@@ -7,7 +7,7 @@
 <p align="center">
   <b>Bug bounties for AI agents.</b><br />
   Sponsors plant canaries in their agents and lock a reward. Hunters attack.<br />
-  A break that is proven five times over is paid automatically, in SOL or shielded Zcash.
+  A break that is proven five times over is paid automatically, in SOL on Solana.
 </p>
 
 <p align="center">
@@ -25,11 +25,10 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="578 tests" src="https://img.shields.io/badge/tests-578%20passing-6ee7b7" />
+  <img alt="622 tests" src="https://img.shields.io/badge/tests-622%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
-  <img alt="Zcash" src="https://img.shields.io/badge/or-shielded%20ZEC-F4B728?logo=zcash&logoColor=black" />
 </p>
 
 ---
@@ -43,7 +42,7 @@
 | **Backend** | Python 3.12 · FastAPI · SQLAlchemy 2 (async) · Alembic · Pydantic v2 |
 | **Frontend** | React 19 · TypeScript (strict) · Bun |
 | **Database** | PostgreSQL 16 (works on Supabase behind its pooler) |
-| **Payments** | SOL on Solana or shielded Zcash, behind a three-method wallet interface |
+| **Payments** | SOL on Solana, behind a three-method wallet interface |
 | **Models** | Any OpenAI-compatible API (OpenRouter, OpenAI and others) |
 | **Pictures** | Cloudinary, one image per account |
 | **Status** | Runs end to end against a real model. Real payments are built but a real send is not yet proven |
@@ -86,7 +85,7 @@ sequenceDiagram
     H->>P: Submit an attack
     P->>P: Replay it 5 times in a sandbox
     alt same canary trips in 3 or more runs
-        P->>H: Pay the reward (SOL or shielded ZEC)
+        P->>H: Pay the reward (SOL)
         P->>S: The attack and all 5 transcripts
         P-->>S: Bounty pauses until patched
     else fewer than 3
@@ -165,7 +164,7 @@ flowchart LR
     W[Replay worker] --> DB
     W --> M[Model API]
     PAY[Payment process] --> DB
-    PAY --> Z[Wallet<br/>Solana or Zcash]
+    PAY --> Z[Wallet<br/>Solana]
     API --> IMG[Cloudinary]
 ```
 
@@ -283,7 +282,7 @@ Everything comes from environment variables; `.env.example` lists them all with 
 | `SECRET_ENCRYPTION_KEY` | 32 random bytes, base64. Losing it makes encrypted columns unreadable |
 | `APP_ENV` | `development`, `test` or `production` |
 | `MODEL_BACKEND` | `fake`, or `real` with `MODEL_API_BASE` and `MODEL_API_KEY` (any OpenAI-compatible API, such as `https://openrouter.ai/api/v1`) |
-| `WALLET_BACKEND` | `fake`; `solana` with `SOLANA_RPC_URL`, `SOLANA_SECRET_KEY` and `ESCROW_ADDRESS`; or `zcash` with the zipher settings. The currency follows from this |
+| `WALLET_BACKEND` | `fake`, or `solana` with `SOLANA_RPC_URL`, `SOLANA_CLUSTER`, `SOLANA_SECRET_KEY` and `ESCROW_ADDRESS` |
 | `CLOUDINARY_URL` | Turns on profile picture uploads |
 | `INVITE_ONLY` | `true`: hunting needs a referral code and spends credits |
 | `ADMIN_EMAILS` | The owners' Google addresses, separated by commas |
@@ -294,8 +293,8 @@ Everything comes from environment variables; `.env.example` lists them all with 
 
 | Variable | Default | What it limits |
 |---|---:|---|
-| `STARTER_CREDITS` | 25 | Tokens a new account may spend in 24 hours |
-| `PROVEN_CREDITS` | 200 | The same, after a verified break |
+| `STARTER_CREDITS` | 5 | Tokens a new account may spend in 24 hours |
+| `PROVEN_CREDITS` | 25 | The same, after a verified break |
 | `RATE_LIMIT_PER_MINUTE` | 120 | Requests per visitor to public endpoints |
 | `ATTEMPTS_PER_ADDRESS_PER_HOUR` | 20 | Attacks per payout address |
 | `ATTEMPTS_PER_BOUNTY_PER_HOUR` | 60 | Attacks on one bounty |
@@ -386,13 +385,12 @@ for anything sensitive.
   have each landed there. Mainnet is not configured.
 - **The baseline scan is a floor, not a verdict.** It replays each of its six attacks once;
   a paid break needs the same tripwire in 3 of 5 replays.
-- **The Zcash wallet does not see deposits on today's testnet.** Its tool predates the
-  network's latest upgrade and its source is no longer published. Use Solana, or replace
-  the tool behind the same three methods.
+- **An older Zcash wallet is still in the code, unused.** The platform pays in SOL. The
+  Zcash backend it started with is not supported and is to be removed.
 - **The free model tier is small.** Each attack is replayed five times, so a free Groq or
   OpenRouter key covers a limited number of attacks a day.
-- **Field names still say `zatoshi`.** `reward_zatoshi` and its kin hold the smallest unit
-  of whichever currency is in use.
+- **Field names still say `zatoshi`.** `reward_zatoshi` and its kin hold lamports, the
+  smallest unit of SOL. The name is left over from that first wallet.
 - **Email addresses are not verified** at sign-up. Only Google sign-in proves one.
 - **Payouts stop at "sent".** The three-method wallet interface cannot see an outgoing
   payment confirm.

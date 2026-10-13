@@ -1,6 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { formatZec, parseZec } from "./money.ts";
+import { SOL, ZEC, formatZec, parseZec, setCurrency } from "./money.ts";
+
+// These amounts are written in the 8-decimal currency of the in-memory wallet.
+beforeAll(() => setCurrency(ZEC));
+afterAll(() => setCurrency(SOL));
 
 describe("formatZec", () => {
   test.each([

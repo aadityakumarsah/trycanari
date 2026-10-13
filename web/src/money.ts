@@ -1,6 +1,7 @@
-// Money as text. Amounts are integers of the currency's smallest unit (zatoshi for ZEC,
-// lamports for SOL); nothing here does float arithmetic on them. Which currency it is
-// comes from the server, since it follows from the wallet the deployment uses.
+// Money as text. Amounts are integers of the currency's smallest unit (lamports for SOL);
+// nothing here does float arithmetic on them. Which currency it is comes from the server,
+// since it follows from the wallet the deployment uses. The platform pays in SOL; ZEC is
+// what the in-memory wallet of tests and local development speaks.
 
 export interface Currency {
   symbol: string;
@@ -14,7 +15,10 @@ export interface Currency {
 
 export const ZEC: Currency = { symbol: "ZEC", decimals: 8, unit: "zatoshi", private: true, network: null };
 
-let current: Currency = ZEC;
+export const SOL: Currency = { symbol: "SOL", decimals: 9, unit: "lamports", private: false, network: null };
+
+// What the site says until the server has answered.
+let current: Currency = SOL;
 
 /** Set once, when the app learns what the server pays in. */
 export function setCurrency(currency: Currency): void {

@@ -1,7 +1,7 @@
 [project]
 name = "agentbounty"
 version = "0.1.0"
-description = "Marketplace for canary-verified attacks on AI agents, paid in shielded ZEC"
+description = "Marketplace for canary-verified attacks on AI agents, paid in SOL on Solana"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

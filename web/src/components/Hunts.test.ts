@@ -1,10 +1,15 @@
-import { describe as group, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe as group, expect, test } from "bun:test";
 
+import { SOL, ZEC, setCurrency } from "../money.ts";
 import type { Hunt, Notification } from "../types.ts";
 import { hunterName } from "./BrokenBy.tsx";
 import { isMoving, matching, payoutStage } from "./Hunts.tsx";
 import { describe } from "./Notifications.tsx";
 import { sponsorName } from "./SponsoredBy.tsx";
+
+// These amounts are written in the 8-decimal currency of the in-memory wallet.
+beforeAll(() => setCurrency(ZEC));
+afterAll(() => setCurrency(SOL));
 
 const HUNT: Hunt = {
   id: "a1",

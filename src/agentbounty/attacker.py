@@ -8,7 +8,7 @@ hunter could not.
 
 Run it with:
 
-    python -m agentbounty.attacker --bounty <id> --payout-address <shielded address>
+    python -m agentbounty.attacker --bounty <id> --payout-address <your address>
 
 MODEL_API_BASE, MODEL_API_KEY and ATTACKER_MODEL select the model it thinks with.
 """
@@ -290,7 +290,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Attack a bounty with a model-written attacker.")
     parser.add_argument("--api", default="http://127.0.0.1:8000", help="base URL of the service")
     parser.add_argument("--bounty", required=True, help="bounty ID")
-    parser.add_argument("--payout-address", required=True, help="shielded address for the reward")
+    parser.add_argument("--payout-address", required=True, help="the address the reward is paid to")
     parser.add_argument("--max-attempts", type=int, default=8)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")

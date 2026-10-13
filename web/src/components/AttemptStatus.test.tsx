@@ -1,12 +1,17 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 
+import { SOL, ZEC, setCurrency } from "../money.ts";
 import type { AttemptStatus } from "../types.ts";
 import { checksOf, whyNot } from "./AttackRun.tsx";
 import { AttemptResult, isSettled } from "./AttemptStatus.tsx";
 import { Transcript } from "./Transcript.tsx";
 
 afterEach(cleanup);
+
+// These amounts are written in the 8-decimal currency of the in-memory wallet.
+beforeAll(() => setCurrency(ZEC));
+afterAll(() => setCurrency(SOL));
 
 const held = (index: number) => ({ run_index: index, tripped: [], replies: 1, tool_calls: [], tokens: 120 });
 const broke = (index: number) => ({
