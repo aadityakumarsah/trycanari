@@ -73,13 +73,30 @@ describe("Docs", () => {
   test("it says how a coding agent scans from the editor, against this site", () => {
     const section = page().container.querySelector("section#editor");
     const blocks = [...(section?.querySelectorAll(".code-block pre") ?? [])].map((pre) => pre.textContent ?? "");
-    expect(blocks.length).toBe(2);
+    expect(blocks.length).toBe(3);
     const settings = JSON.parse(blocks[0] ?? "");
     expect(settings.mcpServers.trycanari.args.at(-1)).toBe("trycanari-mcp");
     expect(settings.mcpServers.trycanari.env.TRYCANARI_API).toBe("http://localhost");
     expect(blocks[1]).toContain("curl http://localhost/skill.md -o .claude/skills/trycanari/SKILL.md");
+    // The browser it drives over the site, and how it is installed.
+    expect(blocks[2]).toContain("trycanari[browser]");
+    expect(blocks[2]).toContain("playwright install chromium");
     const tools = [...(section?.querySelectorAll("td code") ?? [])].map((code) => code.textContent);
-    expect(tools).toEqual(["list_bounties", "get_agent", "create_draft", "add_canary", "scan_agent", "get_scan"]);
+    expect(tools).toEqual([
+      "list_bounties",
+      "get_agent",
+      "create_draft",
+      "add_canary",
+      "scan_agent",
+      "get_scan",
+      "browser_open",
+      "browser_screenshot",
+      "browser_read",
+      "browser_click",
+      "browser_fill",
+      "browser_scrape",
+      "browser_sign_in",
+    ]);
   });
 
   test("what a reward is paid in is a word of its own", () => {

@@ -22,6 +22,12 @@ dependencies = [
 # The MCP server a sponsor's editor runs: `uvx --from <this repository> trycanari-mcp`.
 trycanari-mcp = "agentbounty.mcp_server:main"
 
+[project.optional-dependencies]
+# The browser the MCP server drives over the sponsor's own site (see browser.py). An
+# extra because it brings a browser with it: `uv sync --extra browser`, then
+# `uv run playwright install chromium`.
+browser = ["playwright>=1.47"]
+
 [dependency-groups]
 dev = [
     "mypy>=1.11",
@@ -65,6 +71,11 @@ python_version = "3.12"
 strict = true
 files = ["src", "tests", "migrations", "scripts"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# An extra: it is not installed in every environment (see browser.py).
+module = ["playwright.*"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

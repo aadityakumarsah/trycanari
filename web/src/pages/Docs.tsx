@@ -684,6 +684,31 @@ curl ${origin}/skill.md -o .claude/skills/trycanari/SKILL.md`}</Code>
             the site, by you. A live bounty's config cannot be changed from the editor either. The scan is the same
             one as the <strong>Scan</strong> tab: a floor of known attacks, each replayed once.
           </p>
+          <h3>A browser on your own site</h3>
+          <p>
+            Installed with its browser extra, the same server drives a real Chromium over your deployment, so the
+            coding agent can see what you see rather than only what the API returns.
+          </p>
+          <Code>{`uvx --from "git+https://github.com/aadityakumarsah/trycanari[browser]" trycanari-mcp
+# then, once: playwright install chromium`}</Code>
+          <Table
+            head={["Tool", "What it does"]}
+            rows={[
+              [<code>browser_open</code>, "Opens a page of the site. Every other browser tool then works on it."],
+              [<code>browser_screenshot</code>, "A picture of the page, on the screen or the whole of it."],
+              [<code>browser_read</code>, "What the page says, all of it or the part a selector picks out."],
+              [<code>browser_click</code>, "Presses a link, button, tab or menu entry, by its words or a selector."],
+              [<code>browser_fill</code>, "Types into a box."],
+              [<code>browser_scrape</code>, "Every element a selector picks out, as rows of JSON."],
+              [<code>browser_sign_in</code>, "Gives the browser your session, for the pages only you see."],
+            ]}
+          />
+          <p>
+            It opens this site and nowhere else, so it is a way to look at your own deployment and not a scraper
+            for the web. A control whose words say it cannot be taken back, such as <em>Close and refund</em> or{" "}
+            <em>Delete</em>, is not pressed unless the call says so: what a page says is written by hunters and
+            other sponsors, and an agent reading it should not be talked into pressing one.
+          </p>
         </Section>
 
         <Section id="house" title="The house hunter">
