@@ -595,6 +595,10 @@ function ScanTab({ bounty, reload }: { bounty: SponsorBountyDetail; reload: () =
         sponsors' agents. Each is replayed once. It is a quick floor, not the five-replay standard a paid break
         is held to.
       </p>
+      <p className="muted">
+        Working on the agent in an editor? Your coding agent can run this scan itself, on every change:{" "}
+        <Link to="/docs#editor">scan from your editor</Link>.
+      </p>
       <div className="scan-options">
         <label className="scan-option">
           <input

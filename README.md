@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="638 tests" src="https://img.shields.io/badge/tests-638%20passing-6ee7b7" />
+  <img alt="648 tests" src="https://img.shields.io/badge/tests-648%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -51,8 +51,8 @@
 |---:|---|
 | **51** | API endpoints |
 | **18** | database migrations |
-| **475** | Python tests |
-| **103** | web tests |
+| **522** | Python tests |
+| **126** | web tests |
 | **~9,700** | lines of Python |
 | **~7,900** | lines of TypeScript |
 
@@ -63,6 +63,7 @@
 - [Architecture](#architecture)
 - [Quick start](#quick-start)
 - [Going real](#going-real)
+- [Scan from your editor](#scan-from-your-editor)
 - [Roles: owner, admin, ambassador](#roles-owner-admin-ambassador)
 - [Configuration](#configuration)
 - [Project layout](#project-layout)
@@ -133,6 +134,7 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 - Scan: the baseline playbook, every attack you have paid for and, if you opt in to
   the Watch plan, attacks that broke other sponsors' agents
 - A build gate: `python -m agentbounty.check` fails your build when a canary trips
+- An MCP server and a skill file, so a coding agent scans the agent from your editor
 - Harder targets: mark a tool as reading untrusted content and hunters must plant
   their attack in what it returns
 - A daily scan of watched bounties, and a shared library of breaks you choose to join
@@ -250,6 +252,58 @@ also a Solana Pay link and plain instructions for paying any other way.
 attacking needs a referral code, used once, and spends tokens from a rolling 24-hour
 allowance. This is what keeps the model bill bounded.
 
+## Scan from your editor
+
+A coding agent (Claude Code, Cursor, VS Code and others) can scan the agent it is working
+on: send the prompt and tools as they now are, read which attacks got through, patch and
+scan again. An MCP server gives it the tools, and a skill file tells it how to use them.
+
+**The MCP server** runs on the sponsor's machine, over stdio, with the sponsor's API key.
+Add it to the editor's MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "trycanari": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/aadityakumarsah/trycanari", "trycanari-mcp"],
+      "env": {
+        "TRYCANARI_API_KEY": "<an API key from the profile page>",
+        "TRYCANARI_API": "https://trycanari.pages.dev"
+      }
+    }
+  }
+}
+```
+
+In Claude Code that is one command. From a checkout, `python -m agentbounty.mcp_server`
+(with `PYTHONPATH=src`) is the same server.
+
+```bash
+claude mcp add trycanari --env TRYCANARI_API_KEY=<key> -- \
+  uvx --from git+https://github.com/aadityakumarsah/trycanari trycanari-mcp
+```
+
+| Tool | Does |
+|---|---|
+| `list_bounties` | The account's bounties, with their IDs and states |
+| `get_agent` | The config and canaries a bounty holds; planted secret values are left out |
+| `create_draft` | Makes a draft bounty from a config and its canaries, for scanning |
+| `add_canary` | Adds a tripwire to a draft or paused bounty |
+| `scan_agent` | Sends the agent as it now is and scans it; for every probe that got through, the attack, the reply and the tool calls |
+| `get_scan` | The latest scan, without starting one |
+
+No tool funds, activates, closes or deletes a bounty, and the service refuses to change a
+live bounty's config: money, and what hunters see, are changed on the site, by a person.
+
+**The skill file** is served at `/skill.md`, with the deployment's own address filled in.
+It is kept in `src/agentbounty/skills/trycanari/SKILL.md`.
+
+```bash
+mkdir -p .claude/skills/trycanari
+curl https://trycanari.pages.dev/skill.md -o .claude/skills/trycanari/SKILL.md
+```
+
 ## Roles: owner, admin, ambassador
 
 | Role | Can | How someone gets it |
@@ -328,7 +382,9 @@ src/agentbounty/
 ├── admin.py          Operator commands
 ├── demo.py           The demo agent and its seed command
 ├── attacker.py       An attacker agent that uses only the public API
-└── check.py          A gate for a sponsor's build: scan the agent, fail if a canary trips
+├── check.py          A gate for a sponsor's build: scan the agent, fail if a canary trips
+├── mcp_server.py     An MCP server for a sponsor's editor: a coding agent runs the scan
+└── skills/           The skill file that tells a coding agent how to use it (/skill.md)
 web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
 ├── src/components/   Flow · Transcript · AttemptStatus · ReferralGate · shared pieces
@@ -342,8 +398,8 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 475 Python tests, each on its own scratch database
-make web-test     # 103 web tests
+make test         # 522 Python tests, each on its own scratch database
+make web-test     # 126 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
 make e2e          # the definition of done, as one test
@@ -359,7 +415,7 @@ The Python tests never touch a remote database: they refuse any host that is not
 | API and workers | Render, from `render.yaml` | One Docker service running all three processes |
 | Database | Supabase | `make migrate`; row level security is on for every table |
 
-The Pages worker passes `/v1`, `/health` and `/agent.md` to the API, so the browser sees a
+The Pages worker passes `/v1`, `/health`, `/agent.md` and `/skill.md` to the API, so the browser sees a
 single origin. Set `API_ORIGIN` on Pages to the API's address. Details are in the
 [reference](docs/REFERENCE.md).
 

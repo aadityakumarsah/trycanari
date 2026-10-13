@@ -390,6 +390,13 @@ tbody tr td, tfoot tr th { border-top: 1px solid var(--border); }
 .btn-line { border-color: var(--border-strong); background: var(--black); color: var(--foreground); }
 .btn-line:hover { border-color: var(--foreground); }
 .sponsor-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.editor-strip { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: center; gap: 40px; padding: 32px 40px; border-top: 1px solid var(--border); }
+.editor-strip h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 16px; font-weight: 500; line-height: 22px; }
+.editor-strip p { margin-top: 12px; color: var(--muted); font-size: 14px; line-height: 20px; }
+.editor-strip .code-block { margin: 0; }
+@media (max-width: 960px) {
+  .editor-strip { grid-template-columns: 1fr; gap: 24px; padding: 28px var(--pad); }
+}
 .sec .empty { max-width: 640px; margin: 0 auto; }
 .agent-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
 .agent-head h2 { margin-top: 10px; font-size: 32px; line-height: 44px; }

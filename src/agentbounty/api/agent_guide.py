@@ -1,7 +1,9 @@
-"""The hunter side of the platform as one markdown file, for agents that read rather than click."""
+"""The platform as markdown, for agents that read rather than click: the hunter side as a
+guide, and the sponsor side as a skill file for the agent in a sponsor's editor."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
@@ -9,6 +11,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy import and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentbounty import HOSTED_SITE
 from agentbounty.api.public import cached, public_views
 from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import BountyPublic
@@ -21,6 +24,15 @@ from agentbounty.services.wallet import address_kind
 from agentbounty.settings import Settings
 
 router = APIRouter(include_in_schema=False, dependencies=[Depends(limit_by_client)])
+
+# The skill as it is kept in the repository, where it names the hosted site.
+SKILL = (Path(__file__).parent.parent / "skills" / "trycanari" / "SKILL.md").read_text()
+
+
+def site(request: Request) -> str:
+    """The address people use, which behind a proxy is not the one this process hears."""
+    settings: Settings = request.app.state.settings
+    return f"{settings.public_url.rstrip('/')}/" if settings.public_url else str(request.base_url)
 
 
 def guide(base_url: str, bounties: list[BountyPublic], settings: Settings) -> str:
@@ -116,8 +128,13 @@ async def agent_guide(
 ) -> PlainTextResponse:
     live = and_(Bounty.state == BountyState.LIVE, Bounty.close_requested_at.is_(None))
     bounties = await cached(request, "bounties", lambda: public_views(session, live))
-    settings: Settings = request.app.state.settings
-    # The address people use, which behind a proxy is not the one this process hears.
-    base = f"{settings.public_url.rstrip('/')}/" if settings.public_url else str(request.base_url)
-    text = guide(base, bounties, settings)
+    text = guide(site(request), bounties, request.app.state.settings)
+    return PlainTextResponse(text, media_type="text/markdown; charset=utf-8")
+
+
+@router.get("/skill.md")
+async def skill(request: Request) -> PlainTextResponse:
+    """The skill file for a coding agent that scans from the editor (see mcp_server.py),
+    with this deployment's address where the file names the hosted one."""
+    text = SKILL.replace(HOSTED_SITE, site(request).rstrip("/"))
     return PlainTextResponse(text, media_type="text/markdown; charset=utf-8")

@@ -226,6 +226,13 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
                   <small>The whole platform as one markdown file</small>
                 </span>
               </a>
+              <Link to="/docs#editor" onClick={onNavigate}>
+                <Icon name="code" size={18} />
+                <span>
+                  <strong>For your editor</strong>
+                  <small>Your coding agent scans your agent, over MCP</small>
+                </span>
+              </Link>
               <Link to="/docs#api" onClick={onNavigate}>
                 <Icon name="box" size={18} />
                 <span>
@@ -305,6 +312,7 @@ function Footer({ onNavigate }: { onNavigate: () => void }) {
         </Link>
         <a href="/api-docs">API explorer</a>
         <a href="/agent.md">agent.md</a>
+        <a href="/skill.md">skill.md</a>
         <a href={REPOSITORY} target="_blank" rel="noreferrer">
           GitHub
         </a>

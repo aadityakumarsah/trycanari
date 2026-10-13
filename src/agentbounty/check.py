@@ -46,7 +46,7 @@ class Verdict:
         return "\n".join(self.lines)
 
 
-def _refusal(response: httpx.Response) -> str:
+def refusal(response: httpx.Response) -> str:
     try:
         detail = response.json().get("detail")
     except (ValueError, AttributeError):
@@ -54,7 +54,7 @@ def _refusal(response: httpx.Response) -> str:
     return str(detail or f"the service answered {response.status_code}")
 
 
-def _summary(scan: dict[str, Any]) -> Verdict:
+def summary(scan: dict[str, Any]) -> Verdict:
     lines = []
     for probe in scan["probes"]:
         tripped = probe["tripped"]
@@ -69,7 +69,15 @@ def _summary(scan: dict[str, Any]) -> Verdict:
     return Verdict(TRIPPED, tuple(lines))
 
 
-async def check(
+class CheckError(Exception):
+    """The check could not be carried out. The message says why."""
+
+
+class UnfinishedError(CheckError):
+    """The scan had not finished when the wait for it ran out. It may yet."""
+
+
+async def scan(
     http: httpx.AsyncClient,
     bounty_id: str,
     config: dict[str, Any] | None = None,
@@ -77,8 +85,9 @@ async def check(
     again: bool = False,
     within: float = 300,
     wait: Callable[[], Awaitable[None]] | None = None,
-) -> Verdict:
-    """Scan a bounty's agent and say whether it held, giving up after `within` seconds.
+) -> dict[str, Any]:
+    """Send the config if there is one, scan the bounty's agent and return the finished
+    scan as `GET /v1/bounties/{id}/scan` gives it, giving up after `within` seconds.
     `wait` is what happens between two looks at the scan: a pause, unless the caller has
     something better to do."""
     if wait is None:
@@ -90,23 +99,40 @@ async def check(
     if config is not None:
         saved = await http.put(f"{path}/config", json=config)
         if saved.status_code != 200:
-            return Verdict(FAILED, (f"The config was refused: {_refusal(saved)}",))
+            raise CheckError(f"The config was refused: {refusal(saved)}")
     started = await http.post(f"{path}/scan", params={"again": "true"} if again else None)
     if started.status_code != 202:
-        return Verdict(FAILED, (f"The scan could not be started: {_refusal(started)}",))
-    scan = started.json()
+        raise CheckError(f"The scan could not be started: {refusal(started)}")
+    found: dict[str, Any] = started.json()
     deadline = time.monotonic() + within
-    while scan["state"] in ("queued", "running"):
+    while found["state"] in ("queued", "running"):
         if time.monotonic() > deadline:
-            return Verdict(FAILED, (f"The scan was not finished after {within:.0f} seconds.",))
+            raise UnfinishedError(f"The scan was not finished after {within:.0f} seconds.")
         await wait()
         read = await http.get(f"{path}/scan")
         if read.status_code != 200:
-            return Verdict(FAILED, (f"The scan could not be read: {_refusal(read)}",))
-        scan = read.json()
-    if scan["state"] != "done":
-        return Verdict(FAILED, ("The platform could not run the scan. Run the check again.",))
-    return _summary(scan)
+            raise CheckError(f"The scan could not be read: {refusal(read)}")
+        found = read.json()
+    if found["state"] != "done":
+        raise CheckError("The platform could not run the scan. Run the check again.")
+    return found
+
+
+async def check(
+    http: httpx.AsyncClient,
+    bounty_id: str,
+    config: dict[str, Any] | None = None,
+    *,
+    again: bool = False,
+    within: float = 300,
+    wait: Callable[[], Awaitable[None]] | None = None,
+) -> Verdict:
+    """Scan a bounty's agent and say whether it held. See `scan` for the arguments."""
+    try:
+        found = await scan(http, bounty_id, config, again=again, within=within, wait=wait)
+    except CheckError as failed:
+        return Verdict(FAILED, (str(failed),))
+    return summary(found)
 
 
 def main() -> None:

@@ -95,7 +95,7 @@ Then `make migrate`. What to know:
 
 `make web-deploy` builds the app and publishes it to the Pages project `trycanari`
 (https://trycanari.pages.dev). Pages serves only the static app. A small worker
-(`web/cloudflare/_worker.js`) passes `/v1`, `/health`, `/agent.md`, `/api-docs` and
+(`web/cloudflare/_worker.js`) passes `/v1`, `/health`, `/agent.md`, `/skill.md`, `/api-docs` and
 `/openapi.json` to the API, so the browser still sees a single origin.
 
 The API, the replay worker and the payment process are Python and run elsewhere.
@@ -315,6 +315,43 @@ so that a build does not change what hunters are attacking. In GitHub Actions:
 
 It uses only the sponsor's API, and a scan is a floor: known attacks, each replayed once.
 What hunters find beyond it is what the bounty is for.
+
+## Scanning from an editor: the MCP server and the skill
+
+The same scan, run by the coding agent that is changing the agent. `agentbounty.mcp_server`
+is an MCP server on standard input and output, installed as the command `trycanari-mcp`.
+An editor starts it with the sponsor's key in `TRYCANARI_API_KEY` and the service's address
+in `TRYCANARI_API` or `--api` (the hosted site when neither is given):
+
+```sh
+uvx --from git+https://github.com/aadityakumarsah/trycanari trycanari-mcp
+```
+
+It is a client of the sponsor's API and nothing more: it holds no database connection and
+runs nowhere but on the sponsor's machine. Its tools:
+
+| Tool | Calls | Does |
+|---|---|---|
+| `list_bounties` | `GET /v1/sponsor/bounties` | IDs, states and titles |
+| `get_agent` | `GET /v1/sponsor/bounties/{id}` | The config, in the form `PUT …/config` takes, and each canary's label and rule. A planted secret's value is left out |
+| `create_draft` | `POST /v1/bounties`, `PUT …/config`, `POST …/canaries` | A draft with a config and at least one canary. If a step is refused the draft is deleted again |
+| `add_canary` | `POST /v1/bounties/{id}/canaries` | One more canary on a draft or paused bounty |
+| `scan_agent` | `PUT …/config` if a config is given, `POST …/scan`, `GET …/scan` | Scans and waits (`wait_seconds`, 120 by default). `config_path` reads the config from a JSON file |
+| `get_scan` | `GET /v1/bounties/{id}/scan` | The latest scan, or how far it has got |
+
+What it leaves out is deliberate. There is no tool to fund, activate, pause, close or
+delete a bounty, so a coding agent cannot move money or change what hunters see; and the
+API itself refuses a config for a live bounty. A scan's report quotes attacks, some written
+by strangers, into the coding agent's context, so each is marked as text to be read as
+data, and an attack or a reply is cut at 2,000 characters. A key that is missing or
+refused is said in the tool's answer, where the person at the editor sees it, and the
+server writes only warnings to standard error.
+
+The skill file, `src/agentbounty/skills/trycanari/SKILL.md`, tells a coding agent when to
+scan and how: find the agent in the repository, scan a draft, read what got through, patch
+the agent and never the canaries, scan again. `GET /skill.md` serves it with the
+deployment's own address in place of the hosted one, so `curl <site>/skill.md -o
+.claude/skills/trycanari/SKILL.md` installs a copy that points at the right service.
 
 ## Scans, the shared library and the Watch plan
 

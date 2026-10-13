@@ -10,12 +10,17 @@ dependencies = [
     "cryptography>=43",
     "fastapi>=0.115",
     "httpx>=0.27",
+    "mcp>=2",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
     "solders>=0.29.0",
     "sqlalchemy[asyncio]>=2.0.30",
     "uvicorn[standard]>=0.30",
 ]
+
+[project.scripts]
+# The MCP server a sponsor's editor runs: `uvx --from <this repository> trycanari-mcp`.
+trycanari-mcp = "agentbounty.mcp_server:main"
 
 [dependency-groups]
 dev = [

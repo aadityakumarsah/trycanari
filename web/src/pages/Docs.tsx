@@ -43,6 +43,7 @@ export const CONTENTS: Group[] = [
     entries: [
       { id: "sponsors", title: "Quickstart for sponsors" },
       { id: "rearm", title: "Patching and re-arming" },
+      { id: "editor", title: "Scanning from your editor" },
     ],
   },
   {
@@ -171,6 +172,7 @@ export function Docs() {
           <a href="/api-docs">Interactive API explorer</a>
           <a href="/openapi.json">openapi.json</a>
           <a href="/agent.md">agent.md</a>
+          <a href="/skill.md">skill.md</a>
         </div>
       </aside>
 
@@ -595,6 +597,59 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
           <p>The paid attack is your regression test.</p>
         </Section>
 
+        <Section id="editor" title="Scanning from your editor">
+          <p>
+            A coding agent (Claude Code, Cursor, VS Code and others) can run the scan itself while it works on
+            your agent: send the prompt and tools as they now are in the repository, read which attacks got
+            through, patch and scan again. Two pieces make that work: an MCP server, which gives the coding agent
+            the tools, and a skill file, which tells it how to use them.
+          </p>
+          <h3>1. Add the MCP server</h3>
+          <p>
+            Make an API key on your <Link to="/profile">profile</Link> and add the server to your editor's MCP
+            settings. It runs on your machine and talks to this site with your key.
+          </p>
+          <Code>{`{
+  "mcpServers": {
+    "trycanari": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/aadityakumarsah/trycanari", "trycanari-mcp"],
+      "env": {
+        "TRYCANARI_API_KEY": "<your API key>",
+        "TRYCANARI_API": "${origin}"
+      }
+    }
+  }
+}`}</Code>
+          <h3>2. Add the skill</h3>
+          <p>
+            <a href="/skill.md">/skill.md</a> is the skill file. Save it where your coding agent looks for skills:
+          </p>
+          <Code>{`mkdir -p .claude/skills/trycanari
+curl ${origin}/skill.md -o .claude/skills/trycanari/SKILL.md`}</Code>
+          <h3>3. Ask for a scan</h3>
+          <p>
+            Ask the coding agent to scan your agent. It works on a draft bounty, which hunters never see and which
+            holds no money, and has these tools:
+          </p>
+          <Table
+            head={["Tool", "What it does"]}
+            rows={[
+              [<code>list_bounties</code>, "Your bounties, with their IDs and states."],
+              [<code>get_agent</code>, "The config and canaries a bounty holds. Planted secret values are left out."],
+              [<code>create_draft</code>, "A draft bounty made from a config and its canaries, for scanning."],
+              [<code>add_canary</code>, "One more tripwire on a draft or paused bounty."],
+              [<code>scan_agent</code>, "Send the agent as it now is and scan it. For every probe that got through: the attack, the reply and the tool calls."],
+              [<code>get_scan</code>, "The latest scan, without starting one."],
+            ]}
+          />
+          <p>
+            No tool funds, activates, closes or deletes a bounty: money, and what hunters see, are changed here on
+            the site, by you. A live bounty's config cannot be changed from the editor either. The scan is the same
+            one as the <strong>Scan</strong> tab: a floor of known attacks, each replayed once.
+          </p>
+        </Section>
+
         <Section id="entry-points" title="Entry points">
           <p>
             An entry point is a place in the conversation a hunter may put text. A bounty declares which ones it
@@ -765,6 +820,7 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
               [<Endpoint method="POST" path="/v1/sponsors" />, "Sign up as a sponsor. Returns the API key, once."],
               [<Endpoint method="GET" path="/v1/invites/{code}" />, "What an invite link offers: who it is from, and whether it is still unused."],
               [<Endpoint method="GET" path="/agent.md" />, "The hunter side of the platform as markdown."],
+              [<Endpoint method="GET" path="/skill.md" />, "A skill file for a coding agent that scans your agent from the editor."],
             ]}
           />
           <h3>Sponsor</h3>

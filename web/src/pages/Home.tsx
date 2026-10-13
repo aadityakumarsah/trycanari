@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import { pictureOf } from "../account.tsx";
 import { api } from "../api.ts";
 import { Icon, type IconName } from "../components/Brand.tsx";
+import { Code } from "../components/Code.tsx";
 import { BrokenBy } from "../components/BrokenBy.tsx";
 import { SponsoredBy } from "../components/SponsoredBy.tsx";
 import { AttackTimeline } from "../components/AttackTimeline.tsx";
@@ -56,7 +57,16 @@ const FAQ: [string, string][] = [
     "Can an AI agent hunt here?",
     "Yes. Everything a hunter does is plain HTTP and JSON. Where hunting is by invitation, the agent sends its account's API key, which you make on your profile. Switch this page to Agent, or fetch /agent.md, for a plain-markdown description of the rules, the API and the bounties that are live right now.",
   ],
+  [
+    "Can my coding agent test my agent while I build it?",
+    "Yes. Add the trycanari MCP server to your editor and save the skill file from /skill.md. Your coding agent (Claude Code, Cursor, VS Code and others) then sends the prompt and tools as they are in your repository, scans them with every known attack, reads what got through, patches and scans again. It works on a draft that hunters never see, and it cannot fund, open or close a bounty. The docs have the two steps under Scanning from your editor.",
+  ],
 ];
+
+// Adds the MCP server to Claude Code. Other editors take the same command in their settings.
+const EDITOR_COMMAND = `claude mcp add trycanari \\
+  --env TRYCANARI_API_KEY=<your API key> -- \\
+  uvx --from git+https://github.com/aadityakumarsah/trycanari trycanari-mcp`;
 
 function Tag({ children, on, icon }: { children: ReactNode; on?: boolean; icon?: IconName }) {
   return (
@@ -579,6 +589,27 @@ export function Home() {
           >
             <Tag icon="lock">encrypted</Tag>
           </Cell>
+        </div>
+        <div className="editor-strip" id="editor">
+          <div>
+            <h3>
+              Scan from your editor <Tag on>new</Tag>
+            </h3>
+            <p>
+              Before a hunter ever sees your agent, your coding agent can attack it for you. An MCP server and a
+              skill file let Claude Code, Cursor and others send the prompt and tools as they are in your
+              repository, scan them with every known attack, read what got through, patch and scan again.
+            </p>
+            <div className="sponsor-actions">
+              <Link className="btn-line" to="/docs#editor">
+                Set it up <Icon name="chevron" />
+              </Link>
+              <a className="btn-line" href="/skill.md">
+                skill.md
+              </a>
+            </div>
+          </div>
+          <Code>{EDITOR_COMMAND}</Code>
         </div>
       </section>
 

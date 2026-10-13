@@ -18,7 +18,7 @@ describe("Docs", () => {
   test("every entry in the sidebar leads to a section on the page", () => {
     const view = page();
     const ids = CONTENTS.flatMap((group) => group.entries.map((entry) => entry.id));
-    expect(ids.length).toBe(20);
+    expect(ids.length).toBe(21);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) {
       expect(view.container.querySelector(`section#${id} h2`)).not.toBeNull();
@@ -46,6 +46,7 @@ describe("Docs", () => {
       "/v1/bounties/{id}/ledger",
       "/v1/session",
       "/agent.md",
+      "/skill.md",
     ]) {
       expect(text).toContain(path);
     }
@@ -68,8 +69,20 @@ describe("Docs", () => {
     expect(view.container.querySelectorAll(".code-block button").length).toBeGreaterThan(8);
   });
 
+  test("it says how a coding agent scans from the editor, against this site", () => {
+    const section = page().container.querySelector("section#editor");
+    const blocks = [...(section?.querySelectorAll(".code-block pre") ?? [])].map((pre) => pre.textContent ?? "");
+    expect(blocks.length).toBe(2);
+    const settings = JSON.parse(blocks[0] ?? "");
+    expect(settings.mcpServers.trycanari.args.at(-1)).toBe("trycanari-mcp");
+    expect(settings.mcpServers.trycanari.env.TRYCANARI_API).toBe("http://localhost");
+    expect(blocks[1]).toContain("curl http://localhost/skill.md -o .claude/skills/trycanari/SKILL.md");
+    const tools = [...(section?.querySelectorAll("td code") ?? [])].map((code) => code.textContent);
+    expect(tools).toEqual(["list_bounties", "get_agent", "create_draft", "add_canary", "scan_agent", "get_scan"]);
+  });
+
   test("the machine-readable references are linked", () => {
     const hrefs = [...page().container.querySelectorAll(".docs-nav a")].map((a) => a.getAttribute("href"));
-    for (const href of ["/api-docs", "/openapi.json", "/agent.md"]) expect(hrefs).toContain(href);
+    for (const href of ["/api-docs", "/openapi.json", "/agent.md", "/skill.md"]) expect(hrefs).toContain(href);
   });
 });

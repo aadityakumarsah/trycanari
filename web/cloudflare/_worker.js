@@ -6,7 +6,7 @@
 // client address this worker reports.
 
 const API_PREFIXES = ["/v1/"];
-const API_PATHS = new Set(["/v1", "/health", "/agent.md", "/api-docs", "/openapi.json"]);
+const API_PATHS = new Set(["/v1", "/health", "/agent.md", "/skill.md", "/api-docs", "/openapi.json"]);
 
 // The same headers the API puts on the page (see src/agentbounty/api/spa.py).
 const PAGE_HEADERS = {
