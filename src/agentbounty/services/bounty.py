@@ -205,6 +205,8 @@ def config_hash(config: TargetConfig, canaries: Sequence[CanaryDefinition]) -> s
                 "description": tool.description,
                 "parameters": tool.parameters,
                 "result": tool.result,
+                # Only when set, so that a config without one keeps the hash it always had.
+                **({"untrusted": True} if tool.untrusted else {}),
             }
             for tool in config.tools
         ],
@@ -223,6 +225,8 @@ def config_hash(config: TargetConfig, canaries: Sequence[CanaryDefinition]) -> s
     if config.endpoint is not None:
         # Only when set, so that a config without one keeps the hash it always had.
         canonical["endpoint"] = config.endpoint
+    if config.task:
+        canonical["task"] = config.task
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(encoded.encode()).hexdigest()
 
@@ -249,6 +253,7 @@ def _tools_to_json(tools: Sequence[MockTool]) -> list[dict[str, Any]]:
             "description": tool.description,
             "parameters": dict(tool.parameters),
             "result": tool.result,
+            **({"untrusted": True} if tool.untrusted else {}),
         }
         for tool in tools
     ]
@@ -263,6 +268,7 @@ async def load_target(session: AsyncSession, cipher: Cipher, row: TargetConfigRo
         params=row.params_json,
         entry_points=tuple(EntryPoint(slot) for slot in row.entry_points_json),
         endpoint=row.endpoint_base,
+        task=row.task or "",
     )
     canaries = tuple(
         LoadedCanary(canary.id, _definition(canary, cipher))
@@ -307,6 +313,7 @@ def _write_config(
     row.model = config.model
     row.params_json = dict(config.params)
     row.entry_points_json = sorted(config.entry_points)
+    row.task = config.task or None
 
 
 async def _rehash(session: AsyncSession, cipher: Cipher, row: TargetConfigRow) -> str:
@@ -333,6 +340,7 @@ async def _new_version(
         model=previous.model if previous else "",
         params_json=dict(previous.params_json) if previous else {},
         entry_points_json=list(previous.entry_points_json) if previous else [],
+        task=previous.task if previous else None,
         endpoint_base=previous.endpoint_base if previous else None,
         endpoint_key_enc=previous.endpoint_key_enc if previous else None,
     )

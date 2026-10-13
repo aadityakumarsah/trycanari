@@ -119,6 +119,13 @@ class Settings(BaseSettings):
     # price, so spreading thin across many bounties is dear and focusing is cheap.
     new_bounty_premium: int = Field(default=2, ge=0)
 
+    # The Watch plan: scanning an unchanged agent again on demand, a scan of every watched
+    # bounty each day, and the shared library of breaks. What it costs for PLAN_DAYS, in
+    # the currency's smallest unit. 0, the default, means there is no plan to buy and
+    # everyone has what it gives.
+    plan_price_zatoshi: int = Field(default=0, ge=0)
+    plan_days: int = Field(default=30, ge=1)
+
     # How long the public listing, a bounty's public page and the activity feed may be
     # served from memory. They are the same for everyone, so a few seconds saves most of
     # the database work a busy page would cause. 0 switches the cache off.

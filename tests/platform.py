@@ -144,8 +144,14 @@ class Platform:
         self, wallet: FakeWallet | None = None, caps: SpendingCaps | None = None
     ) -> PaymentService:
         """A new payment service, as after a restart: nothing carried over in memory."""
+        settings = self.app.state.settings
         return PaymentService(
-            self.sessions, wallet or self.wallet, deposit_confirmations=3, caps=caps
+            self.sessions,
+            wallet or self.wallet,
+            deposit_confirmations=3,
+            caps=caps,
+            plan_price=settings.plan_price_zatoshi,
+            plan_days=settings.plan_days,
         )
 
     @property

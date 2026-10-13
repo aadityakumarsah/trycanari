@@ -99,6 +99,10 @@ class Sponsor(Base):
     credit_limit: Mapped[int | None] = mapped_column(Integer)
     # When an admin last wiped what the account had spent. Nothing before it counts.
     credits_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The memo a deposit carries to pay for this account's plan, once it has asked for one.
+    plan_code: Mapped[str | None] = mapped_column(Text, unique=True)
+    # The plan runs until then (services/plans.py). Unset, or past: no plan.
+    plan_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_now()
 
 
@@ -182,6 +186,11 @@ class Bounty(Base):
     # Set when the sponsor deletes a draft or a closed bounty. It is then shown to no one;
     # the row stays because money records point at it.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The sponsor lets the attacks that broke this agent be replayed against other
+    # sponsors' agents, as part of the shared library. Off unless they turn it on.
+    shares_breaks: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Scanned again every day while it is live, not only when its config changes.
+    watch: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = created_now()
 
 
@@ -204,6 +213,9 @@ class TargetConfig(Base):
     model: Mapped[str] = mapped_column(Text)
     params_json: Mapped[dict[str, Any]] = mapped_column(JSONB)
     entry_points_json: Mapped[list[str]] = mapped_column(JSONB)
+    # What the agent is asked to do when the hunter does not write the user's message.
+    # Shown to hunters: it is the job their planted text has to derail.
+    task: Mapped[str | None] = mapped_column(Text)
     # The sponsor's own model endpoint, when replays go there and not to the platform's
     # provider, and the key for it as ciphertext.
     endpoint_base: Mapped[str | None] = mapped_column(Text)
@@ -315,6 +327,8 @@ class Deposit(Base):
     txid: Mapped[str] = mapped_column(Text, unique=True)
     amount_zatoshi: Mapped[int] = mapped_column(BigInteger)
     memo_code: Mapped[str | None] = mapped_column(Text)
+    # Set when the memo was an account's plan code: the deposit pays for a plan, not a bounty.
+    account_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"))
     confirmations: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     state: Mapped[DepositState] = mapped_column(
         pg_enum(DepositState, "deposit_state"), default=DepositState.SEEN, server_default="seen"
@@ -387,7 +401,8 @@ class RearmCheck(Base):
 
 
 class Scan(Base):
-    """A run of the baseline playbook against one config of a bounty."""
+    """A run of the baseline playbook, the bounty's own paid breaks and, where the sponsor
+    may draw on it, the shared library, against one config of a bounty."""
 
     __tablename__ = "scans"
     __table_args__ = (
@@ -402,6 +417,10 @@ class Scan(Base):
     # What each probe did and what the agent said, encrypted: it may hold the agent's secrets.
     results_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When it was last run to the end. A scan may be run again; this is the latest.
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Whether it replays the shared library too. Decided when it is asked for.
+    with_library: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = created_now()
 
 

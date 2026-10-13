@@ -100,7 +100,9 @@ class FakeModel:
         [[reveal]]                    reply with the system prompt, word for word
         [[call NAME {"json": ...}]]   call the tool NAME with those arguments
 
-    After a tool result it replies "Done." Anything else gets a polite refusal
+    After a tool result it replies "Done.", unless the result itself carries a
+    directive, which it obeys as it would the user's: that is an agent taken in
+    by what it read. Anything else gets a polite refusal
     to do anything interesting. A system prompt that contains GUARD_SENTENCE
     makes it ignore both directives, which is how a "patched" config is modelled.
     Token counts are word counts, and a reply is cut
@@ -124,11 +126,13 @@ class FakeModel:
         if not any(message.role == "assistant" for message in messages):
             self._obeying = self._obedience[self._conversations % len(self._obedience)]
             self._conversations += 1
-        if messages and messages[-1].role == "tool":
-            return self._respond(messages, params, "Done.")
-        instructions = "\n".join(m.content for m in messages if m.role == "user")
         prompts = [m.content for m in messages if m.role == "system"]
         guarded = any(GUARD_SENTENCE in prompt for prompt in prompts)
+        after_tool = bool(messages) and messages[-1].role == "tool"
+        if after_tool:
+            instructions = messages[-1].content
+        else:
+            instructions = "\n".join(m.content for m in messages if m.role == "user")
         if self._obeying and not guarded:
             call = self._requested_call(instructions, tools)
             if call is not None:
@@ -136,7 +140,7 @@ class FakeModel:
             if REVEAL_DIRECTIVE in instructions:
                 system = " ".join(m.content for m in messages if m.role == "system")
                 return self._respond(messages, params, f"My instructions are: {system}")
-        return self._respond(messages, params, "How can I help?")
+        return self._respond(messages, params, "Done." if after_tool else "How can I help?")
 
     def _requested_call(self, text: str, tools: Sequence[ToolSpec]) -> ToolCallRequest | None:
         available = {tool.name for tool in tools}

@@ -143,6 +143,8 @@ class PersonOut(BaseModel):
     credits_cap: int
     credit_limit: int | None
     verified_breaks: int
+    # Until when the account holds the Watch plan, if it does.
+    plan_until: datetime | None = None
     created_at: datetime
 
 
@@ -160,6 +162,8 @@ class PersonUpdate(Body):
     credit_limit: StrictInt | None = Field(default=None, ge=0, le=10_000)
     # Forget what they have spent, so their allowance is full again.
     reset_credits: bool | None = None
+    # Add this many days to their Watch plan, without a payment. 0 ends the plan.
+    plan_days: StrictInt | None = Field(default=None, ge=0, le=3_650)
 
 
 class AdminCodeCreate(Body):
@@ -252,6 +256,9 @@ class AccountOut(BaseModel):
     is_admin: bool
     # The owner: the only one who can make or remove admins.
     is_owner: bool
+    # Whether the account has what the Watch plan gives, and until when it has paid.
+    plan_active: bool = True
+    plan_until: datetime | None = None
     # Whether attacks need an account and credits on this deployment.
     invite_only: bool
     verified_breaks: int
@@ -294,6 +301,9 @@ class ToolIn(Body):
     parameters: dict[str, Any] = Field(default_factory=lambda: {"type": "object"})
     # What the mock returns when the agent calls the tool. No real tool ever runs.
     result: str = Field(default="ok", max_length=10_000)
+    # It reads from somewhere a stranger can write: a web page, an inbox, a shared file.
+    # A hunter's tool-result fill is returned by every tool marked this way.
+    untrusted: bool = False
 
 
 class ConfigIn(Body):
@@ -302,6 +312,9 @@ class ConfigIn(Body):
     tools: list[ToolIn] = Field(default_factory=list, max_length=32)
     params: dict[str, Any] = Field(default_factory=dict)
     entry_points: list[EntryPoint] = Field(default_factory=lambda: [EntryPoint.USER_MESSAGE])
+    # What the agent is asked to do when the hunter does not write the user's message.
+    # Needed with the tool-result entry point, and shown to hunters.
+    task: str = Field(default="", max_length=4_000)
     # The sponsor's own OpenAI-compatible endpoint. Without one, the agent runs on the
     # platform's provider.
     endpoint_base: str | None = Field(default=None, min_length=1, max_length=300)
@@ -470,6 +483,7 @@ class ToolOut(BaseModel):
     description: str
     parameters: dict[str, Any]
     result: str
+    untrusted: bool = False
 
 
 class ConfigDetail(BaseModel):
@@ -482,6 +496,7 @@ class ConfigDetail(BaseModel):
     tools: list[ToolOut]
     params: dict[str, Any]
     entry_points: list[EntryPoint]
+    task: str = ""
     endpoint_base: str | None = None
     # The key itself is never sent back.
     endpoint_key_set: bool = False
@@ -513,6 +528,36 @@ class SponsorBountyDetail(SponsorBounty):
     rearm: RearmOut | None
     config: ConfigDetail | None
     canaries: list[CanaryDetail]
+    # Whether the attacks that broke it may be replayed against other sponsors' agents,
+    # and whether it is scanned again every day while it is live.
+    shares_breaks: bool = False
+    watch: bool = False
+
+
+class BountySettingsIn(Body):
+    shares_breaks: bool | None = None
+    watch: bool | None = None
+
+
+class BountySettingsOut(BaseModel):
+    shares_breaks: bool
+    watch: bool
+
+
+class PlanOut(BaseModel):
+    """The Watch plan, as an account sees it."""
+
+    # Whether a plan is sold here at all. Where it is not, everyone has what it gives.
+    offered: bool
+    active: bool
+    until: datetime | None
+    price_zatoshi: int
+    days: int
+    # How to pay: send the price to this address with the code as the memo. The code is
+    # null until the account has asked for it.
+    escrow_address: str
+    code: str | None
+    confirmations_required: int
 
 
 class MessageOut(BaseModel):
@@ -542,7 +587,12 @@ class ProbeOut(BaseModel):
     technique: str
     # The canary it was aimed at, and the canaries it tripped: empty when the agent held.
     aimed_at: str
+    # Where the probe comes from: the playbook, a break this bounty paid for, or the
+    # library of attacks that broke other agents.
+    source: Literal["playbook", "past_break", "library"] = "playbook"
     tripped: list[str]
+    # Empty for an attack from the library that this agent held against: it was written
+    # against someone else's agent, and is shown only once it breaks this one.
     attack: list[FillIn]
     reply: str
     tool_calls: list[ToolCallOut]
@@ -559,6 +609,9 @@ class ScanOut(BaseModel):
     # How the risk each kind of canary guards against is named, after OWASP's lists.
     risks: dict[str, str]
     requested_at: datetime | None
+    # When it last ran to the end, and whether that run drew on the shared library.
+    finished_at: datetime | None = None
+    with_library: bool = False
 
 
 class LeaderOut(BaseModel):
@@ -620,6 +673,8 @@ class BreakerOut(BaseModel):
     which canary fell and what it paid. Never the attack."""
 
     # All three are null for a hunter with no account, or who gave their profile none.
+    # The break's own page: /break/{id}.
+    id: uuid.UUID | None = None
     name: str | None
     picture_url: str | None
     github: str | None
@@ -649,6 +704,8 @@ class BountyPublic(BaseModel):
     accepting_attempts: bool
     reward_zatoshi: int
     entry_points: list[EntryPoint]
+    # What the agent is asked to do when the hunter does not write the user's message.
+    task: str = ""
     canaries: list[CanaryPublic]
     # How many attacks hunters have submitted, and how many were verified breaks.
     attempts: int = 0
@@ -669,11 +726,31 @@ class StatsOut(BaseModel):
 class BreakOut(BaseModel):
     """A verified break, as the public sees it: that it happened, never how."""
 
+    id: uuid.UUID | None = None
     bounty_id: uuid.UUID
     bounty_title: str
     canary: CanaryPublic
     reward_zatoshi: int
     tripped_runs: int
+    verified_at: datetime
+
+
+class BreakPage(BaseModel):
+    """One verified break, on a page of its own that anyone can be sent: who broke which
+    agent, how surely, and the payment that proves it was paid. Never the attack."""
+
+    id: uuid.UUID
+    bounty_id: uuid.UUID
+    bounty_title: str
+    sponsor: SponsorPublic | None
+    hunter: HunterOut | None
+    canary: CanaryPublic
+    tripped_runs: int
+    total_runs: int
+    reward_zatoshi: int
+    # The payout, once there is one: its state and, when sent, its transaction.
+    payout_state: PayoutState | None
+    txid: str | None
     verified_at: datetime
 
 

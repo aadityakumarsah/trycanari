@@ -64,6 +64,7 @@ async def test_an_attempt_becomes_a_verdict(platform: Platform) -> None:
             "accepting_attempts": True,
             "reward_zatoshi": 250_000_000,
             "entry_points": ["document", "user_message"],
+            "task": "",
             "canaries": [
                 {"type": "secret_leak", "public_label": "signing_reference"},
                 {"type": "forbidden_tool", "public_label": "unapproved_transfer"},

@@ -23,7 +23,7 @@ from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
 from agentbounty.models import Attempt
 from agentbounty.models import TargetConfig as TargetConfigRow
-from agentbounty.services import attempts, endpoint, playbook, provider, rearm, scan
+from agentbounty.services import attempts, endpoint, plans, playbook, provider, rearm, scan
 from agentbounty.services.bounty import LoadedTarget, load_target
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.harness import (
@@ -230,8 +230,8 @@ async def process_scan(
     limits: SandboxLimits = DEFAULT_LIMITS,
     own: endpoint.Connector | None = None,
 ) -> None:
-    """Run the baseline playbook against a config, one replay a probe, and record what
-    each probe did."""
+    """Run everything a scan replays against a config (the playbook, the bounty's paid
+    breaks, the shared library), one replay a probe, and record what each probe did."""
     async with sessions() as session:
         config = await session.scalar(
             select(TargetConfigRow)
@@ -243,6 +243,7 @@ async def process_scan(
             .limit(1)
         )
         target = await load_target(session, cipher, config) if config else None
+        probes = await scan.probes(session, claim, target) if target else []
     if target is None:
         # The config was edited after the scan was asked for: there is nothing to scan.
         async with sessions.begin() as session:
@@ -252,7 +253,7 @@ async def process_scan(
     results: list[dict[str, Any]] = []
     try:
         async with model_for(target, model, own) as chosen:
-            for probe in playbook.probes(target):
+            for probe in probes:
                 (ran,) = await run_attempt(
                     target.config, list(probe.fills), chosen, runs=1, limits=limits
                 )
@@ -273,10 +274,14 @@ async def process_scan(
                         "name": probe.name,
                         "technique": probe.technique,
                         "aimed_at": probe.aimed_at,
+                        "source": probe.source,
                         "tripped": tripped,
+                        # An attack from the library was written against someone else's
+                        # agent. It is shown only once it has broken this one.
                         "attack": [
                             {"slot": fill.slot.value, "content": fill.content}
                             for fill in probe.fills
+                            if tripped or probe.source != playbook.LIBRARY
                         ],
                         "reply": said[:600],
                         "tool_calls": [
@@ -414,6 +419,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                     )
                     await rearm.requeue_stale(session, older_than=stale_after)
                     await scan.requeue_stale(session, older_than=stale_after)
+                    await scan.requeue_watched(session, plans_offered=plans.offered(settings))
                 if await work_once(
                     sessions, cipher, model, max_tries=settings.attempt_max_tries, own=own
                 ):

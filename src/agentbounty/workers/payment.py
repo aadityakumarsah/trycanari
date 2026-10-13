@@ -37,6 +37,8 @@ def make_service(
         wallet,
         deposit_confirmations=settings.deposit_confirmations,
         caps=SpendingCaps(settings.payout_max_zatoshi, settings.payout_daily_max_zatoshi),
+        plan_price=settings.plan_price_zatoshi,
+        plan_days=settings.plan_days,
     )
     return service, wallet if isinstance(wallet, FakeWallet) else None
 

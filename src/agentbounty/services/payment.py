@@ -47,7 +47,7 @@ from agentbounty.models import (
     Sponsor,
     TargetConfig,
 )
-from agentbounty.services import notify
+from agentbounty.services import notify, plans
 from agentbounty.services.ledger import append_entry, bounty_balance
 from agentbounty.services.wallet import IncomingPayment, WalletBackend
 
@@ -150,11 +150,16 @@ class PaymentService:
         *,
         deposit_confirmations: int = 3,
         caps: SpendingCaps | None = None,
+        plan_price: int = 0,
+        plan_days: int = 30,
     ) -> None:
         self._sessions = sessions
         self._wallet = wallet
         self._deposit_confirmations = deposit_confirmations
         self._caps = caps or SpendingCaps()
+        # What the Watch plan costs for so many days. 0: no plan is sold.
+        self._plan_price = plan_price
+        self._plan_days = plan_days
         # Kept in memory: after a restart every deposit is read again, which is
         # harmless because recording one is idempotent on its txid.
         self._cursor: str | None = None
@@ -196,7 +201,19 @@ class PaymentService:
 
         if deposit.state is DepositState.SEEN:
             bounty = await self._bounty_awaiting(session, deposit.memo_code)
-            if bounty is None:
+            buyer = None if bounty else await self._plan_buyer(session, deposit)
+            if buyer is not None:
+                deposit.account_id = buyer.id
+                deposit.state = DepositState.MATCHED
+                await audit(
+                    session,
+                    PaymentAction.DEPOSIT_MATCHED,
+                    ref_id=deposit.id,
+                    amount_zatoshi=deposit.amount_zatoshi,
+                    txid=deposit.txid,
+                    detail=f"pays for the plan of account {buyer.id}",
+                )
+            elif bounty is None:
                 deposit.state = DepositState.UNMATCHED
                 await audit(
                     session,
@@ -221,10 +238,26 @@ class PaymentService:
                     txid=deposit.txid,
                 )
 
-        if (
-            deposit.state is DepositState.MATCHED
-            and deposit.confirmations >= self._deposit_confirmations
-        ):
+        confirmed = deposit.confirmations >= self._deposit_confirmations
+        if deposit.state is DepositState.MATCHED and confirmed and deposit.account_id is not None:
+            account = await session.scalar(
+                select(Sponsor).where(Sponsor.id == deposit.account_id).with_for_update()
+            )
+            assert account is not None  # noqa: S101 - deposits.account_id is a foreign key
+            # Paid for twice over, it runs twice as long. The deposit's state is what
+            # makes a second credit impossible: it is credited in this same transaction.
+            months = deposit.amount_zatoshi // self._plan_price if self._plan_price else 1
+            until = plans.extend(account, self._plan_days * max(1, months))
+            deposit.state = DepositState.CREDITED
+            await audit(
+                session,
+                PaymentAction.DEPOSIT_CREDITED,
+                ref_id=deposit.id,
+                amount_zatoshi=deposit.amount_zatoshi,
+                txid=deposit.txid,
+                detail=f"plan of account {account.id} runs until {until.date().isoformat()}",
+            )
+        elif deposit.state is DepositState.MATCHED and confirmed:
             assert deposit.bounty_id is not None  # noqa: S101 - set when it was matched
             bounty = await session.scalar(
                 select(Bounty).where(Bounty.id == deposit.bounty_id).with_for_update()
@@ -263,6 +296,18 @@ class PaymentService:
                     txid=deposit.txid,
                     detail="arrived after the bounty closed; needs manual handling",
                 )
+
+    async def _plan_buyer(self, session: AsyncSession, deposit: Deposit) -> Sponsor | None:
+        """The account whose plan this deposit pays for: its memo is the account's plan
+        code and it is at least the price. Anything less is left for manual handling."""
+        if not self._plan_price or deposit.memo_code is None:
+            return None
+        if deposit.amount_zatoshi < self._plan_price:
+            return None
+        found: Sponsor | None = await session.scalar(
+            select(Sponsor).where(Sponsor.plan_code == deposit.memo_code)
+        )
+        return found
 
     @staticmethod
     async def _bounty_awaiting(session: AsyncSession, code: str | None) -> Bounty | None:

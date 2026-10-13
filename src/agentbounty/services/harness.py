@@ -38,6 +38,9 @@ class EntryPoint(StrEnum):
 
     USER_MESSAGE = "user_message"
     DOCUMENT = "document"
+    # What a tool the agent reads from hands back: a web page it fetches, a file it opens.
+    # The hunter never speaks to the agent; the agent finds the text while doing its task.
+    TOOL_RESULT = "tool_result"
 
 
 class CapReason(StrEnum):
@@ -75,6 +78,9 @@ class MockTool:
     description: str
     parameters: Mapping[str, object]
     result: str = "ok"
+    # It reads from somewhere a stranger can write: the web, an inbox, a shared file. When a
+    # hunter fills the tool-result entry point, this is the tool that returns their text.
+    untrusted: bool = False
 
     @property
     def spec(self) -> ToolSpec:
@@ -90,12 +96,24 @@ class TargetConfig:
     entry_points: tuple[EntryPoint, ...] = (EntryPoint.USER_MESSAGE,)
     # The base URL of the sponsor's own model endpoint. None: the platform's provider.
     endpoint: str | None = None
+    # What the agent is asked to do when the hunter does not write the user's message: the
+    # job during which it comes across what the hunter planted.
+    task: str = ""
 
     def __post_init__(self) -> None:
         if not self.system_prompt or not self.model:
             raise ValueError("a config needs a system prompt and a model")
         if not self.entry_points or len(set(self.entry_points)) != len(self.entry_points):
             raise ValueError("a config needs at least one entry point, each listed once")
+        if EntryPoint.TOOL_RESULT in self.entry_points:
+            if not any(tool.untrusted for tool in self.tools):
+                raise ValueError(
+                    "the tool-result entry point needs a tool marked as reading untrusted content"
+                )
+            if not self.task:
+                raise ValueError(
+                    "the tool-result entry point needs a task: what the agent is asked to do"
+                )
         names = [tool.name for tool in self.tools]
         if len(set(names)) != len(names):
             raise ValueError("tool names must be unique")
@@ -143,8 +161,10 @@ def validate_fills(entry_points: Sequence[EntryPoint], attempt: Attempt) -> None
 def build_conversation(config: TargetConfig, attempt: Attempt) -> list[ChatMessage]:
     """A fresh conversation: the sponsor's system prompt, then one user turn.
 
-    Hunter text goes into that user turn and nowhere else. A document comes
-    first, in <document> tags, followed by the user message if there is one.
+    Hunter text goes into that user turn, or into what an untrusted tool returns
+    (see MockToolExecutor), and nowhere else. A document comes first, in
+    <document> tags, followed by the user message if there is one. Where the
+    hunter wrote no message, the user asks for the sponsor's task.
     """
     validate_attempt(config, attempt)
     fills = {fill.slot: fill.content for fill in attempt}
@@ -153,6 +173,8 @@ def build_conversation(config: TargetConfig, attempt: Attempt) -> list[ChatMessa
         parts.append(f"<document>\n{fills[EntryPoint.DOCUMENT]}\n</document>")
     if EntryPoint.USER_MESSAGE in fills:
         parts.append(fills[EntryPoint.USER_MESSAGE])
+    elif config.task:
+        parts.append(config.task)
     return [
         ChatMessage("system", config.system_prompt),
         ChatMessage("user", "\n\n".join(parts)),
@@ -171,10 +193,15 @@ class MockToolExecutor:
 
     It is synchronous and holds no client, socket or callable, only the canned
     results, so there is nothing through which a call could have an effect.
+    `planted` is the hunter's text for the tool-result entry point: it is what
+    every tool marked untrusted returns, in place of its canned result.
     """
 
-    def __init__(self, tools: Sequence[MockTool]) -> None:
-        self._results = {tool.name: tool.result for tool in tools}
+    def __init__(self, tools: Sequence[MockTool], planted: str | None = None) -> None:
+        self._results = {
+            tool.name: planted if planted is not None and tool.untrusted else tool.result
+            for tool in tools
+        }
         self._calls: list[RecordedToolCall] = []
 
     def execute(self, name: str, arguments: Mapping[str, object]) -> str:
@@ -272,8 +299,10 @@ async def run_once(
     failed is not evidence of anything, so the caller decides whether to retry.
     """
     messages = build_conversation(config, attempt)
+    planted = next((fill.content for fill in attempt if fill.slot is EntryPoint.TOOL_RESULT), None)
     run = _Run(
-        transcript=[Message("user", messages[-1].content)], executor=MockToolExecutor(config.tools)
+        transcript=[Message("user", messages[-1].content)],
+        executor=MockToolExecutor(config.tools, planted),
     )
     try:
         async with asyncio.timeout(limits.timeout_seconds) as deadline:

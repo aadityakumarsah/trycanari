@@ -25,6 +25,8 @@ from agentbounty.api.schemas import (
     AttemptStatusOut,
     BountyCreate,
     BountyCreated,
+    BountySettingsIn,
+    BountySettingsOut,
     CanaryDetail,
     CanaryIn,
     CanaryOut,
@@ -56,6 +58,7 @@ from agentbounty.api.schemas import (
     NotificationsOut,
     NotificationsRead,
     PayoutOut,
+    PlanOut,
     ProbeOut,
     RearmOut,
     ReferralCodeCreate,
@@ -91,6 +94,7 @@ from agentbounty.services import (
     hunts,
     notify,
     pictures,
+    plans,
     playbook,
     provider,
     rearm,
@@ -148,6 +152,8 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
         is_ambassador=sponsor.is_ambassador,
         is_admin=credits.is_admin(sponsor, settings),
         is_owner=credits.is_owner(sponsor, settings),
+        plan_active=plans.active(sponsor, settings),
+        plan_until=sponsor.plan_until,
         invite_only=settings.invite_only,
         verified_breaks=allowed.breaks,
         credits=CreditsOut(
@@ -161,6 +167,38 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
             new_bounty_premium=allowed.new_bounty_premium,
         ),
     )
+
+
+def _plan_out(request: Request, sponsor: Sponsor, settings: Settings) -> PlanOut:
+    return PlanOut(
+        offered=plans.offered(settings),
+        active=plans.active(sponsor, settings),
+        until=sponsor.plan_until,
+        price_zatoshi=settings.plan_price_zatoshi,
+        days=settings.plan_days,
+        escrow_address=request.app.state.escrow_address,
+        code=sponsor.plan_code,
+        confirmations_required=settings.deposit_confirmations,
+    )
+
+
+@router.get("/account/plan")
+async def read_plan(request: Request, sponsor: SponsorDep, settings: SettingsDep) -> PlanOut:
+    """The Watch plan: whether one is sold here, whether the account holds it, what it
+    costs and how to pay."""
+    return _plan_out(request, sponsor, settings)
+
+
+@router.post("/account/plan", dependencies=[Depends(limit_by_client)])
+async def start_plan(
+    request: Request, session: Transaction, sponsor: SponsorDep, settings: SettingsDep
+) -> PlanOut:
+    """Ask to pay for the plan: the answer carries the code to put in the deposit's memo.
+    The plan starts, or runs on, when the deposit has confirmed."""
+    if not plans.offered(settings):
+        raise ServiceError(409, "there is no plan to buy here: everything it gives is included")
+    await plans.code_for(session, sponsor)
+    return _plan_out(request, sponsor, settings)
 
 
 @router.patch("/account")
@@ -491,12 +529,13 @@ async def put_config(
             system_prompt=body.system_prompt,
             model=body.model,
             tools=tuple(
-                MockTool(tool.name, tool.description, tool.parameters, tool.result)
+                MockTool(tool.name, tool.description, tool.parameters, tool.result, tool.untrusted)
                 for tool in body.tools
             ),
             params=body.params,
             entry_points=tuple(body.entry_points),
             endpoint=base,
+            task=body.task.strip(),
         )
     except ValueError as exc:
         raise ServiceError(422, str(exc)) from exc
@@ -661,11 +700,13 @@ async def my_bounty(
                     description=tool.description,
                     parameters=dict(tool.parameters),
                     result=tool.result,
+                    untrusted=tool.untrusted,
                 )
                 for tool in target.config.tools
             ],
             params=dict(target.config.params),
             entry_points=sorted(target.config.entry_points),
+            task=target.config.task,
             endpoint_base=target.config.endpoint,
             endpoint_key_set=target.endpoint_key is not None,
         )
@@ -693,7 +734,29 @@ async def my_bounty(
             )
             for canary in (target.canaries if target else ())
         ],
+        shares_breaks=bounty.shares_breaks,
+        watch=bounty.watch,
     )
+
+
+@router.patch("/bounties/{bounty_id}/settings")
+async def bounty_settings(
+    body: BountySettingsIn,
+    session: Transaction,
+    bounty: OwnBounty,
+    sponsor: SponsorDep,
+    settings: SettingsDep,
+) -> BountySettingsOut:
+    """Share this bounty's breaks with the library, or stop; have it scanned every day,
+    or stop. Sharing is the sponsor's choice and is off until they make it."""
+    if body.shares_breaks is not None:
+        bounty.shares_breaks = body.shares_breaks
+    if body.watch is not None and body.watch != bounty.watch:
+        if body.watch:
+            plans.require(sponsor, settings, "a scan every day")
+        bounty.watch = body.watch
+    await session.flush()
+    return BountySettingsOut(shares_breaks=bounty.shares_breaks, watch=bounty.watch)
 
 
 @router.get("/bounties/{bounty_id}/findings")
@@ -776,6 +839,8 @@ def _scan_out(cipher: Cipher, found: Scan | None, config_hash: str | None) -> Sc
         total=len(results),
         risks=playbook.RISK,
         requested_at=found.created_at if found is not None else None,
+        finished_at=found.finished_at if found is not None else None,
+        with_library=found.with_library if found is not None else False,
     )
 
 
@@ -788,10 +853,24 @@ async def read_scan(session: Transaction, bounty: OwnBounty, cipher: CipherDep) 
 
 
 @router.post("/bounties/{bounty_id}/scan", status_code=202, dependencies=[Depends(limit_by_client)])
-async def start_scan(session: Transaction, bounty: OwnBounty, cipher: CipherDep) -> ScanOut:
-    """Run the baseline playbook against the current config: six well-known attacks, each
-    aimed at one of the agent's own canaries and replayed once. One scan per config."""
-    found = await scan.request(session, bounty)
+async def start_scan(
+    session: Transaction,
+    bounty: OwnBounty,
+    cipher: CipherDep,
+    sponsor: SponsorDep,
+    settings: SettingsDep,
+    again: bool = False,
+) -> ScanOut:
+    """Scan the current config: the baseline playbook's well-known attacks, each aimed at
+    one of the agent's own canaries, then every attack this bounty has paid for and,
+    with the Watch plan, the shared library. Each is replayed once. There is one scan
+    per config; `again` runs a finished one afresh, which the plan also covers."""
+    if again:
+        plans.require(sponsor, settings, "scanning an unchanged agent again")
+    # Where no plan is sold everyone may draw on the library; where one is, its holders.
+    found = await scan.request(
+        session, bounty, again=again, with_library=plans.active(sponsor, settings)
+    )
     await session.refresh(found)
     return _scan_out(cipher, found, found.config_hash)
 

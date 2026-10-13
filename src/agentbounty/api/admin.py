@@ -38,7 +38,7 @@ from agentbounty.api.schemas import (
     ProviderTestOut,
 )
 from agentbounty.models import AdminAction, Sponsor
-from agentbounty.services import credits, endpoint, provider
+from agentbounty.services import credits, endpoint, plans, provider
 from agentbounty.services.crypto import Cipher
 from agentbounty.settings import Settings
 
@@ -80,6 +80,7 @@ async def _person(session: AsyncSession, account: Sponsor, settings: Settings) -
         credits_cap=allowed.cap,
         credit_limit=account.credit_limit,
         verified_breaks=allowed.breaks,
+        plan_until=account.plan_until,
         created_at=account.created_at,
     )
 
@@ -182,6 +183,13 @@ async def update_person(
         account.credit_limit = body.credit_limit
         said = "the tier's" if body.credit_limit is None else str(body.credit_limit)
         record(session, admin, "credit_limit", account, said)
+    if body.plan_days is not None:
+        if body.plan_days:
+            until = plans.extend(account, body.plan_days)
+            record(session, admin, "plan_extended", account, until.date().isoformat())
+        elif account.plan_until is not None:
+            plans.end(account)
+            record(session, admin, "plan_ended", account, account.email)
     if body.reset_credits:
         account.credits_reset_at = datetime.now(UTC)
         record(session, admin, "credits_reset", account, account.email)

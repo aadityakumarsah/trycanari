@@ -10,6 +10,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from agentbounty.api.deps import BearerToken, CipherDep, MaybeSponsor, SettingsDep, Transaction
 from agentbounty.api.ratelimit import limit_by_client
@@ -21,8 +22,10 @@ from agentbounty.api.schemas import (
     BountyPublic,
     BreakerOut,
     BreakOut,
+    BreakPage,
     CanaryPublic,
     CanaryTallyOut,
+    HunterOut,
     InviteOut,
     LeaderOut,
     PayoutOut,
@@ -102,14 +105,16 @@ async def public_views(
     ).all()
     config_ids = [bounty.live_config_id for bounty, *_ in rows if bounty.live_config_id]
     entry_points: dict[uuid.UUID, list[str]] = {}
+    tasks: dict[uuid.UUID, str] = {}
     canaries: dict[uuid.UUID, list[CanaryPublic]] = {}
     if config_ids:
-        for config_id, slots in await session.execute(
-            select(TargetConfigRow.id, TargetConfigRow.entry_points_json).where(
-                TargetConfigRow.id.in_(config_ids)
-            )
+        for config_id, slots, task in await session.execute(
+            select(
+                TargetConfigRow.id, TargetConfigRow.entry_points_json, TargetConfigRow.task
+            ).where(TargetConfigRow.id.in_(config_ids))
         ):
             entry_points[config_id] = slots
+            tasks[config_id] = task or ""
         for config_id, kind, label in await session.execute(
             select(Canary.config_id, Canary.type, Canary.public_label)
             .where(Canary.config_id.in_(config_ids))
@@ -140,6 +145,7 @@ async def public_views(
         ):
             broken_by.setdefault(finding.bounty_id, []).append(
                 BreakerOut(
+                    id=finding.id,
                     name=who.name if who else None,
                     picture_url=(who.uploaded_picture_url or who.picture_url) if who else None,
                     github=who.github if who else None,
@@ -171,6 +177,7 @@ async def public_views(
                 EntryPoint(slot)
                 for slot in entry_points.get(bounty.live_config_id or bounty.id, [])
             ],
+            task=tasks.get(bounty.live_config_id or bounty.id, ""),
             canaries=canaries.get(bounty.live_config_id or bounty.id, []),
             attempts=attempts,
             breaks=breaks,
@@ -284,6 +291,7 @@ async def activity(request: Request, session: Transaction) -> ActivityOut:
         ).one()
         breaks = await session.execute(
             select(
+                Finding.id,
                 Finding.bounty_id,
                 Bounty.title,
                 Canary.type,
@@ -310,18 +318,76 @@ async def activity(request: Request, session: Transaction) -> ActivityOut:
             ),
             recent_breaks=[
                 BreakOut(
+                    id=finding_id,
                     bounty_id=bounty_id,
                     bounty_title=title,
                     canary=CanaryPublic(type=kind, public_label=label),
                     reward_zatoshi=int(amount),
                     tripped_runs=tripped,
-                    verified_at=verified_at,
+                    verified_at=at,
                 )
-                for bounty_id, title, kind, label, amount, tripped, verified_at in breaks
+                for finding_id, bounty_id, title, kind, label, amount, tripped, at in breaks
             ],
         )
 
     return await cached(request, "activity", load)
+
+
+@router.get("/breaks/{finding_id}")
+async def break_page(finding_id: uuid.UUID, request: Request, session: Transaction) -> BreakPage:
+    """One verified break, for a page that can be sent to anyone: who broke which agent,
+    in how many of the replays, and the payment. The attack stays the sponsor's."""
+
+    async def load() -> BreakPage:
+        hunter, owner = aliased(Sponsor), aliased(Sponsor)
+        row = (
+            await session.execute(
+                select(Finding, Bounty, Canary, Payout, hunter, owner)
+                .join(Bounty, Bounty.id == Finding.bounty_id)
+                .join(Canary, Canary.id == Finding.canary_id)
+                .join(Attempt, Attempt.id == Finding.attempt_id)
+                .join(owner, owner.id == Bounty.sponsor_id)
+                .outerjoin(hunter, hunter.id == Attempt.account_id)
+                .outerjoin(Payout, Payout.finding_id == Finding.id)
+                .where(Finding.id == finding_id, Bounty.deleted_at.is_(None))
+            )
+        ).first()
+        if row is None:
+            raise HTTPException(404, "that break does not exist")
+        finding, bounty, canary, payout, who, sponsor = row
+        return BreakPage(
+            id=finding.id,
+            bounty_id=bounty.id,
+            bounty_title=bounty.title,
+            sponsor=SponsorPublic(
+                name=sponsor.name,
+                picture_url=sponsor.uploaded_picture_url or sponsor.picture_url,
+                github=sponsor.github,
+                company=sponsor.company,
+                website=sponsor.website,
+            ),
+            # Who a hunter is, is what they chose to put on their profile. A demo
+            # account is nobody.
+            hunter=None
+            if who is None or who.is_demo
+            else HunterOut(
+                name=who.name,
+                picture_url=who.uploaded_picture_url or who.picture_url,
+                github=who.github,
+                company=who.company,
+                role=who.role,
+                website=who.website,
+            ),
+            canary=CanaryPublic(type=canary.type, public_label=canary.public_label),
+            tripped_runs=finding.tripped_runs,
+            total_runs=judge.RUNS_PER_ATTEMPT,
+            reward_zatoshi=int(payout.amount_zatoshi if payout else bounty.reward_zatoshi),
+            payout_state=payout.state if payout else None,
+            txid=payout.txid if payout else None,
+            verified_at=finding.verified_at,
+        )
+
+    return await cached(request, f"break:{finding_id}", load)
 
 
 @router.get("/leaderboard")
