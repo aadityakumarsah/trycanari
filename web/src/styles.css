@@ -1485,9 +1485,12 @@ table.people td { vertical-align: middle; white-space: nowrap; }
 
 /* ============ notifications: the bell in the bar ============ */
 .bell { position: relative; }
-.bell-button { position: relative; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--nav-text); cursor: pointer; transition: color 0.15s, background 0.15s; }
-.bell-button:hover, .bell-button[aria-expanded="true"] { background: var(--surface-2); color: var(--foreground); }
-.bell-dot { position: absolute; top: 7px; right: 8px; width: 9px; height: 9px; border: 2px solid var(--black); border-radius: 50%; background: #ef4444; }
+.icon-btn { position: relative; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--nav-text); cursor: pointer; transition: color 0.15s, background 0.15s; }
+.icon-btn:hover, .icon-btn[aria-expanded="true"] { background: var(--surface-2); color: var(--foreground); }
+.theme-toggle svg { transition: transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.theme-toggle:hover svg { transform: rotate(25deg); }
+.bell-dot { position: absolute; top: 6px; right: 7px; width: 8px; height: 8px; border: 2px solid var(--black); border-radius: 50%; background: #ef4444; }
+.bell-button:hover .bell-dot, .bell-button[aria-expanded="true"] .bell-dot { border-color: var(--surface-2); }
 .bell-menu { left: auto; right: -8px; width: min(380px, calc(100vw - 24px)); padding: 0; overflow: hidden; }
 .bell-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
 .bell-head b { font: 600 14px/20px var(--display); }

@@ -109,7 +109,7 @@ export function NotificationBell() {
     <div className="bell">
       <button
         type="button"
-        className="bell-button"
+        className="icon-btn bell-button"
         aria-haspopup="true"
         aria-expanded={open}
         aria-controls="notifications"

@@ -153,7 +153,7 @@ function ThemeSwitch() {
   const [theme, flip] = useTheme();
   const next = theme === "light" ? "dark" : "light";
   return (
-    <button type="button" className="bell-button theme-switch" aria-label={`Switch to the ${next} theme`} title={`Switch to the ${next} theme`} onClick={flip}>
+    <button type="button" className="icon-btn theme-toggle" aria-label={`Switch to the ${next} theme`} title={`Switch to the ${next} theme`} onClick={flip}>
       <Icon name={theme === "light" ? "moon" : "sun"} size={19} />
     </button>
   );
