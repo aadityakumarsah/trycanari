@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -15,8 +16,9 @@ from solders.keypair import Keypair
 from solders.transaction import Transaction
 
 from agentbounty.money import SOL, ZEC, format_amount, parse_amount
+from agentbounty.services import solana
 from agentbounty.services.solana import MEMO_PROGRAM, SolanaWallet, keypair_from, valid_address
-from agentbounty.services.wallet import escrow_address, make_wallet
+from agentbounty.services.wallet import WalletError, escrow_address, make_wallet
 from agentbounty.settings import Settings
 
 from .platform import Platform, platform_on
@@ -38,9 +40,19 @@ class Node:
         self.blockhash = str(Hash.new_unique())
         self.fail: str | None = None
         self.calls: list[str] = []
+        # Transactions it lists and cannot show yet, and how many times it will answer
+        # that it is too busy before it answers properly.
+        self.lagging: set[str] = set()
+        self.busy = 0
 
     def deposit(
-        self, signature: str, lamports: int, memo: str | None, *, failed: bool = False
+        self,
+        signature: str,
+        lamports: int,
+        memo: str | None,
+        *,
+        failed: bool = False,
+        block_time: float | None = None,
     ) -> None:
         self.entries.insert(
             0,
@@ -48,6 +60,7 @@ class Node:
                 "signature": signature,
                 "err": {"InstructionError": [0, "Custom"]} if failed else None,
                 "memo": None if memo is None else f"[{len(memo)}] {memo}",
+                "blockTime": block_time,
             },
         )
         self.transactions[signature] = {
@@ -61,6 +74,9 @@ class Node:
         self.calls.append(method)
         if self.fail == "down":
             raise httpx.ConnectError("no route", request=request)
+        if self.busy > 0:
+            self.busy -= 1
+            return httpx.Response(429, text="Too Many Requests")
         if self.fail == method:
             return httpx.Response(200, json={"error": {"code": -32002, "message": "refused"}})
 
@@ -82,7 +98,7 @@ class Node:
                 listed.append(entry)
             return result(listed)
         if method == "getTransaction":
-            return result(self.transactions.get(params[0]))
+            return result(None if params[0] in self.lagging else self.transactions.get(params[0]))
         if method == "sendTransaction":
             self.sent.append(Transaction.from_bytes(base64.b64decode(params[0])))
             return result(str(self.sent[-1].signatures[0]))
@@ -149,6 +165,63 @@ async def test_it_reports_each_finalized_deposit_once_with_its_memo(
     node.deposit("sig-3", 7, "dep-late")
     later = await wallet.list_incoming(again.cursor)
     assert [p.txid for p in later.payments] == ["sig-3"]
+
+
+async def test_a_deposit_the_node_cannot_show_yet_is_waited_for_and_not_passed_over(
+    wallet: SolanaWallet, node: Node
+) -> None:
+    node.deposit("sig-1", 10, "dep-first")
+    node.deposit("sig-2", 220_000_000, "dep-lagging", block_time=time.time())
+    node.deposit("sig-3", 30, "dep-after")
+    # The node lists all three and cannot show the second: a node behind its neighbours.
+    node.lagging.add("sig-2")
+    page = await wallet.list_incoming(None)
+    assert [p.txid for p in page.payments] == ["sig-1"]
+    # The place is kept before the one it could not read, so nothing behind it is lost.
+    assert page.cursor == "sig-1"
+    again = await wallet.list_incoming(page.cursor)
+    assert (again.payments, again.cursor) == ((), "sig-1")
+
+    node.lagging.clear()
+    caught_up = await wallet.list_incoming(again.cursor)
+    assert [(p.txid, p.amount_zatoshi, p.memo) for p in caught_up.payments] == [
+        ("sig-2", 220_000_000, "dep-lagging"),
+        ("sig-3", 30, "dep-after"),
+    ]
+    assert caught_up.cursor == "sig-3"
+
+
+async def test_a_transaction_that_stays_unreadable_does_not_hold_up_deposits_for_ever(
+    wallet: SolanaWallet, node: Node
+) -> None:
+    long_ago = time.time() - solana.UNREADABLE_FOR_SECONDS - 60
+    node.deposit("sig-lost", 5, "dep-lost", block_time=long_ago)
+    node.deposit("sig-next", 40, "dep-next", block_time=time.time())
+    node.lagging.add("sig-lost")
+    page = await wallet.list_incoming(None)
+    assert [p.txid for p in page.payments] == ["sig-next"]
+    assert page.cursor == "sig-next"
+
+
+async def test_a_node_too_busy_to_answer_is_asked_again(
+    wallet: SolanaWallet, node: Node, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(solana, "RETRY_PAUSES", (0.0, 0.0, 0.0))
+    node.deposit("sig-1", 110_000_000, "dep-abc")
+    node.busy = 3
+    page = await wallet.list_incoming(None)
+    assert [p.txid for p in page.payments] == ["sig-1"]
+    assert node.calls.count("getSignaturesForAddress") == 4
+    # It is asked a few times, not for ever: a node that stays busy fails the pass.
+    node.busy = 10
+    with pytest.raises(WalletError, match="could not be reached"):
+        await wallet.list_incoming(page.cursor)
+    # A payment is never sent twice because the node was busy.
+    node.busy, node.calls = 1, []
+    sent = await wallet.send_payment(str(Keypair().pubkey()), 5, "finding f1")
+    assert sent.error is not None
+    assert "sendTransaction" not in node.calls
+    assert node.sent == []
 
 
 async def test_a_payment_is_signed_by_the_escrow_and_carries_the_memo(

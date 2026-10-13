@@ -26,7 +26,7 @@ from agentbounty.models import (
 )
 from agentbounty.services.ledger import bounty_balance
 from agentbounty.services.payment import SpendingCaps
-from agentbounty.services.wallet import FakeWallet, SendResult
+from agentbounty.services.wallet import FakeWallet, SendResult, WalletError
 from agentbounty.workers import payment as payment_worker
 
 from .platform import DEMO_CONFIG, FEE, HUNTER, REFUND, REWARD, STRONG, WEAK, Platform
@@ -268,6 +268,56 @@ async def test_a_crash_after_the_payout_row_is_created_does_not_lose_or_double_t
     await restarted.tick()
     assert len(platform.wallet.sent) == 1
     assert await balance(platform, bounty_id) == 0
+
+
+class DepositsUnreadable(FakeWallet):
+    """A wallet whose node cannot be asked about deposits just now, and can still pay."""
+
+    blind = False
+
+    async def list_incoming(self, since_cursor: str | None) -> Any:
+        if self.blind:
+            raise WalletError("the Solana RPC could not be reached: HTTPStatusError")
+        return await super().list_incoming(since_cursor)
+
+
+async def test_a_wallet_that_cannot_read_deposits_still_pays_what_is_owed(
+    platform: Platform,
+) -> None:
+    sponsor = await platform.sponsor()
+    wallet = DepositsUnreadable()
+    service = platform.payment_service(wallet)
+    bounty_id = await sponsor.draft()
+    funding = await sponsor.fund(bounty_id)
+    wallet.simulate_deposit(ESCROWED, funding["deposit_code"], confirmations=3)
+    await service.tick()
+    assert await bounty_state(platform, bounty_id) is BountyState.LIVE
+    await verified(platform, bounty_id)
+
+    # The deposit check fails, and is said to have: the pass is not passed off as good.
+    wallet.blind = True
+    with pytest.raises(WalletError):
+        await service.tick()
+    # But the hunter is not kept waiting for it.
+    (paid,) = wallet.sent
+    assert (paid.to_address, paid.amount_zatoshi) == (HUNTER, REWARD)
+    (payout,) = await rows(platform, Payout)
+    assert payout.state is PayoutState.SENT
+    # Nor is a sponsor who closes: the refund goes out in the same failing passes.
+    other = await sponsor.draft()
+    wallet.blind = False
+    again = await sponsor.fund(other)
+    wallet.simulate_deposit(ESCROWED, again["deposit_code"], confirmations=3)
+    await service.tick()
+    await sponsor.call("POST", f"/v1/bounties/{other}/close", json={"refund_address": REFUND})
+    wallet.blind = True
+    for _ in range(2):
+        with pytest.raises(WalletError):
+            await service.tick()
+    assert [(sent.to_address, sent.amount_zatoshi) for sent in wallet.sent[1:]] == [
+        (REFUND, ESCROWED)
+    ]
+    assert await bounty_state(platform, other) is BountyState.CLOSED
 
 
 class DiesAfterSending(FakeWallet):

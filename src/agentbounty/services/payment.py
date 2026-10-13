@@ -165,11 +165,25 @@ class PaymentService:
         self._cursor: str | None = None
 
     async def tick(self) -> None:
-        """One pass over everything there is to do."""
-        await self.poll_deposits()
-        await self.pay_findings()
-        await self.close_bounties()
-        await self.send_refunds()
+        """One pass over everything there is to do.
+
+        A step that fails does not keep the others from being made: a wallet whose
+        deposits cannot be read just now can still be asked to pay what is owed. The
+        first failure is raised once every step has had its turn."""
+        failed: Exception | None = None
+        for step in (
+            self.poll_deposits,
+            self.pay_findings,
+            self.close_bounties,
+            self.send_refunds,
+        ):
+            try:
+                await step()
+            except Exception as error:
+                logger.warning("payment step %s failed: %s", step.__name__, error)
+                failed = failed or error
+        if failed is not None:
+            raise failed
 
     # --- deposits -------------------------------------------------------------------------
 

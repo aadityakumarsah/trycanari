@@ -8,9 +8,12 @@ is credited once and can never be rolled back afterwards.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
+import logging
 import re
+import time
 from typing import Any
 
 import httpx
@@ -37,6 +40,14 @@ MEMO_PROGRAM = Pubkey.from_string("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
 PAGE = 200
 # The RPC reports a memo as "[<length>] <text>".
 _MEMO = re.compile(r"^\[\d+\] (.*)$", re.DOTALL)
+
+logger = logging.getLogger(__name__)
+
+# How long to wait before asking a node again that was too busy to answer a question.
+RETRY_PAUSES: tuple[float, ...] = (0.5, 1.0, 2.0)
+# A node can list a transaction before it can show it. One it still cannot show after
+# this long is passed over, so that it does not hold up every deposit after it.
+UNREADABLE_FOR_SECONDS = 600
 
 
 def valid_address(address: str) -> bool:
@@ -67,21 +78,39 @@ def memo_text(reported: str | None) -> str | None:
     return (found.group(1) if found else reported).strip() or None
 
 
+def _busy(exc: Exception) -> bool:
+    """Whether the node failed in a way that asking again may cure: it was too busy, it
+    was down, or it could not be reached."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    return isinstance(exc, httpx.TransportError)
+
+
 async def rpc(
     url: str,
     method: str,
     params: list[Any],
     transport: httpx.AsyncBaseTransport | None = None,
+    *,
+    retries: int = 0,
 ) -> Any:
-    """One JSON-RPC call to a Solana node. Raises WalletError with the node's reason."""
+    """One JSON-RPC call to a Solana node. Raises WalletError with the node's reason.
+
+    `retries` is for questions only: a node that is too busy to answer is asked again
+    after a pause. A transaction is never sent twice this way."""
     body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-    try:
-        async with httpx.AsyncClient(transport=transport, timeout=30.0) as client:
-            answer = await client.post(url, json=body)
-        answer.raise_for_status()
-        reply = answer.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        raise WalletError(f"the Solana RPC could not be reached: {type(exc).__name__}") from exc
+    for attempt in range(retries + 1):
+        try:
+            async with httpx.AsyncClient(transport=transport, timeout=30.0) as client:
+                answer = await client.post(url, json=body)
+            answer.raise_for_status()
+            reply = answer.json()
+            break
+        except (httpx.HTTPError, ValueError) as exc:
+            if attempt < retries and _busy(exc):
+                await asyncio.sleep(RETRY_PAUSES[min(attempt, len(RETRY_PAUSES) - 1)])
+                continue
+            raise WalletError(f"the Solana RPC could not be reached: {type(exc).__name__}") from exc
     if not isinstance(reply, dict) or "error" in reply:
         error = reply.get("error") if isinstance(reply, dict) else reply
         raise WalletError(f"the Solana RPC refused {method}: {json.dumps(error)[:300]}")
@@ -107,8 +136,12 @@ class SolanaWallet:
     async def _rpc(self, method: str, params: list[Any]) -> Any:
         return await rpc(self._rpc_url, method, params, self._transport)
 
+    async def _ask(self, method: str, params: list[Any]) -> Any:
+        """A question, which a busy node may be asked again."""
+        return await rpc(self._rpc_url, method, params, self._transport, retries=len(RETRY_PAUSES))
+
     async def get_balance(self) -> int:
-        result = await self._rpc("getBalance", [self.address, {"commitment": "finalized"}])
+        result = await self._ask("getBalance", [self.address, {"commitment": "finalized"}])
         return int(result["value"])
 
     async def list_incoming(self, since_cursor: str | None) -> IncomingPage:
@@ -117,27 +150,41 @@ class SolanaWallet:
         options: dict[str, Any] = {"limit": PAGE, "commitment": "finalized"}
         if since_cursor:
             options["until"] = since_cursor
-        listed = await self._rpc("getSignaturesForAddress", [self.address, options]) or []
+        listed = await self._ask("getSignaturesForAddress", [self.address, options]) or []
         payments = []
-        for entry in listed:
-            if entry.get("err") is not None:
-                continue
-            received = await self._received(entry["signature"])
-            if received > 0:
-                payments.append(
-                    IncomingPayment(
-                        txid=entry["signature"],
-                        amount_zatoshi=received,
-                        memo=memo_text(entry.get("memo")),
-                        confirmations=SETTLED_CONFIRMATIONS,
+        cursor = since_cursor or ""
+        # Oldest first, so that the place kept is always behind everything not yet read.
+        for entry in reversed(listed):
+            if entry.get("err") is None:
+                received = await self._received(entry["signature"])
+                if received is None:
+                    # The node lists the transaction and cannot show it yet. Stop here and
+                    # keep the place before it: the next pass asks again. Moving on would
+                    # leave a deposit unseen until the process was restarted.
+                    age = time.time() - float(entry.get("blockTime") or time.time())
+                    if age < UNREADABLE_FOR_SECONDS:
+                        break
+                    logger.error(
+                        "transaction %s is still unreadable after %d seconds; passing over it",
+                        entry["signature"],
+                        int(age),
                     )
-                )
-        cursor = listed[0]["signature"] if listed else (since_cursor or "")
-        return IncomingPage(payments=tuple(reversed(payments)), cursor=cursor)
+                elif received > 0:
+                    payments.append(
+                        IncomingPayment(
+                            txid=entry["signature"],
+                            amount_zatoshi=received,
+                            memo=memo_text(entry.get("memo")),
+                            confirmations=SETTLED_CONFIRMATIONS,
+                        )
+                    )
+            cursor = entry["signature"]
+        return IncomingPage(payments=tuple(payments), cursor=cursor)
 
-    async def _received(self, signature: str) -> int:
-        """Lamports the transaction added to the wallet. Nothing, or less, for one it sent."""
-        found = await self._rpc(
+    async def _received(self, signature: str) -> int | None:
+        """Lamports the transaction added to the wallet: nothing, or less, for one it sent.
+        None when the node cannot show the transaction yet."""
+        found = await self._ask(
             "getTransaction",
             [
                 signature,
@@ -149,7 +196,7 @@ class SolanaWallet:
             ],
         )
         if not found or found.get("meta") is None:
-            return 0
+            return None
         message = found["transaction"]["message"]
         keys = list(message.get("accountKeys", []))
         loaded = found["meta"].get("loadedAddresses") or {}

@@ -26,8 +26,10 @@ services:
         value: solana
       - key: INVITE_ONLY
         value: "true"
+      # How often the payment process looks for deposits. A deposit is seen within this
+      # long of the network finalizing it.
       - key: PAYMENT_POLL_SECONDS
-        value: "15"
+        value: "5"
       # The house hunter: the platform's own attacker, run by the replay worker against
       # every config that goes live from now on. It is never paid, and it costs model
       # calls: one to write each attack and five replays to judge it. Set to "false" to
