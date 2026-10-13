@@ -518,6 +518,68 @@ class RearmOut(BaseModel):
     tripped_runs: int
 
 
+class SponsorshipOut(SponsorBounty):
+    """One of a sponsor's bounties on their sponsor page: what it is and how it has fared."""
+
+    created_at: datetime
+    # Attacks hunters have submitted, how many were verified breaks, and when the last
+    # attack came in.
+    attempts: int
+    breaks: int
+    last_attack_at: datetime | None
+    # Rewards that have left its escrow for hunters.
+    paid_zatoshi: int
+    # Of its working config. Null and empty before an agent is described.
+    model: str | None
+    entry_points: list[str]
+    canaries: int
+
+
+class SponsorBreakOut(BaseModel):
+    """A verified break of one of the sponsor's bounties, and who made it."""
+
+    id: uuid.UUID
+    bounty_id: uuid.UUID
+    bounty_title: str
+    # Null when the attack was made without an account.
+    hunter: HunterOut | None
+    # The platform's own house hunter found it: nothing was paid.
+    house: bool
+    canary: CanaryPublic
+    tripped_runs: int
+    total_runs: int
+    # What was paid, or is being paid, for it. Nought for a break the house found.
+    reward_zatoshi: int
+    payout_state: PayoutState | None
+    txid: str | None
+    verified_at: datetime
+
+
+class SponsorTotals(BaseModel):
+    bounties: int
+    live: int
+    drafts: int
+    # Broken and waiting for a patch.
+    paused: int
+    # Closed: over, with any unspent escrow refunded.
+    past: int
+    # What all the bounties' escrows hold now.
+    escrow_zatoshi: int
+    attempts: int
+    breaks: int
+    paid_zatoshi: int
+
+
+class SponsorOverviewOut(BaseModel):
+    """A sponsor's own page: everything they have listed, and who broke what."""
+
+    member_since: datetime
+    totals: SponsorTotals
+    bounties: list[SponsorshipOut]
+    # Newest first.
+    breaks: list[SponsorBreakOut]
+
+
 class HouseHuntOut(BaseModel):
     """The house hunter's go at the bounty's current config."""
 

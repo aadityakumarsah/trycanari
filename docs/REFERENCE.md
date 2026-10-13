@@ -353,6 +353,26 @@ the agent and never the canaries, scan again. `GET /skill.md` serves it with the
 deployment's own address in place of the hosted one, so `curl <site>/skill.md -o
 .claude/skills/trycanari/SKILL.md` installs a copy that points at the right service.
 
+## The sponsor's own page
+
+`GET /v1/sponsor/overview` is everything one account has listed and what became of it, in
+one answer, for the page at `/sponsor`. The entry to it sits in the menu under a
+sponsor's picture, where an admin's Admin entry sits.
+
+- **`totals`**: how many agents, how many live, in preparation, waiting for a patch and
+  finished; what every escrow holds between them; attacks received, verified breaks and
+  what has been paid for them.
+- **`bounties`**: each one with its state and escrow, the attacks and breaks it has had,
+  when the last attack came in, and of its working config the model, the entry points and
+  how many canaries. Before an agent is described the model is null and the rest empty.
+- **`breaks`**: every verified break, newest first, with the hunter's profile as they
+  wrote it, whether the house hunter made it, which canary fell in how many replays, and
+  the payout. An attack made without an account has no hunter.
+
+It is a summary and holds nothing a sponsor keeps private: no prompt, no secret, no rule
+and no attack. `reports.sponsor_overview` gathers it in a handful of grouped queries
+rather than one for each bounty.
+
 ## The house hunter
 
 `services/house.py`, run by the replay worker as a second task when `HOUSE_HUNTER=true`.
@@ -401,6 +421,40 @@ escrow already covers the bounty and sets it live at once.
 `state` is `waived`; the public break page, the list of who broke a bounty and the
 activity feed carry `house: true` with a reward of nought; the leaderboard leaves the
 house out; and the audit report says how many of the attacks were the house's.
+
+## A browser on the site, for an editor's agent
+
+`services/../browser.py`, with the `browser` extra, gives the MCP server a real Chromium
+over the deployment it was pointed at: `browser_open`, `browser_screenshot`,
+`browser_read`, `browser_click`, `browser_fill`, `browser_scrape` and `browser_sign_in`.
+It is how an agent sees what a person sees, which the JSON API cannot show it.
+
+```sh
+uv sync --extra browser && uv run playwright install chromium
+```
+
+**One site.** Every path is resolved against the server's `--api` and refused if it lands
+anywhere else, so this is a way to look at your own deployment and not a scraper for the
+web. One page is kept, so a click follows the page before it, and the browser is closed
+with the server, in the loop that started it.
+
+**Signing in.** The site refuses a state-changing request it cannot show came from
+itself, which is what stops another site acting for you. So `browser_sign_in` makes the
+exchange from the site's own page, by the same call the sign-in page makes: the key is
+never typed into a form, and the browser is left on the home page.
+
+**Pressing things.** A word is matched against what a control is called: the whole of it
+first, then the start of it, then anywhere in it, across links, buttons, tabs, menu
+entries, radios and checkboxes. So "Breaks" presses the tab called "Breaks 1" and not a
+card that says "breaks" lower down; where that is still not enough, the things it fits
+are named back rather than one of them being guessed at. A control whose words say it
+cannot be taken back (`close`, `refund`, `delete`, `revoke`, `ban`, `sign out`) is left
+alone unless the call allows it: the text of a page is written by hunters and by other
+sponsors, so what an agent reads there must not be able to talk it into pressing one.
+
+**What comes back** is kept to a size a reader can take in: a page's text is cut at 4,000
+characters, a full-page photograph at 6,000 pixels of height, and the page is
+photographed at 1280 by 800.
 
 ## The audit report
 

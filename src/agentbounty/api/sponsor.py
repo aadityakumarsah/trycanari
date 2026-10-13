@@ -72,8 +72,12 @@ from agentbounty.api.schemas import (
     SecretCanaryIn,
     SponsorBounty,
     SponsorBountyDetail,
+    SponsorBreakOut,
     SponsorCreate,
     SponsorCreated,
+    SponsorOverviewOut,
+    SponsorshipOut,
+    SponsorTotals,
     StateOut,
     ToolOut,
 )
@@ -85,6 +89,7 @@ from agentbounty.models import (
     Canary,
     CanaryType,
     Finding,
+    FindingState,
     Scan,
     Sponsor,
 )
@@ -110,7 +115,7 @@ from agentbounty.services.bounty import CanaryDefinition
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.harness import MockTool, TargetConfig
-from agentbounty.services.judge import ArgumentPredicate, ToolRule
+from agentbounty.services.judge import RUNS_PER_ATTEMPT, ArgumentPredicate, ToolRule
 from agentbounty.services.model import RealModel
 from agentbounty.services.wallet import address_rule
 from agentbounty.settings import Settings
@@ -674,6 +679,72 @@ async def my_bounties(session: Transaction, sponsor: SponsorDep) -> list[Sponsor
         SponsorBounty(**_summary(summary))
         for summary in await reports.sponsor_bounties(session, sponsor)
     ]
+
+
+@router.get("/sponsor/overview")
+async def sponsor_overview(session: Transaction, sponsor: SponsorDep) -> SponsorOverviewOut:
+    """The sponsor's own page: every bounty they have listed with its attacks, breaks and
+    payouts, and every verified break with the hunter who made it."""
+    overview = await reports.sponsor_overview(session, sponsor)
+    listed = [
+        SponsorshipOut(
+            **_summary(item.summary),
+            created_at=item.summary.bounty.created_at,
+            attempts=item.attempts,
+            breaks=item.breaks,
+            last_attack_at=item.last_attack_at,
+            paid_zatoshi=item.paid_zatoshi,
+            model=item.model,
+            entry_points=list(item.entry_points),
+            canaries=item.canaries,
+        )
+        for item in overview.sponsorships
+    ]
+
+    def count(state: BountyState) -> int:
+        return sum(1 for item in listed if item.state is state)
+
+    return SponsorOverviewOut(
+        member_since=sponsor.created_at,
+        totals=SponsorTotals(
+            bounties=len(listed),
+            live=count(BountyState.LIVE),
+            drafts=count(BountyState.DRAFT) + count(BountyState.AWAITING_DEPOSIT),
+            paused=count(BountyState.PAUSED),
+            past=count(BountyState.CLOSED),
+            escrow_zatoshi=sum(item.balance_zatoshi for item in listed),
+            attempts=sum(item.attempts for item in listed),
+            breaks=sum(item.breaks for item in listed),
+            paid_zatoshi=sum(item.paid_zatoshi for item in listed),
+        ),
+        bounties=listed,
+        breaks=[
+            SponsorBreakOut(
+                id=found.finding.id,
+                bounty_id=found.bounty.id,
+                bounty_title=found.bounty.title,
+                hunter=None
+                if found.hunter is None
+                else HunterOut(
+                    name=found.hunter.name,
+                    picture_url=found.hunter.uploaded_picture_url or found.hunter.picture_url,
+                    github=found.hunter.github,
+                    company=found.hunter.company,
+                    role=found.hunter.role,
+                    website=found.hunter.website,
+                ),
+                house=found.finding.state is FindingState.WAIVED,
+                canary=CanaryPublic(type=found.canary.type, public_label=found.canary.public_label),
+                tripped_runs=found.finding.tripped_runs,
+                total_runs=RUNS_PER_ATTEMPT,
+                reward_zatoshi=found.payout.amount_zatoshi if found.payout else 0,
+                payout_state=found.payout.state if found.payout else None,
+                txid=found.payout.txid if found.payout else None,
+                verified_at=found.finding.verified_at,
+            )
+            for found in overview.breaks
+        ],
+    )
 
 
 @router.get("/sponsor/bounties/{bounty_id}")

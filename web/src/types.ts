@@ -103,6 +103,56 @@ export interface AttemptActivity {
   recent: AttemptLine[];
 }
 
+/** One of a sponsor's bounties on their sponsor page: what it is and how it has fared. */
+export interface Sponsorship extends SponsorBounty {
+  created_at: string;
+  attempts: number;
+  breaks: number;
+  last_attack_at: string | null;
+  paid_zatoshi: number;
+  /** Of its working config. Null and empty before an agent is described. */
+  model: string | null;
+  entry_points: EntryPoint[];
+  canaries: number;
+}
+
+/** A verified break of one of the sponsor's bounties, and who made it. */
+export interface SponsorBreak {
+  id: string;
+  bounty_id: string;
+  bounty_title: string;
+  hunter: Hunter | null;
+  /** The platform's own house hunter found it: nothing was paid. */
+  house: boolean;
+  canary: CanaryPublic;
+  tripped_runs: number;
+  total_runs: number;
+  reward_zatoshi: number;
+  payout_state: string | null;
+  txid: string | null;
+  verified_at: string;
+}
+
+export interface SponsorTotals {
+  bounties: number;
+  live: number;
+  drafts: number;
+  paused: number;
+  past: number;
+  escrow_zatoshi: number;
+  attempts: number;
+  breaks: number;
+  paid_zatoshi: number;
+}
+
+/** `GET /v1/sponsor/overview`: everything a sponsor has listed, and who broke what. */
+export interface SponsorOverview {
+  member_since: string;
+  totals: SponsorTotals;
+  bounties: Sponsorship[];
+  breaks: SponsorBreak[];
+}
+
 /** The house hunter's go at a bounty's current config. */
 export interface HouseHunt {
   state: "running" | "done";

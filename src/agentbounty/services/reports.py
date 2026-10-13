@@ -20,6 +20,7 @@ from agentbounty.models import (
     Finding,
     LedgerEntry,
     Payout,
+    PayoutState,
     Refund,
     Run,
     Sponsor,
@@ -278,3 +279,113 @@ async def compliance_evidence(
         breaks=breaks,
         rearm=check.state.value if check is not None else None,
     )
+
+
+@dataclass(frozen=True)
+class Sponsorship:
+    """One of a sponsor's bounties, with what has happened to it."""
+
+    summary: BountySummary
+    attempts: int
+    breaks: int
+    # Rewards that have left its escrow for hunters.
+    paid_zatoshi: int
+    last_attack_at: datetime | None
+    # Of its working config: the model, where it can be attacked, and how many canaries.
+    model: str | None
+    entry_points: tuple[str, ...]
+    canaries: int
+
+
+@dataclass(frozen=True)
+class SponsorBreak:
+    """A verified break of one of a sponsor's bounties, and who made it."""
+
+    finding: Finding
+    bounty: Bounty
+    canary: Canary
+    payout: Payout | None
+    # Null for an attack made without an account.
+    hunter: Sponsor | None
+
+
+@dataclass(frozen=True)
+class SponsorOverview:
+    sponsorships: list[Sponsorship]
+    breaks: list[SponsorBreak]
+
+
+async def sponsor_overview(session: AsyncSession, sponsor: Sponsor) -> SponsorOverview:
+    """Everything a sponsor has listed and what became of it: each bounty with its
+    attacks, breaks and payouts, and every break with the hunter who made it."""
+    summaries = await sponsor_bounties(session, sponsor)
+    ids = [summary.bounty.id for summary in summaries]
+    attacked: dict[uuid.UUID, tuple[int, datetime | None]] = {}
+    broken: dict[uuid.UUID, int] = {}
+    paid: dict[uuid.UUID, int] = {}
+    configs: dict[uuid.UUID, tuple[str, tuple[str, ...], int]] = {}
+    breaks: list[SponsorBreak] = []
+    if ids:
+        for bounty_id, made, newest in await session.execute(
+            select(Attempt.bounty_id, func.count(Attempt.id), func.max(Attempt.submitted_at))
+            .where(Attempt.bounty_id.in_(ids))
+            .group_by(Attempt.bounty_id)
+        ):
+            attacked[bounty_id] = (made, newest)
+        for bounty_id, count in await session.execute(
+            select(Finding.bounty_id, func.count(Finding.id))
+            .where(Finding.bounty_id.in_(ids))
+            .group_by(Finding.bounty_id)
+        ):
+            broken[bounty_id] = count
+        for bounty_id, amount in await session.execute(
+            select(Finding.bounty_id, func.coalesce(func.sum(Payout.amount_zatoshi), 0))
+            .join(Payout, Payout.finding_id == Finding.id)
+            .where(
+                Finding.bounty_id.in_(ids),
+                Payout.state.in_([PayoutState.SENT, PayoutState.CONFIRMED]),
+            )
+            .group_by(Finding.bounty_id)
+        ):
+            paid[bounty_id] = int(amount)
+        for summary in summaries:
+            row = await latest_config(session, summary.bounty.id)
+            if row is None:
+                continue
+            canaries = await session.scalar(
+                select(func.count()).select_from(Canary).where(Canary.config_id == row.id)
+            )
+            configs[summary.bounty.id] = (
+                row.model,
+                tuple(sorted(row.entry_points_json)),
+                int(canaries or 0),
+            )
+        found = await session.execute(
+            select(Finding, Bounty, Canary, Payout, Sponsor)
+            .join(Bounty, Bounty.id == Finding.bounty_id)
+            .join(Canary, Canary.id == Finding.canary_id)
+            .join(Attempt, Attempt.id == Finding.attempt_id)
+            .outerjoin(Payout, Payout.finding_id == Finding.id)
+            .outerjoin(Sponsor, Sponsor.id == Attempt.account_id)
+            .where(Finding.bounty_id.in_(ids))
+            .order_by(Finding.verified_at.desc(), Finding.id)
+        )
+        breaks = [SponsorBreak(*row) for row in found]
+    sponsorships = []
+    for summary in summaries:
+        bounty_id = summary.bounty.id
+        count, latest = attacked.get(bounty_id, (0, None))
+        model, entry_points, canaries_planted = configs.get(bounty_id, (None, (), 0))
+        sponsorships.append(
+            Sponsorship(
+                summary=summary,
+                attempts=count,
+                breaks=broken.get(bounty_id, 0),
+                paid_zatoshi=paid.get(bounty_id, 0),
+                last_attack_at=latest,
+                model=model,
+                entry_points=entry_points,
+                canaries=canaries_planted,
+            )
+        )
+    return SponsorOverview(sponsorships, breaks)

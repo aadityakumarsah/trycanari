@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="687 tests" src="https://img.shields.io/badge/tests-687%20passing-6ee7b7" />
+  <img alt="721 tests" src="https://img.shields.io/badge/tests-721%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -51,8 +51,8 @@
 |---:|---|
 | **51** | API endpoints |
 | **25** | database migrations |
-| **550** | Python tests |
-| **137** | web tests |
+| **573** | Python tests |
+| **148** | web tests |
 | **~9,700** | lines of Python |
 | **~7,900** | lines of TypeScript |
 
@@ -139,6 +139,7 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
   the Watch plan, attacks that broke other sponsors' agents
 - A build gate: `python -m agentbounty.check` fails your build when a canary trips
 - An MCP server and a skill file, so a coding agent scans the agent from your editor
+- A browser in that server: an agent photographs, reads, clicks and scrapes your own site
 - Harder targets: mark a tool as reading untrusted content and hunters must plant
   their attack in what it returns
 - A daily scan of watched bounties, and a shared library of breaks you choose to join
@@ -146,6 +147,7 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
   the EU AI Act and ISO/IEC 42001, printable, with a JSON export for compliance tools
 - One-click funding from a browser wallet
 - Escrow with a deposit code
+- A sponsor page: every agent you have listed, how each is faring, and who broke what
 - Activity, findings and a full ledger
 - Re-arm gate: the paid attack is replayed against the patch
 - Close and refund at any time; delete drafts and closed bounties
@@ -301,6 +303,30 @@ claude mcp add trycanari --env TRYCANARI_API_KEY=<key> -- \
 No tool funds, activates, closes or deletes a bounty, and the service refuses to change a
 live bounty's config: money, and what hunters see, are changed on the site, by a person.
 
+**A browser on the site.** With the `browser` extra the same server drives a real
+Chromium over your own deployment, so an agent can see what a person sees: that a page
+renders, what it says, where a number lands on the screen.
+
+```bash
+uv sync --extra browser && uv run playwright install chromium
+```
+
+| Tool | Does |
+|---|---|
+| `browser_open` | Opens a page of the site. Every other browser tool then works on it |
+| `browser_screenshot` | A picture of the page, on the screen or the whole of it |
+| `browser_read` | What the page says, all of it or the part a selector picks out |
+| `browser_click` | Presses a link, button, tab or menu entry, by its words or a selector |
+| `browser_fill` | Types into a box |
+| `browser_scrape` | Every element a selector picks out, as rows of JSON |
+| `browser_sign_in` | Gives the browser the account's own session, for the pages only a sponsor sees |
+
+It opens the site it was pointed at and nowhere else, so it is a way to look at your own
+deployment and not a scraper for the web. A control whose words say it cannot be taken
+back (close, refund, delete, revoke, ban, sign out) is not pressed unless the call says
+so: what a page says is written by hunters and other sponsors, and an agent reading it
+should not be talked into pressing one. `--no-browser` leaves the tools out.
+
 **The skill file** is served at `/skill.md`, with the deployment's own address filled in.
 It is kept in `src/agentbounty/skills/trycanari/SKILL.md`.
 
@@ -440,6 +466,7 @@ src/agentbounty/
 ├── attacker.py       An attacker agent that uses only the public API
 ├── check.py          A gate for a sponsor's build: scan the agent, fail if a canary trips
 ├── mcp_server.py     An MCP server for a sponsor's editor: a coding agent runs the scan
+├── browser.py        The browser that server drives over the site (the `browser` extra)
 └── skills/           The skill file that tells a coding agent how to use it (/skill.md)
 web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
@@ -454,8 +481,8 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 550 Python tests, each on its own scratch database
-make web-test     # 137 web tests
+make test         # 573 Python tests, each on its own scratch database
+make web-test     # 148 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
 make e2e          # the definition of done, as one test

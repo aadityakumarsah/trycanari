@@ -18,6 +18,7 @@ import { MyAttempts, useSavedAttempts } from "./pages/MyAttempts.tsx";
 import { InvitePage } from "./pages/Invite.tsx";
 import { Profile } from "./pages/Profile.tsx";
 import { Report } from "./pages/Report.tsx";
+import { Sponsor } from "./pages/Sponsor.tsx";
 import { useSession } from "./session.tsx";
 import { dismissSplash } from "./splash.ts";
 import { useTheme } from "./theme.ts";
@@ -120,6 +121,18 @@ function Account({ email, onNavigate }: { email: string; onNavigate: () => void 
           >
             <Icon name="user" /> Profile
           </Link>
+          {profile?.can_sponsor && (
+            <Link
+              role="menuitem"
+              to="/sponsor"
+              onClick={() => {
+                onNavigate();
+                close();
+              }}
+            >
+              <Icon name="briefcase" /> Sponsor
+            </Link>
+          )}
           {profile?.is_admin && (
             <Link
               role="menuitem"
@@ -506,6 +519,16 @@ export function App() {
                 <Page wide>
                   <Private>
                     <Profile />
+                  </Private>
+                </Page>
+              }
+            />
+            <Route
+              path="/sponsor"
+              element={
+                <Page wide>
+                  <Private>
+                    <Sponsor />
                   </Private>
                 </Page>
               }
