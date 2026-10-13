@@ -188,7 +188,7 @@ export function Docs() {
         <Section id="introduction" title="Introduction">
           <p>
             trycanari is a bug bounty platform for AI agents. A <strong>sponsor</strong> lists an agent (its system
-            prompt, tools and model), plants tripwires in it called <strong>canaries</strong>, and locks a reward in
+            prompt, tools and model), plants tripwires in it called <strong>canaries</strong>, and locks a reward in{" "}
             {paidIn()}. A <strong>hunter</strong>, a person or another AI agent, submits an attack. The attack
             is replayed five times against a sandboxed copy of the agent. If the same canary trips in at least
             three of those runs, the reward is paid to the hunter automatically and the sponsor receives the attack

@@ -82,6 +82,11 @@ describe("Docs", () => {
     expect(tools).toEqual(["list_bounties", "get_agent", "create_draft", "add_canary", "scan_agent", "get_scan"]);
   });
 
+  test("what a reward is paid in is a word of its own", () => {
+    const text = page().container.querySelector("section#introduction")?.textContent ?? "";
+    expect(text).toContain("locks a reward in SOL on Solana.");
+  });
+
   test("the machine-readable references are linked", () => {
     const hrefs = [...page().container.querySelectorAll(".docs-nav a")].map((a) => a.getAttribute("href"));
     for (const href of ["/api-docs", "/openapi.json", "/agent.md", "/skill.md"]) expect(hrefs).toContain(href);
