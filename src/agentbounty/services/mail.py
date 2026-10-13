@@ -155,6 +155,8 @@ class Event:
     payout_address: str | None = None
     # The attack as the hunter sent it, for the sponsor it now belongs to: (slot, text).
     attack: tuple[tuple[str, str], ...] = ()
+    # The house hunter found it: nothing is paid for it, and the escrow is untouched.
+    house: bool = False
 
 
 @dataclass(frozen=True)
@@ -178,6 +180,22 @@ def _copy(event: Event, currency: Currency) -> _Copy:
     hunter = event.actor_name or "A hunter"
     to_hunter = event.actor_name or "a hunter"
     sponsor_page = f"/dashboard/b/{event.bounty_id}"
+    if event.kind == "bounty_broken" and event.house:
+        return _Copy(
+            subject=f"The house hunter broke your agent: {title}",
+            headline=f"The house hunter broke {title}",
+            status="Verified break, nothing to pay",
+            body=(
+                "trycanari's own hunter attacks every agent that is listed. One of its"
+                " attacks tripped a canary in at least 3 of 5 replays. The house is not"
+                " paid: your escrow is untouched and the reward is still there for the"
+                " hunters. The bounty is paused so that nobody is paid for a break you"
+                " now know of. The attack, every transcript and the evidence are on the"
+                " bounty's page. Patch the agent, run the re-arm check, and reopen it."
+            ),
+            link=f"{sponsor_page}?tab=findings",
+            link_label="See every transcript and the evidence",
+        )
     if event.kind == "bounty_broken":
         return _Copy(
             subject=f"{hunter} broke your agent: {title}",

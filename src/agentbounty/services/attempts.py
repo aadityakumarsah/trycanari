@@ -24,8 +24,10 @@ from agentbounty.models import (
     BountyState,
     Canary,
     Finding,
+    FindingState,
     Payout,
     Run,
+    Sponsor,
 )
 from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.services import judge, notify
@@ -403,12 +405,18 @@ async def record_result(
     attempt.state = AttemptState.DONE
     finding = None
     if judgement and judgement.broken_canary and await _counts(session, bounty, attempt):
+        hunter = await session.get(Sponsor, attempt.account_id) if attempt.account_id else None
         finding = Finding(
             attempt_id=attempt.id,
             bounty_id=bounty.id,
             config_hash=attempt.config_hash,
             canary_id=judgement.broken_canary,
             tripped_runs=judgement.tripped_runs,
+            # The house hunter is not paid: its break is the sponsor's to read and to
+            # patch, and the payment process never sees it.
+            state=FindingState.WAIVED
+            if hunter is not None and hunter.is_house
+            else FindingState.VERIFIED,
         )
         session.add(finding)
         # One payout per hole: no further attempt is accepted or counted until the sponsor

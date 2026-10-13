@@ -89,6 +89,14 @@ group("a notification", () => {
     expect(describe({ ...note, actor: null }).title).toBe("A hunter broke Treasury agent");
   });
 
+  test("tells a sponsor that a break by the house hunter costs nothing", () => {
+    const said = describe({ ...note, house: true, amount_zatoshi: null, actor: { name: "trycanari house hunter", picture_url: null, github: null } });
+    expect(said.title).toBe("The house hunter broke Treasury agent");
+    expect(said.detail).toContain("Nothing is paid and your escrow is untouched");
+    expect(said.detail).not.toContain("is being paid out");
+    expect(said.to).toBe("/dashboard/b/b1?tab=findings");
+  });
+
   test("tells a hunter where their payout stands, and leads to their attempts", () => {
     expect(describe({ ...note, kind: "break_verified", actor: null }).detail).toContain("under review");
     expect(describe({ ...note, kind: "payout_sent", actor: null }).title).toBe("You were paid 2.5 ZEC");

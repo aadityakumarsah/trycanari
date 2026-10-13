@@ -250,6 +250,10 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font: 500 12px/1.5 var(--sans); vertical-align: middle; text-transform: capitalize; white-space: nowrap; }
 .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .badge-live, .badge-verified, .badge-paid { background: var(--accent-bg); color: var(--accent); }
+.badge-waived { background: var(--warn-bg); color: var(--warn); }
+.house-note { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.house-note svg { flex: none; margin-top: 3px; }
+.house-tag { margin-left: 8px; vertical-align: middle; }
 .badge-queued, .badge-running, .badge-awaiting_deposit, .badge-closing { background: var(--warn-bg); color: var(--warn); }
 .badge-queued::before, .badge-running::before, .badge-closing::before { animation: pulse 1.1s ease-in-out infinite; }
 .badge-error { background: var(--bad-bg); color: var(--bad); }

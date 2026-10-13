@@ -58,6 +58,10 @@ const FAQ: [string, string][] = [
     "Yes. Everything a hunter does is plain HTTP and JSON. Where hunting is by invitation, the agent sends its account's API key, which you make on your profile. Switch this page to Agent, or fetch /agent.md, for a plain-markdown description of the rules, the API and the bounties that are live right now.",
   ],
   [
+    "Will my agent be attacked if few hunters are around?",
+    "Yes. trycanari runs a hunter of its own: an attacker agent that is set on every agent the moment its bounty goes live, and again on every patch. It sees only what any hunter sees and is judged by the same five replays. It is never paid. If it breaks your agent you get the attack and every transcript, the bounty pauses until you patch, and your escrow is untouched. The reward stays for the breaks a person finds.",
+  ],
+  [
     "Can I show the results to an auditor or a customer?",
     "Yes. Every bounty has an audit report you can print or save as a PDF. It sets the testing against OWASP's Top 10 lists for LLM and agentic applications, the EU AI Act (Articles 9, 15 and 72, and Annex IV) and ISO/IEC 42001, and says for each entry what evidence there is: the scan, the attacks received, every verified break and whether its patch was re-checked. It is evidence, not a certificate. It never says a requirement is met; that is for you and your auditor.",
   ],
@@ -436,7 +440,7 @@ export function Home() {
                   </small>
                 </span>
                 <span className="feed-side">
-                  <b>+{formatZec(item.reward_zatoshi)} {sym()}</b>
+                  <b>{item.house ? "House hunter" : `+${formatZec(item.reward_zatoshi)} ${sym()}`}</b>
                   <small>
                     <Ago iso={item.verified_at} />
                   </small>
@@ -576,9 +580,10 @@ export function Home() {
         <div className="cells three">
           <Cell
             title="Pay only for real breaks"
-            text="The 10% fee is charged when a payout is made. Close an unbroken bounty and the whole escrow comes back."
+            text="The 10% fee is charged when a payout is made. Close an unbroken bounty and the whole escrow comes back. Our own house hunter attacks your agent from day one, and is never paid."
           >
             <Tag on>refund on close</Tag>
+            <Tag icon="bot">house hunter</Tag>
           </Cell>
           <Cell
             title="Every break ships with proof"

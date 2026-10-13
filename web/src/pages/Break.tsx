@@ -103,10 +103,16 @@ export function BreakPage() {
         <div>
           <dt>Reward</dt>
           <dd>
-            <b>
-              {formatZec(item.reward_zatoshi)} {sym()}
-            </b>{" "}
-            <span className={paid ? "stage paid" : "stage review"}>{paid ? "Paid" : "Payout under way"}</span>
+            {item.house ? (
+              <span className="stage review">Not paid: the house hunter takes no reward</span>
+            ) : (
+              <>
+                <b>
+                  {formatZec(item.reward_zatoshi)} {sym()}
+                </b>{" "}
+                <span className={paid ? "stage paid" : "stage review"}>{paid ? "Paid" : "Payout under way"}</span>
+              </>
+            )}
           </dd>
         </div>
         <div>

@@ -63,7 +63,13 @@ async def test_a_sponsor_sees_how_their_bounty_is_being_attacked(platform: Platf
     sponsor = await platform.sponsor()
     bounty_id = await sponsor.funded(platform)
     path = f"/v1/bounties/{bounty_id}/attempts"
-    assert await sponsor.call("GET", path) == {"total": 0, "queued": 0, "verified": 0, "recent": []}
+    assert await sponsor.call("GET", path) == {
+        "total": 0,
+        "queued": 0,
+        "verified": 0,
+        "house": 0,
+        "recent": [],
+    }
 
     waiting = await platform.submit(bounty_id, WEAK)
     seen = await sponsor.call("GET", path)
@@ -78,7 +84,9 @@ async def test_a_sponsor_sees_how_their_bounty_is_being_attacked(platform: Platf
         ("done", True),
         ("done", False),
     ]
-    assert set(seen["recent"][0]) == {"id", "state", "verified", "submitted_at"}
+    assert set(seen["recent"][0]) == {"id", "state", "verified", "house", "submitted_at"}
+    # These were people's attacks, not the house hunter's.
+    assert (seen["house"], [line["house"] for line in seen["recent"]]) == (0, [False, False])
 
     # Someone else's bounty is not found, and the public cannot ask at all.
     other = await platform.sponsor("other@example.com")

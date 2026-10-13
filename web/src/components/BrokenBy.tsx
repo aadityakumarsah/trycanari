@@ -33,12 +33,18 @@ export function BrokenBy({ hunters, compact = false }: { hunters: Breaker[]; com
               {!compact && hunter.id && <Link to={`/break/${hunter.id}`}>proof</Link>}
             </small>
           </span>
-          <span className="breaker-won">
-            <b>
-              {formatZec(hunter.reward_zatoshi)} <span>{sym()}</span>
-            </b>
-            <small className={hunter.paid ? "stage paid" : "stage review"}>{hunter.paid ? "Paid" : "Payout under way"}</small>
-          </span>
+          {hunter.house ? (
+            <span className="breaker-won">
+              <small className="stage review">House hunter, not paid</small>
+            </span>
+          ) : (
+            <span className="breaker-won">
+              <b>
+                {formatZec(hunter.reward_zatoshi)} <span>{sym()}</span>
+              </b>
+              <small className={hunter.paid ? "stage paid" : "stage review"}>{hunter.paid ? "Paid" : "Payout under way"}</small>
+            </span>
+          )}
         </li>
       ))}
     </ul>

@@ -18,7 +18,7 @@ describe("Docs", () => {
   test("every entry in the sidebar leads to a section on the page", () => {
     const view = page();
     const ids = CONTENTS.flatMap((group) => group.entries.map((entry) => entry.id));
-    expect(ids.length).toBe(21);
+    expect(ids.length).toBe(22);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) {
       expect(view.container.querySelector(`section#${id} h2`)).not.toBeNull();

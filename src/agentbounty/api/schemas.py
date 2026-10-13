@@ -518,6 +518,17 @@ class RearmOut(BaseModel):
     tripped_runs: int
 
 
+class HouseHuntOut(BaseModel):
+    """The house hunter's go at the bounty's current config."""
+
+    state: Literal["running", "done"]
+    # Once done: the agent held, it broke, or the hunt could not go on (and why).
+    outcome: Literal["held", "broke", "stopped"] | None
+    # Attacks it has made so far.
+    tries: int
+    detail: str | None
+
+
 class SponsorBountyDetail(SponsorBounty):
     # Where and how to deposit: the escrow address, with the code as the memo.
     escrow_address: str
@@ -532,6 +543,9 @@ class SponsorBountyDetail(SponsorBounty):
     # and whether it is scanned again every day while it is live.
     shares_breaks: bool = False
     watch: bool = False
+    # Null when the house hunter has not been at this config: it is switched off, the
+    # bounty is not live, or its turn has not come.
+    house_hunt: HouseHuntOut | None = None
 
 
 class BountySettingsIn(Body):
@@ -640,6 +654,10 @@ class ComplianceTesting(BaseModel):
     # how many of those were verified breaks.
     attacks: int
     attacks_judged: int
+    # Of the judged attacks, those the platform's house hunter made; and how its hunt
+    # of the current config ended, if there has been one.
+    house_attacks: int = 0
+    house_outcome: str | None = None
     verified_breaks: int
     watch: bool
     rearm: str | None
@@ -772,6 +790,8 @@ class BreakerOut(BaseModel):
     reward_zatoshi: int
     tripped_runs: int
     paid: bool
+    # The house hunter found it: nothing was paid, and the reward shown is nought.
+    house: bool = False
     verified_at: datetime
 
 
@@ -822,6 +842,8 @@ class BreakOut(BaseModel):
     canary: CanaryPublic
     reward_zatoshi: int
     tripped_runs: int
+    # The house hunter found it: nothing was paid, and the reward shown is nought.
+    house: bool = False
     verified_at: datetime
 
 
@@ -841,6 +863,8 @@ class BreakPage(BaseModel):
     # The payout, once there is one: its state and, when sent, its transaction.
     payout_state: PayoutState | None
     txid: str | None
+    # The house hunter found it: there is no payout, and the reward shown is nought.
+    house: bool = False
     verified_at: datetime
 
 
@@ -853,6 +877,8 @@ class AttemptLine(BaseModel):
     id: uuid.UUID
     state: AttemptState
     verified: bool
+    # Made by the house hunter, the platform's own attacker.
+    house: bool = False
     submitted_at: datetime
 
 
@@ -860,6 +886,8 @@ class AttemptActivity(BaseModel):
     total: int
     queued: int
     verified: int
+    # How many of the total the house hunter made.
+    house: int = 0
     recent: list[AttemptLine]
 
 
@@ -983,6 +1011,8 @@ class NotificationOut(BaseModel):
     actor: ActorOut | None
     amount_zatoshi: int | None
     txid: str | None
+    # The break was the house hunter's: nothing was paid for it.
+    house: bool = False
     read: bool
     created_at: datetime
 

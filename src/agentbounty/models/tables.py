@@ -92,6 +92,9 @@ class Sponsor(Base):
     # Made only to try the platform out. Shown to no one: not on the leaderboard, and not
     # in the admin's list of people. Set in the database, never through the API.
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # The platform's own hunter (services/house.py). There is one, it is made by the
+    # worker that runs it, and a break it finds is never paid for.
+    is_house: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # When an admin banned the account. A banned account can neither attack nor list agents.
     banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Tokens the account may spend in any 24 hours, when an admin has set that by hand.
@@ -397,6 +400,36 @@ class RearmCheck(Base):
     # The most runs any paid attack tripped a canary in, out of the runs per attempt.
     tripped_runs: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_now()
+
+
+class HouseHunt(Base):
+    """The house hunter's go at one config of a bounty: the attacker agent, a few tries."""
+
+    __tablename__ = "house_hunts"
+    __table_args__ = (
+        # A config is hunted once. A patch makes a new config, which is hunted afresh.
+        UniqueConstraint("bounty_id", "config_hash"),
+        CheckConstraint("state IN ('running', 'done')", name="state_known"),
+        CheckConstraint(
+            "outcome IS NULL OR outcome IN ('held', 'broke', 'stopped')", name="outcome_known"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"), index=True)
+    config_hash: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(
+        Text, default="running", server_default="running", index=True
+    )
+    # How it ended: the agent held, it broke, or the hunt could not go on (and why).
+    outcome: Mapped[str | None] = mapped_column(Text)
+    detail: Mapped[str | None] = mapped_column(Text)
+    # Attacks the model was asked for, whether or not each could be submitted.
+    tries: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    # When a worker last showed it was still on it. One that has gone quiet is taken over.
+    claimed_at: Mapped[datetime] = created_now()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_now()
 
 

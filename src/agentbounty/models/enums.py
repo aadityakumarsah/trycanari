@@ -30,6 +30,9 @@ class AttemptState(enum.StrEnum):
 class FindingState(enum.StrEnum):
     VERIFIED = "verified"
     PAID = "paid"
+    # Found by the house hunter. It is the sponsor's to read and to patch, and nothing
+    # is owed for it: the payment process pays only what is "verified".
+    WAIVED = "waived"
 
 
 class DepositState(enum.StrEnum):

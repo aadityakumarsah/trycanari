@@ -44,6 +44,7 @@ export const CONTENTS: Group[] = [
       { id: "sponsors", title: "Quickstart for sponsors" },
       { id: "rearm", title: "Patching and re-arming" },
       { id: "editor", title: "Scanning from your editor" },
+      { id: "house", title: "The house hunter" },
     ],
   },
   {
@@ -682,6 +683,48 @@ curl ${origin}/skill.md -o .claude/skills/trycanari/SKILL.md`}</Code>
             No tool funds, activates, closes or deletes a bounty: money, and what hunters see, are changed here on
             the site, by you. A live bounty's config cannot be changed from the editor either. The scan is the same
             one as the <strong>Scan</strong> tab: a floor of known attacks, each replayed once.
+          </p>
+        </Section>
+
+        <Section id="house" title="The house hunter">
+          <p>
+            trycanari runs a hunter of its own. Where it is switched on, it is set on every agent the moment the
+            bounty goes live, so that your agent is attacked from its first day, however few people are hunting
+            that week. Testing is then something that happens whenever the agent changes, and not once a year.
+          </p>
+          <h3>What it is</h3>
+          <p>
+            It is the same attacker agent anyone can run against the public API: a model that writes an attack,
+            reads what your agent replied, and tries a different approach. It is shown only what every hunter is
+            shown (the title, the entry points and the canary labels, never your prompt, tools, secrets or
+            rules). Its attacks go into the same queue and are judged by the same five replays. It makes a few
+            attacks on each config, 5 by default, and a patched config is hunted afresh.
+          </p>
+          <h3>It is never paid</h3>
+          <p>
+            The house does not take a sponsor's money. If the house hunter breaks your agent:
+          </p>
+          <ul>
+            <li>you get the attack and all five transcripts, as for any verified break;</li>
+            <li>nothing is paid and no fee is charged: your escrow is untouched;</li>
+            <li>
+              the bounty pauses, so that nobody is paid for a break you now know of. Patch the agent, run the{" "}
+              <a href="#rearm">re-arm check</a> (the house's attack is the regression test) and reopen it. No new
+              deposit is needed.
+            </li>
+          </ul>
+          <p>
+            On the <strong>Activity</strong> tab its attacks are marked <code>house</code>, with a line that says
+            how its hunt of the current config went. A break it found is listed under <strong>Findings</strong>{" "}
+            as <em>waived</em>, and the <a href="#audit">audit report</a> counts its attacks as the platform's own,
+            not as an independent hunter's.
+          </p>
+          <h3>For hunters</h3>
+          <p>
+            The house hunter finds what a model finds in a handful of tries. The reward is for what it cannot. It
+            is not on the leaderboard, and while it is at work it stands aside once half of a bounty's daily run
+            budget is spent, so that it never crowds you out. A break it finds pauses the bounty with the reward
+            untouched, and the reward is there again once the sponsor has patched.
           </p>
         </Section>
 

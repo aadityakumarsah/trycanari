@@ -342,6 +342,7 @@ export function Report() {
               <p>
                 Tripped in {finding.tripped_runs} of {finding.runs.length} replays. Verified {when(finding.verified_at)}
                 {finding.hunter?.name ? `, found by ${finding.hunter.name}` : ""}.
+                {finding.state === "waived" ? " Not paid: the house hunter, trycanari's own attacker, takes no reward." : ""}
                 {finding.payout?.txid ? ` Paid ${formatZec(finding.payout.amount_zatoshi)} ${sym()}, transaction ${finding.payout.txid}.` : ""}
               </p>
               {map && (

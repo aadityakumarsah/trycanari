@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentbounty.models import (
@@ -24,7 +24,7 @@ from agentbounty.models import (
     Run,
     Sponsor,
 )
-from agentbounty.services import compliance, rearm, scan
+from agentbounty.services import compliance, house, rearm, scan
 from agentbounty.services.attempts import read_evidence, read_transcript
 from agentbounty.services.bounty import LoadedTarget, latest_config, load_target
 from agentbounty.services.crypto import Cipher
@@ -219,14 +219,19 @@ async def compliance_evidence(
         )
         for result in (scan.results_of(cipher, found) if found is not None and done else [])
     )
-    attacks, judged = (
+    settled = Attempt.state == AttemptState.DONE
+    attacks, judged, by_house = (
         await session.execute(
             select(
                 func.count(Attempt.id),
-                func.count(Attempt.id).filter(Attempt.state == AttemptState.DONE),
-            ).where(Attempt.bounty_id == bounty.id)
+                func.count(Attempt.id).filter(settled),
+                func.count(Attempt.id).filter(settled, func.coalesce(Sponsor.is_house, false())),
+            )
+            .outerjoin(Sponsor, Sponsor.id == Attempt.account_id)
+            .where(Attempt.bounty_id == bounty.id)
         )
     ).one()
+    hunt = await house.latest(session, bounty, detail.config_hash)
     broken = await session.execute(
         select(Finding, Canary, Attempt.payload_json)
         .join(Canary, Canary.id == Finding.canary_id)
@@ -268,6 +273,8 @@ async def compliance_evidence(
         probes=probes,
         attacks=attacks,
         attacks_judged=judged,
+        house_attacks=by_house,
+        house_outcome=None if hunt is None else (hunt.outcome or "running"),
         breaks=breaks,
         rearm=check.state.value if check is not None else None,
     )

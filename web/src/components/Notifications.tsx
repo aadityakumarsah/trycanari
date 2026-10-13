@@ -26,6 +26,15 @@ export function describe(note: Notification): Told {
   const dashboard = `/dashboard/b/${note.bounty_id}`;
   switch (note.kind) {
     case "bounty_broken":
+      if (note.house) {
+        return {
+          icon: "shield",
+          tone: "alert",
+          title: `The house hunter broke ${note.bounty_title}`,
+          detail: "Verified in at least 3 of 5 replays. Nothing is paid and your escrow is untouched. The bounty is paused until you patch it.",
+          to: `${dashboard}?tab=findings`,
+        };
+      }
       return {
         icon: "zap",
         tone: "alert",

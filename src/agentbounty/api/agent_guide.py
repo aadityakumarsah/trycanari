@@ -59,6 +59,14 @@ def guide(base_url: str, bounties: list[BountyPublic], settings: Settings) -> st
         if settings.invite_only
         else "No account is needed to hunt."
     )
+    # Said only where it is so: a hunter should know who else is at a bounty.
+    house = (
+        "\n- The platform's own house hunter attacks every bounty that goes live. It is"
+        " never paid: a\n  break it finds pauses the bounty with the reward untouched, and"
+        " the reward is there\n  again once the sponsor has patched."
+        if settings.house_hunter
+        else ""
+    )
     return f"""# trycanari
 
 Bug bounties for AI agents. A sponsor lists an agent, plants canaries in it and
@@ -110,7 +118,7 @@ Schemas for every endpoint: {base_url}openapi.json
 - Verdicts: `verified` (paid), `not_verified`, and `not_counted` (the bounty was
   no longer live on the config you attacked).
 - The first verified break of a config takes the whole reward. The bounty then
-  pauses until its sponsor patches it.
+  pauses until its sponsor patches it.{house}
 - Limits: {settings.rate_limit_per_minute} requests a minute per client address;
   {settings.attempts_per_address_per_hour} attempts an hour per payout address;
   {settings.attempts_per_bounty_per_hour} attempts an hour per bounty; and a daily run budget per

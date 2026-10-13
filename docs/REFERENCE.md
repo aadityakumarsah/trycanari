@@ -353,6 +353,55 @@ the agent and never the canaries, scan again. `GET /skill.md` serves it with the
 deployment's own address in place of the hosted one, so `curl <site>/skill.md -o
 .claude/skills/trycanari/SKILL.md` installs a copy that points at the right service.
 
+## The house hunter
+
+`services/house.py`, run by the replay worker as a second task when `HOUSE_HUNTER=true`.
+It needs what the worker already has, the database and the model API, and never a wallet.
+
+**A hunt** is a row in `house_hunts`, one for each config of a bounty (a unique
+constraint), which is what makes a config hunted once however many workers run. The
+worker takes a live bounty whose live config has no hunt (not one that is closing or
+deleted, and not a demo account's), and runs the attacker agent on it for
+`HOUSE_ATTEMPTS` tries. It shows it still holds the hunt by touching `claimed_at`; a hunt
+that has been quiet for ten minutes is taken over and goes on with the tries it had left.
+It ends as `held`, `broke`, or `stopped` with the reason. The migration that adds the
+table writes a `stopped` hunt for every config that is live as it is applied, so that
+switching the hunter on does nothing to a bounty already out there.
+
+**The attacker is unchanged.** `agentbounty.attacker.Attacker` plays in an *arena*: over
+HTTP that is the public API, and for the house it is `HouseArena`, which reaches the same
+three things in the database. It gives the attacker a bounty's title, description, entry
+points, task and canary labels, and of an attempt the verdict and what the agent
+replied, which is what `GET /v1/bounties/{id}` and `GET /v1/attempts/{id}` give anyone.
+Attacks are submitted through `attempts.submit_attempt`, the function the API calls, as
+the house's account: one row in `sponsors` with `is_house` set, which has no key,
+password or Google ID and so cannot be signed in to.
+
+**Limits.** House attempts count against the bounty's attempts an hour, and against half
+of the bounty's and the platform's daily token budgets: past half, the hunt waits and
+goes on later. It is not charged credits and has no per-address limit. The model that
+writes its attacks is `HOUSE_MODEL`, or else the model of the config under attack when
+that config runs on the platform's provider; an agent on its sponsor's own endpoint is
+not hunted unless `HOUSE_MODEL` is set. A model call that fails counts as a try, so a
+hunt that can never be made ends. On the fake model the house writes from a short script
+that knows none of the fake agent's directives, so a development stack shows a hunt
+without every seeded bounty being broken.
+
+**Money.** When a house attempt is a verified break, `attempts.record_result` writes the
+finding with `state = 'waived'` and pauses the bounty. Nothing else is different, and
+that is the point: the payment process selects findings that are `verified`, so it makes
+no payout and charges no fee, and a close refunds the whole escrow without waiting on
+it. The sponsor is told (the notification carries no amount), and the house is not. The
+finding blocks its config from going live again and joins the re-arm check's attacks,
+as a paid one would. After the check passes, `POST /v1/bounties/{id}/fund` finds the
+escrow already covers the bounty and sets it live at once.
+
+**Shown.** `GET /v1/bounties/{id}/attempts` marks each attempt `house` and counts them;
+`GET /v1/sponsor/bounties/{id}` carries `house_hunt` for the current config; a finding's
+`state` is `waived`; the public break page, the list of who broke a bounty and the
+activity feed carry `house: true` with a reward of nought; the leaderboard leaves the
+house out; and the audit report says how many of the attacks were the house's.
+
 ## The audit report
 
 `GET /v1/bounties/{id}/compliance` sets a bounty's testing against OWASP's two lists, the EU

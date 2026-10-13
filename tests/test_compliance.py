@@ -196,6 +196,21 @@ def test_a_live_bounty_and_a_daily_scan_are_monitoring() -> None:
     assert found["LLM01:2025"] == "held"
 
 
+def test_the_house_hunter_is_named_only_for_what_it_did() -> None:
+    def said(evidence: Evidence) -> list[str]:
+        report = compliance.report(evidence, NOW)
+        return [line for f in report["frameworks"] for c in f["controls"] for line in c["evidence"]]
+
+    live = replace(SCANNED, state="live", attacks=3, attacks_judged=3)
+    hunted = said(replace(live, house_attacks=3, house_outcome="held"))
+    assert any("house hunter attacked the current config" in line for line in hunted)
+    assert not any("independent hunters" in line for line in hunted)
+    # A config it never went at, because it was live before there was a house hunter.
+    spared = said(replace(live, house_outcome="stopped"))
+    assert not any("house hunter" in line for line in spared)
+    assert any("3 attacks by independent hunters" in line for line in spared)
+
+
 def test_the_same_evidence_gives_the_same_digest_whenever_it_is_asked_for() -> None:
     first = compliance.report(SCANNED, NOW)
     later = compliance.report(SCANNED, NOW + timedelta(days=30))

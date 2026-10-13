@@ -18,7 +18,16 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 
-from agentbounty.models import Attempt, Bounty, Canary, Finding, Notification, Payout, Sponsor
+from agentbounty.models import (
+    Attempt,
+    Bounty,
+    Canary,
+    Finding,
+    FindingState,
+    Notification,
+    Payout,
+    Sponsor,
+)
 from agentbounty.services import judge, mail
 from agentbounty.settings import Settings
 
@@ -71,7 +80,9 @@ async def on_break(
     session: AsyncSession, bounty: Bounty, attempt: Attempt, finding: Finding
 ) -> None:
     """A break was verified: the sponsor learns who broke the agent, the hunter that the
-    payout is under way."""
+    payout is under way. For a break the house hunter found there is no payout, so the
+    sponsor is told of no amount and the house of nothing."""
+    waived = finding.state is FindingState.WAIVED
     await _tell(
         session,
         bounty.sponsor_id,
@@ -79,9 +90,9 @@ async def on_break(
         bounty_id=bounty.id,
         finding_id=finding.id,
         actor_id=attempt.account_id,
-        amount=bounty.reward_zatoshi,
+        amount=None if waived else bounty.reward_zatoshi,
     )
-    if attempt.account_id is not None:
+    if attempt.account_id is not None and not waived:
         await _tell(
             session,
             attempt.account_id,
@@ -232,6 +243,7 @@ async def _claim(
                 actor_github=actor.github if actor else None,
                 payout_address=attempt.payout_address,
                 attack=tuple((fill["slot"], fill["content"]) for fill in attempt.payload_json),
+                house=finding.state is FindingState.WAIVED,
             )
             email = mail.compose(event, recipient.email, settings.currency, settings.public_url)
             return note.id, email

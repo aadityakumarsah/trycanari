@@ -14,6 +14,7 @@ from agentbounty.models import Base
 from .conftest import alembic_config, scratch_database
 
 TABLES = {
+    "house_hunts",
     "notifications",
     "platform_settings",
     "scans",
@@ -71,6 +72,72 @@ def test_migration_applies_to_a_clean_database_and_reverses() -> None:
 
         command.upgrade(config, "head")
         assert asyncio.run(_names(url, PUBLIC_TABLES)) == TABLES | {"alembic_version"}
+
+
+async def _run(url: str, *statements: str) -> list[tuple[object, ...]]:
+    engine = create_async_engine(url, poolclass=NullPool)
+    rows: list[tuple[object, ...]] = []
+    async with engine.begin() as connection:
+        for statement in statements:
+            result = await connection.execute(text(statement))
+            rows = [tuple(row) for row in result] if result.returns_rows else []
+    await engine.dispose()
+    return rows
+
+
+def test_a_bounty_already_live_is_not_handed_to_the_house_hunter() -> None:
+    """The house hunter goes at what is listed from now on. Applying its migration to a
+    platform with bounties out there must leave them as they are."""
+    listed = (
+        "INSERT INTO sponsors (email) VALUES ('team@example.com')",
+        # One bounty that is live, and one that is a draft.
+        "INSERT INTO bounties (sponsor_id, reward_zatoshi, fee_rate, deposit_code, state)"
+        " SELECT id, 1000000, 0.1, 'dep-live', 'live' FROM sponsors",
+        "INSERT INTO bounties (sponsor_id, reward_zatoshi, fee_rate, deposit_code, state)"
+        " SELECT id, 1000000, 0.1, 'dep-draft', 'draft' FROM sponsors",
+        "INSERT INTO target_configs (bounty_id, version, config_hash, system_prompt_enc,"
+        " tools_enc, model, params_json, entry_points_json)"
+        " SELECT id, 1, 'hash-' || state::text, 'x', 'x', 'm', '{}', '[]' FROM bounties",
+        "UPDATE bounties SET live_config_id = c.id FROM target_configs c"
+        " WHERE c.bounty_id = bounties.id AND bounties.state = 'live'",
+    )
+    # A break the house found, to be taken back to a schema that has no word for it.
+    broken = (
+        "INSERT INTO canaries (config_id, type, public_label, rule_json)"
+        " SELECT id, 'forbidden_tool', 'rule', '{\"tool\": \"t\"}' FROM target_configs"
+        " WHERE config_hash = 'hash-live'",
+        "INSERT INTO attempts (bounty_id, config_hash, payload_json, payout_address,"
+        " status_token) SELECT id, 'hash-live', '[]', 'a', 't' FROM bounties"
+        " WHERE state = 'live'",
+        "INSERT INTO findings (attempt_id, bounty_id, config_hash, canary_id, tripped_runs,"
+        " state) SELECT a.id, a.bounty_id, a.config_hash, c.id, 5, 'waived'"
+        " FROM attempts a, canaries c",
+    )
+    hunted = (
+        "SELECT b.deposit_code, h.config_hash, h.state, h.outcome, h.tries, h.detail"
+        " FROM house_hunts h JOIN bounties b ON b.id = h.bounty_id"
+    )
+    with scratch_database() as url:
+        config = alembic_config(url)
+        command.upgrade(config, "0024")
+        asyncio.run(_run(url, *listed))
+        command.upgrade(config, "head")
+        assert asyncio.run(_run(url, hunted)) == [
+            (
+                "dep-live",
+                "hash-live",
+                "done",
+                "stopped",
+                0,
+                "this config was live before the house hunter was switched on",
+            )
+        ]
+        asyncio.run(_run(url, *broken))
+        command.downgrade(config, "0024")
+        assert asyncio.run(_run(url, "SELECT state::text FROM findings")) == [("paid",)]
+        assert asyncio.run(_names(url, PUBLIC_TABLES)) == (TABLES - {"house_hunts"}) | {
+            "alembic_version"
+        }
 
 
 async def test_every_table_has_row_level_security(session: AsyncSession) -> None:

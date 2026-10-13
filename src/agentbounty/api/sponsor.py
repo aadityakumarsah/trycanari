@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from fastapi import APIRouter, Depends, Request, Response
-from sqlalchemy import func, select
+from sqlalchemy import false, func, select
 
 from agentbounty.api.deps import CipherDep, OwnBounty, SettingsDep, SponsorDep, Transaction
 from agentbounty.api.public import status_out
@@ -45,6 +45,7 @@ from agentbounty.api.schemas import (
     FindingOut,
     FundIn,
     FundOut,
+    HouseHuntOut,
     HunterOut,
     HuntOut,
     HuntPayoutOut,
@@ -94,6 +95,7 @@ from agentbounty.services import (
     compliance,
     credits,
     endpoint,
+    house,
     hunts,
     notify,
     pictures,
@@ -366,6 +368,7 @@ async def _notifications(session: Transaction, sponsor: Sponsor) -> Notification
                 ),
                 amount_zatoshi=line.notification.amount_zatoshi,
                 txid=line.notification.txid,
+                house=line.actor is not None and line.actor.is_house,
                 read=line.notification.read_at is not None,
                 created_at=line.notification.created_at,
             )
@@ -689,6 +692,7 @@ async def my_bounty(
         if detail.config_hash is not None
         else None
     )
+    hunt = await house.latest(session, bounty, detail.config_hash)
     config = None
     if target is not None and detail.config_version is not None and detail.config_hash is not None:
         config = ConfigDetail(
@@ -739,6 +743,14 @@ async def my_bounty(
         ],
         shares_breaks=bounty.shares_breaks,
         watch=bounty.watch,
+        house_hunt=None
+        if hunt is None
+        else HouseHuntOut(
+            state=hunt.state,  # type: ignore[arg-type]
+            outcome=hunt.outcome,  # type: ignore[arg-type]
+            tries=hunt.tries,
+            detail=hunt.detail,
+        ),
     )
 
 
@@ -898,7 +910,9 @@ async def attempts(session: Transaction, bounty: OwnBounty) -> AttemptActivity:
     Only a verified break hands the sponsor an attack's content (see findings).
     """
     verified = Finding.id.is_not(None)
-    total, queued, broke = (
+    # The house hunter's attacks are in the same queue, and are told apart.
+    by_house = func.coalesce(Sponsor.is_house, false())
+    total, queued, broke, housed = (
         await session.execute(
             select(
                 func.count(Attempt.id),
@@ -906,14 +920,17 @@ async def attempts(session: Transaction, bounty: OwnBounty) -> AttemptActivity:
                     Attempt.state.in_([AttemptState.QUEUED, AttemptState.RUNNING])
                 ),
                 func.count(Finding.id),
+                func.count(Attempt.id).filter(by_house),
             )
             .outerjoin(Finding, Finding.attempt_id == Attempt.id)
+            .outerjoin(Sponsor, Sponsor.id == Attempt.account_id)
             .where(Attempt.bounty_id == bounty.id)
         )
     ).one()
     recent = await session.execute(
-        select(Attempt.id, Attempt.state, verified, Attempt.submitted_at)
+        select(Attempt.id, Attempt.state, verified, by_house, Attempt.submitted_at)
         .outerjoin(Finding, Finding.attempt_id == Attempt.id)
+        .outerjoin(Sponsor, Sponsor.id == Attempt.account_id)
         .where(Attempt.bounty_id == bounty.id)
         .order_by(Attempt.submitted_at.desc(), Attempt.id)
         .limit(50)
@@ -922,9 +939,12 @@ async def attempts(session: Transaction, bounty: OwnBounty) -> AttemptActivity:
         total=total,
         queued=queued,
         verified=broke,
+        house=housed,
         recent=[
-            AttemptLine(id=id_, state=state, verified=bool(is_break), submitted_at=at)
-            for id_, state, is_break, at in recent
+            AttemptLine(
+                id=id_, state=state, verified=bool(is_break), house=bool(housed), submitted_at=at
+            )
+            for id_, state, is_break, housed, at in recent
         ],
     )
 

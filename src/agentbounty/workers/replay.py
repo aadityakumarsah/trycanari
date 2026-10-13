@@ -23,7 +23,16 @@ from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
 from agentbounty.models import Attempt
 from agentbounty.models import TargetConfig as TargetConfigRow
-from agentbounty.services import attempts, endpoint, plans, playbook, provider, rearm, scan
+from agentbounty.services import (
+    attempts,
+    endpoint,
+    house,
+    plans,
+    playbook,
+    provider,
+    rearm,
+    scan,
+)
 from agentbounty.services.bounty import LoadedTarget, load_target
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.harness import (
@@ -399,6 +408,34 @@ async def drain(
     return processed
 
 
+async def run_house(
+    settings: Settings,
+    sessions: SessionFactory,
+    cipher: Cipher,
+    model: ModelClient,
+    stop: asyncio.Event,
+) -> None:
+    """The house hunter (services/house.py), beside the replays that judge its attacks.
+
+    It writes its attacks with the platform's model, and where that is the fake one, with
+    a script that knows none of the fake agent's directives."""
+    thinker = house.ScriptedThinker() if settings.model_backend == "fake" else model
+    logger.info("house hunter started: %d tries a config", settings.house_attempts)
+
+    async def wait() -> None:
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=settings.worker_poll_seconds)
+
+    while not stop.is_set():
+        try:
+            if await house.hunt_once(sessions, cipher, thinker, settings, wait=wait):
+                continue
+        except Exception:
+            logger.exception("house hunter iteration failed")
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=settings.house_poll_seconds)
+
+
 async def run(settings: Settings, stop: asyncio.Event) -> None:
     engine = create_engine(settings.database_url)
     sessions = create_session_factory(engine)
@@ -407,6 +444,11 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     model = PlatformModel(make_model(settings))
     stale_after = timedelta(seconds=settings.attempt_timeout_seconds)
     logger.info("replay worker started (model backend: %s)", settings.model_backend)
+    hunting = (
+        asyncio.create_task(run_house(settings, sessions, cipher, model, stop))
+        if settings.house_hunter
+        else None
+    )
     try:
         while not stop.is_set():
             try:
@@ -429,6 +471,11 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=settings.worker_poll_seconds)
     finally:
+        if hunting is not None:
+            # It stops by itself once `stop` is set; it is not left holding the model.
+            hunting.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await hunting
         await model.aclose()
         await engine.dispose()
 

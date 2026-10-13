@@ -179,6 +179,10 @@ class Evidence:
     # Attacks by hunters, over every config the bounty has had.
     attacks: int = 0
     attacks_judged: int = 0
+    # How many of the judged attacks the platform's own house hunter made, and how its
+    # hunt of the current config ended, if it has made one.
+    house_attacks: int = 0
+    house_outcome: str | None = None
     breaks: tuple[Break, ...] = ()
     # The re-arm check of the current config: every paid attack replayed against it.
     rearm: str | None = None
@@ -301,10 +305,17 @@ class _Facts:
         )
 
     def attacks_line(self) -> str:
-        breaks = len(self.e.breaks)
+        judged, house = self.e.attacks_judged, self.e.house_attacks
+        # The house hunter is the platform's own, and is not passed off as independent.
+        if house >= judged > 0:
+            by = "by the platform's house hunter"
+        elif house:
+            by = f"by hunters, {house} of them by the platform's house hunter,"
+        else:
+            by = "by independent hunters"
         return (
-            f"{_plural(self.e.attacks_judged, 'attack')} by independent hunters replayed and"
-            f" judged; {_plural(breaks, 'verified break')}."
+            f"{_plural(judged, 'attack')} {by} replayed and judged;"
+            f" {_plural(len(self.e.breaks), 'verified break')}."
         )
 
     def tests(self) -> list[str]:
@@ -355,6 +366,15 @@ def _monitoring(facts: _Facts) -> tuple[str, list[str]]:
         lines.append(
             "The current config is scanned again every day while the bounty is live, against"
             " attacks added since."
+        )
+    if e.house_outcome is not None and (e.house_attacks or e.house_outcome != "stopped"):
+        ended = {
+            "held": "none of its attacks got through",
+            "broke": "one of its attacks got through",
+            "stopped": "it could not finish",
+        }.get(e.house_outcome, "it is still under way")
+        lines.append(
+            f"The platform's house hunter attacked the current config when it went live: {ended}."
         )
     if facts.attacked:
         lines.append(facts.attacks_line())
@@ -614,6 +634,8 @@ def report(evidence: Evidence, now: datetime) -> dict[str, Any]:
             "probes_held": len(e.probes) - through if scanned else 0,
             "attacks": e.attacks,
             "attacks_judged": e.attacks_judged,
+            "house_attacks": e.house_attacks,
+            "house_outcome": e.house_outcome,
             "verified_breaks": len(e.breaks),
             "watch": e.watch,
             "rearm": e.rearm,

@@ -55,6 +55,8 @@ export interface Breaker {
   reward_zatoshi: number;
   tripped_runs: number;
   paid: boolean;
+  /** The house hunter found it: nothing was paid. */
+  house?: boolean;
   verified_at: string;
 }
 
@@ -73,6 +75,8 @@ export interface Break {
   canary: CanaryPublic;
   reward_zatoshi: number;
   tripped_runs: number;
+  /** The house hunter found it: nothing was paid. */
+  house?: boolean;
   verified_at: string;
 }
 
@@ -85,6 +89,8 @@ export interface AttemptLine {
   id: string;
   state: "queued" | "running" | "done" | "error";
   verified: boolean;
+  /** Made by the house hunter, the platform's own attacker. */
+  house?: boolean;
   submitted_at: string;
 }
 
@@ -92,7 +98,17 @@ export interface AttemptActivity {
   total: number;
   queued: number;
   verified: number;
+  /** How many of the total the house hunter made. */
+  house?: number;
   recent: AttemptLine[];
+}
+
+/** The house hunter's go at a bounty's current config. */
+export interface HouseHunt {
+  state: "running" | "done";
+  outcome: "held" | "broke" | "stopped" | null;
+  tries: number;
+  detail: string | null;
 }
 
 export interface ToolCall {
@@ -355,6 +371,8 @@ export interface SponsorBountyDetail extends SponsorBounty {
   /** Whether its breaks are replayed against other sponsors' agents, and whether it is scanned daily. */
   shares_breaks: boolean;
   watch: boolean;
+  /** Null when the house hunter has not been at this config. */
+  house_hunt?: HouseHunt | null;
 }
 
 export interface Plan {
@@ -380,6 +398,8 @@ export interface BreakPage {
   reward_zatoshi: number;
   payout_state: string | null;
   txid: string | null;
+  /** The house hunter found it: there is no payout. */
+  house?: boolean;
   verified_at: string;
 }
 
@@ -536,7 +556,8 @@ export interface AdminAction {
 
 export interface Finding {
   id: string;
-  state: "verified" | "paid";
+  /** "waived": the house hunter found it, and nothing is paid for it. */
+  state: "verified" | "paid" | "waived";
   canary: CanaryPublic;
   tripped_runs: number;
   config_hash: string;
@@ -607,6 +628,8 @@ export interface Notification {
   actor: { name: string | null; picture_url: string | null; github: string | null } | null;
   amount_zatoshi: number | null;
   txid: string | null;
+  /** The break was the house hunter's: nothing was paid for it. */
+  house?: boolean;
   read: boolean;
   created_at: string;
 }

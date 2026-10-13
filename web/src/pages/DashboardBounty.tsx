@@ -13,7 +13,7 @@ import { Ago, Avatar, Badge, Copyable, ErrorNote, Skeleton, when, words } from "
 import { useAction, useInterval, useLoad } from "../hooks.ts";
 import { currency, formatZec, sym } from "../money.ts";
 import { useToast } from "../toast.tsx";
-import type { AttemptActivity, EntryPoint, Finding, Hunter, Ledger, Probe, Scan, SponsorBountyDetail } from "../types.ts";
+import type { AttemptActivity, EntryPoint, Finding, HouseHunt, Hunter, Ledger, Probe, Scan, SponsorBountyDetail } from "../types.ts";
 
 interface Everything {
   bounty: SponsorBountyDetail;
@@ -145,30 +145,32 @@ function Rearm({ bounty, act }: Props) {
   if (bounty.config?.live) {
     body = (
       <p className="muted">
-        This config was broken. Save a patched config, then replay the paid attack against it. The bounty can
-        reopen only once that replay fails.
+        This config was broken. Save a patched config, then replay the attack that broke it against the patch.
+        The bounty can reopen only once that replay fails.
       </p>
     );
   } else if (check?.state === "passed") {
     body = (
       <p className="done">
-        The paid attack no longer breaks this config ({check.tripped_runs} of 5 runs tripped). Fund the bounty to
-        reopen it.
+        The attack that broke it no longer breaks this config ({check.tripped_runs} of 5 runs tripped).{" "}
+        {bounty.balance_zatoshi >= bounty.required_zatoshi
+          ? "The escrow already covers the bounty: reopen it on the Funding tab, with no new deposit."
+          : "Fund the bounty to reopen it."}
       </p>
     );
   } else if (check?.state === "failed") {
     body = (
       <p className="error">
-        The paid attack still breaks this config ({check.tripped_runs} of 5 runs tripped). Patch it again.
+        The attack that broke it still breaks this config ({check.tripped_runs} of 5 runs tripped). Patch it again.
       </p>
     );
   } else if (check) {
-    body = <p className="notice">The paid attack is being replayed against this config…</p>;
+    body = <p className="notice">The attack that broke it is being replayed against this config…</p>;
   } else {
     body = (
       <>
-        <ActionForm submit={() => act("rearm")} label="Replay the paid attack" />
-        <p className="muted">The bounty can reopen only once the attack you paid for fails against the new config.</p>
+        <ActionForm submit={() => act("rearm")} label="Replay the attack" />
+        <p className="muted">The bounty can reopen only once the attack that broke it fails against the new config.</p>
       </>
     );
   }
@@ -210,7 +212,10 @@ function Funding({ bounty, act, base, reload }: Props & { base: string; reload: 
         )}
       </>
     ) : editable(bounty) ? (
-      <ActionForm submit={() => act("fund", { refund_address: refund.trim() })} label="Get deposit instructions">
+      <ActionForm
+        submit={() => act("fund", { refund_address: refund.trim() })}
+        label={due === 0 ? "Reopen on the escrow it holds" : "Get deposit instructions"}
+      >
         <label>
           Refund address
           <input
@@ -456,6 +461,12 @@ function Findings({ findings }: { findings: Finding[] }) {
           </h3>
           <p className="muted">
             Tripped in {finding.tripped_runs} of {finding.runs.length} runs. Verified {when(finding.verified_at)}.{" "}
+            {finding.state === "waived" && (
+              <>
+                Found by the house hunter, trycanari's own attacker. Nothing was paid for it and your escrow is
+                untouched: patch the agent, run the re-arm check and reopen the bounty.
+              </>
+            )}
             {finding.payout?.txid && (
               <>
                 Paid {formatZec(finding.payout.amount_zatoshi)} {sym()}, transaction <code>{finding.payout.txid}</code>.
@@ -755,7 +766,18 @@ function ScanTab({ bounty, reload }: { bounty: SponsorBountyDetail; reload: () =
 }
 
 /** How hard the bounty is being attacked. The attacks themselves are shown only for breaks. */
-function ActivityTab({ bountyId, watching }: { bountyId: string; watching: boolean }) {
+/** What the house hunter has done with the config that is live, in a sentence. */
+export function houseLine(hunt: HouseHunt | null | undefined): string | null {
+  if (!hunt) return null;
+  const made = `${hunt.tries} ${hunt.tries === 1 ? "attack" : "attacks"}`;
+  if (hunt.state === "running") return `The house hunter is attacking this config now: ${made} so far.`;
+  if (hunt.outcome === "broke") return `The house hunter broke this config after ${made}. Nothing is paid for it: see Findings.`;
+  if (hunt.outcome === "held") return `The house hunter made ${made} on this config and none got through.`;
+  if (hunt.tries === 0 && hunt.detail) return `The house hunter has not attacked this config: ${hunt.detail}.`;
+  return `The house hunter stopped after ${made}${hunt.detail ? `: ${hunt.detail}` : ""}.`;
+}
+
+function ActivityTab({ bountyId, watching, hunt }: { bountyId: string; watching: boolean; hunt: HouseHunt | null }) {
   const activity = useLoad(
     (signal) => api<AttemptActivity>("GET", `/v1/bounties/${bountyId}/attempts`, { signal }),
     bountyId,
@@ -765,9 +787,16 @@ function ActivityTab({ bountyId, watching }: { bountyId: string; watching: boole
   if (!activity.data) return activity.error ? <ErrorNote>{activity.error}</ErrorNote> : <Skeleton lines={4} />;
   const { total, queued, verified, recent } = activity.data;
   const held = total - queued - verified;
+  const house = houseLine(hunt);
   return (
     <section>
       <h2>Activity</h2>
+      {house && (
+        <p className="muted house-note">
+          <Icon name="bot" size={15} /> {house} It is trycanari's own attacker: it sees only what every hunter
+          sees, and it is never paid.
+        </p>
+      )}
       <dl className="facts">
         <div>
           <dt>Attacks</dt>
@@ -803,6 +832,7 @@ function ActivityTab({ bountyId, watching }: { bountyId: string; watching: boole
                 <tr key={line.id}>
                   <td>
                     <code>{line.id.slice(0, 8)}</code>
+                    {line.house && <span className="tag mini-tag house-tag">house</span>}
                   </td>
                   <td>
                     <Badge
@@ -864,13 +894,16 @@ export function DashboardBounty() {
     activate: "The bounty is live.",
     pause: "The bounty is paused.",
     close: "Close requested. The unspent escrow is refunded once attempts in flight finish.",
-    rearm: "The paid attack is being replayed against this config.",
+    rearm: "The attack that broke it is being replayed against this config.",
   };
   async function act(path: string, body?: unknown, method = "POST") {
     setDone("");
-    await api<unknown>(method, `${base}/${path}`, body === undefined ? {} : { body });
+    const answer = await api<{ amount_due_zatoshi?: number } | null>(method, `${base}/${path}`, body === undefined ? {} : { body });
     await page.reload();
-    setDone(DONE[path] ?? "");
+    // Funding a bounty whose escrow already covers it, as after a break nothing was paid
+    // for, sets it live at once: there is no deposit to send.
+    const covered = path === "fund" && answer?.amount_due_zatoshi === 0;
+    setDone(covered ? "The bounty is live again, on the escrow it already holds." : (DONE[path] ?? ""));
   }
 
   return (
@@ -942,8 +975,9 @@ export function DashboardBounty() {
           <>
             {findings.length > 0 && bounty.state === "paused" && (
               <p className="error">
-                A hunter broke this agent. Read the finding, patch the config, then replay the paid attack
-                against your patch before reopening.{" "}
+                {findings[findings.length - 1]?.state === "waived"
+                  ? "The house hunter, trycanari's own attacker, broke this agent. Nothing was paid and your escrow is untouched. Read the finding, patch the config, then replay the attack against your patch before reopening."
+                  : "A hunter broke this agent. Read the finding, patch the config, then replay the attack against your patch before reopening."}{" "}
                 <Link to="?tab=findings" replace>
                   See the finding →
                 </Link>
@@ -956,7 +990,13 @@ export function DashboardBounty() {
         {tab === "canaries" && <CanarySection bounty={bounty} act={act} />}
         {tab === "scan" && <ScanTab bounty={bounty} reload={page.reload} />}
         {tab === "funding" && <Funding bounty={bounty} act={act} base={base} reload={page.reload} />}
-        {tab === "activity" && <ActivityTab bountyId={bounty.id} watching={isMoving(bounty)} />}
+        {tab === "activity" && (
+          <ActivityTab
+            bountyId={bounty.id}
+            watching={isMoving(bounty) || bounty.house_hunt?.state === "running"}
+            hunt={bounty.house_hunt ?? null}
+          />
+        )}
         {tab === "findings" && <Findings findings={findings} />}
         {tab === "ledger" && <LedgerTable ledger={ledger} />}
       </div>

@@ -41,6 +41,7 @@ from agentbounty.models import (
     BountyState,
     Canary,
     Finding,
+    FindingState,
     Payout,
     PayoutState,
     Sponsor,
@@ -150,9 +151,10 @@ async def public_views(
                     picture_url=(who.uploaded_picture_url or who.picture_url) if who else None,
                     github=who.github if who else None,
                     canary=CanaryPublic(type=kind, public_label=label),
-                    reward_zatoshi=int(amount),
+                    reward_zatoshi=0 if finding.state is FindingState.WAIVED else int(amount),
                     tripped_runs=finding.tripped_runs,
                     paid=state in (PayoutState.SENT, PayoutState.CONFIRMED),
+                    house=finding.state is FindingState.WAIVED,
                     verified_at=finding.verified_at,
                 )
             )
@@ -299,6 +301,7 @@ async def activity(request: Request, session: Transaction) -> ActivityOut:
                 func.coalesce(Payout.amount_zatoshi, Bounty.reward_zatoshi),
                 Finding.tripped_runs,
                 Finding.verified_at,
+                Finding.state,
             )
             .join(Bounty, Bounty.id == Finding.bounty_id)
             .join(Canary, Canary.id == Finding.canary_id)
@@ -322,11 +325,12 @@ async def activity(request: Request, session: Transaction) -> ActivityOut:
                     bounty_id=bounty_id,
                     bounty_title=title,
                     canary=CanaryPublic(type=kind, public_label=label),
-                    reward_zatoshi=int(amount),
+                    reward_zatoshi=0 if state is FindingState.WAIVED else int(amount),
                     tripped_runs=tripped,
+                    house=state is FindingState.WAIVED,
                     verified_at=at,
                 )
-                for finding_id, bounty_id, title, kind, label, amount, tripped, at in breaks
+                for finding_id, bounty_id, title, kind, label, amount, tripped, at, state in breaks
             ],
         )
 
@@ -367,9 +371,9 @@ async def break_page(finding_id: uuid.UUID, request: Request, session: Transacti
                 website=sponsor.website,
             ),
             # Who a hunter is, is what they chose to put on their profile. A demo
-            # account is nobody.
+            # account is nobody, and the house hunter is named as what it is.
             hunter=None
-            if who is None or who.is_demo
+            if who is None or (who.is_demo and not who.is_house)
             else HunterOut(
                 name=who.name,
                 picture_url=who.uploaded_picture_url or who.picture_url,
@@ -381,9 +385,12 @@ async def break_page(finding_id: uuid.UUID, request: Request, session: Transacti
             canary=CanaryPublic(type=canary.type, public_label=canary.public_label),
             tripped_runs=finding.tripped_runs,
             total_runs=judge.RUNS_PER_ATTEMPT,
-            reward_zatoshi=int(payout.amount_zatoshi if payout else bounty.reward_zatoshi),
+            reward_zatoshi=0
+            if finding.state is FindingState.WAIVED
+            else int(payout.amount_zatoshi if payout else bounty.reward_zatoshi),
             payout_state=payout.state if payout else None,
             txid=payout.txid if payout else None,
+            house=finding.state is FindingState.WAIVED,
             verified_at=finding.verified_at,
         )
 

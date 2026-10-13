@@ -151,6 +151,17 @@ class Settings(BaseSettings):
     email_from_name: str = "trycanari"
     email_poll_seconds: float = Field(default=10.0, gt=0)
 
+    # The house hunter: the platform's own attacker, run by the replay worker against
+    # every config that goes live (services/house.py). It costs model calls: one to write
+    # each attack, and five replays to judge it. A break it finds is never paid for.
+    house_hunter: bool = False
+    # The model it writes attacks with, on the platform's provider. Unset, it uses the
+    # model the agent under attack runs on, when that is on the platform's provider.
+    house_model: str | None = None
+    # How many attacks it makes on one config.
+    house_attempts: int = Field(default=5, ge=1, le=20)
+    house_poll_seconds: float = Field(default=30.0, gt=0)
+
     worker_poll_seconds: float = Field(default=2.0, gt=0)
     # A running attempt older than this is taken to belong to a dead worker and is retried.
     attempt_timeout_seconds: float = Field(default=900.0, gt=0)
@@ -177,6 +188,7 @@ class Settings(BaseSettings):
         "email_from",
         "payout_max_zatoshi",
         "payout_daily_max_zatoshi",
+        "house_model",
         mode="before",
     )
     @classmethod

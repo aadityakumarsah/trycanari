@@ -1,7 +1,27 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SponsorBountyDetail } from "../types.ts";
-import { isMoving, ruleValue, tabOf } from "./DashboardBounty.tsx";
+import { houseLine, isMoving, ruleValue, tabOf } from "./DashboardBounty.tsx";
+
+describe("the house hunter's go at a config", () => {
+  test("is said in a sentence, or not at all when it has not been", () => {
+    expect(houseLine(null)).toBeNull();
+    expect(houseLine(undefined)).toBeNull();
+    expect(houseLine({ state: "running", outcome: null, tries: 1, detail: null })).toBe(
+      "The house hunter is attacking this config now: 1 attack so far.",
+    );
+    expect(houseLine({ state: "done", outcome: "held", tries: 5, detail: null })).toBe(
+      "The house hunter made 5 attacks on this config and none got through.",
+    );
+    expect(houseLine({ state: "done", outcome: "broke", tries: 2, detail: null })).toContain("Nothing is paid for it");
+    expect(houseLine({ state: "done", outcome: "stopped", tries: 2, detail: "the bounty is paused" })).toBe(
+      "The house hunter stopped after 2 attacks: the bounty is paused.",
+    );
+    expect(houseLine({ state: "done", outcome: "stopped", tries: 0, detail: "this config was live before the house hunter was switched on" })).toBe(
+      "The house hunter has not attacked this config: this config was live before the house hunter was switched on.",
+    );
+  });
+});
 
 describe("ruleValue", () => {
   test.each([

@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="667 tests" src="https://img.shields.io/badge/tests-667%20passing-6ee7b7" />
+  <img alt="686 tests" src="https://img.shields.io/badge/tests-686%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -50,9 +50,9 @@
 | Number | |
 |---:|---|
 | **51** | API endpoints |
-| **18** | database migrations |
-| **534** | Python tests |
-| **133** | web tests |
+| **25** | database migrations |
+| **550** | Python tests |
+| **136** | web tests |
 | **~9,700** | lines of Python |
 | **~7,900** | lines of TypeScript |
 
@@ -65,6 +65,7 @@
 - [Going real](#going-real)
 - [Scan from your editor](#scan-from-your-editor)
 - [The audit report](#the-audit-report)
+- [The house hunter](#the-house-hunter)
 - [Roles: owner, admin, ambassador](#roles-owner-admin-ambassador)
 - [Configuration](#configuration)
 - [Project layout](#project-layout)
@@ -128,6 +129,8 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 
 **For sponsors**
 
+- A house hunter: the platform's own attacker agent goes at every agent the day it is
+  listed, and again on every patch. It is never paid; a break it finds costs nothing
 - An agent form: pick a model, build tools by filling in boxes
 - Connect your own model: any OpenAI-compatible endpoint, key stored encrypted
 - Canaries: a secret that must not leak, a tool call that must not happen
@@ -185,7 +188,7 @@ Three processes share one database and nothing else:
 | Process | Does | Never does |
 |---|---|---|
 | **API** | Serves requests and the web app | Calls a model, holds a wallet |
-| **Replay worker** | Replays attacks, judges them, records verdicts | Holds a wallet, takes requests |
+| **Replay worker** | Replays attacks, judges them, records verdicts; runs the house hunter | Holds a wallet, takes requests |
 | **Payment process** | Credits deposits, sends payouts and refunds | Takes requests, calls a model |
 
 Money is an integer of the currency's smallest unit (lamports or zatoshi). A bounty's balance is never stored: it is the sum of an
@@ -329,6 +332,33 @@ method and its limits, a sign-off block, and a SHA-256 digest of its evidence, s
 same evidence always gives the same digest. It holds labels and counts, never a prompt, a
 secret, a rule or an attack.
 
+## The house hunter
+
+With `HOUSE_HUNTER=true` the replay worker also runs the platform's own hunter: the
+[attacker agent](src/agentbounty/attacker.py), set on every config the moment it goes
+live. A sponsor's agent is attacked from its first day, however few people are hunting.
+
+| | |
+|---|---|
+| **What it sees** | What every hunter sees: the title, entry points and canary labels. Never a prompt, a tool, a secret or a rule |
+| **How it is judged** | Its attacks go into the same queue and the same five replays judge them |
+| **How much it does** | `HOUSE_ATTEMPTS` attacks on each config (5 by default). A patched config is hunted afresh. It stands aside once half of a day's replay budget is spent |
+| **What it costs** | Model calls: one to write each attack, and five replays to judge it. `HOUSE_MODEL` names the model it writes with; unset, it uses the model the agent runs on |
+| **What it is paid** | Nothing, ever |
+
+**The house never takes a sponsor's money.** A break it finds is a finding in the state
+`waived`. The sponsor gets the attack and all five transcripts, and the bounty pauses so
+that nobody is paid for a break the sponsor now knows of. No payout is made and no fee is
+charged: the payment process pays only findings that are `verified`, so it never sees
+this one. After a patch and the re-arm check the bounty reopens on the same escrow, with
+no new deposit, and the reward is there for the hunters.
+
+It is not on the leaderboard, its attacks are marked `house` on the sponsor's Activity
+tab, and the audit report counts them as the platform's own. A demo account's bounty is
+left alone: it is there for people to try their hand on. So is a config that was already
+live when the house hunter arrived: it goes at what is listed from then on, and at an
+older bounty once its sponsor changes it. It is off unless switched on.
+
 ## Roles: owner, admin, ambassador
 
 | Role | Can | How someone gets it |
@@ -372,6 +402,7 @@ Everything comes from environment variables; `.env.example` lists them all with 
 | `WALLET_BACKEND` | `fake`, or `solana` with `SOLANA_RPC_URL`, `SOLANA_CLUSTER`, `SOLANA_SECRET_KEY` and `ESCROW_ADDRESS` |
 | `CLOUDINARY_URL` | Turns on profile picture uploads |
 | `INVITE_ONLY` | `true`: hunting needs a referral code and spends credits |
+| `HOUSE_HUNTER` | `true`: the platform's own attacker goes at every config that goes live. With `HOUSE_MODEL` and `HOUSE_ATTEMPTS` |
 | `PLAN_PRICE_ZATOSHI`, `PLAN_DAYS` | What the Watch plan costs and for how long. Unset: no plan is sold |
 | `ADMIN_EMAILS` | The owners' Google addresses, separated by commas |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_URL` | Turn on sign in with Google |
@@ -401,7 +432,7 @@ src/agentbounty/
 ├── settings.py       Every setting, read from the environment
 ├── api/              Routes: public, sponsor, admin, session, Google sign-in
 ├── services/         judge · harness · attempts · payment · ledger · credits · wallet · solana
-│                     pictures · crypto · compliance
+│                     pictures · crypto · compliance · house
 ├── workers/          replay (verdicts) · payment (the only holder of a wallet)
 ├── models/           Tables and enum types
 ├── admin.py          Operator commands
@@ -414,7 +445,7 @@ web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
 ├── src/components/   Flow · Transcript · AttemptStatus · ReferralGate · shared pieces
 └── cloudflare/       The Pages worker that proxies API paths
-migrations/versions/  0001 … 0018
+migrations/versions/  0001 … 0025
 tests/                One file per area; a scratch database per test
 docs/REFERENCE.md     The long version of everything on this page
 ```
@@ -423,8 +454,8 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 534 Python tests, each on its own scratch database
-make web-test     # 133 web tests
+make test         # 550 Python tests, each on its own scratch database
+make web-test     # 136 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
 make e2e          # the definition of done, as one test
