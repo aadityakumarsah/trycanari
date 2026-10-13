@@ -614,6 +614,96 @@ class ScanOut(BaseModel):
     with_library: bool = False
 
 
+class ComplianceSubject(BaseModel):
+    bounty_id: uuid.UUID
+    title: str
+    state: BountyState
+    model: str | None
+    config_version: int | None
+    config_hash: str | None
+    entry_points: list[str]
+    tools: list[str]
+    # Labels and kinds only: never a secret or a rule.
+    tripwires: list[dict[str, str]]
+
+
+class ComplianceTesting(BaseModel):
+    # The standard of proof: a tripwire in `threshold` of `runs_per_attack` replays.
+    runs_per_attack: int
+    threshold: int
+    scan_state: str | None
+    scan_finished_at: datetime | None
+    scan_with_library: bool
+    probes_run: int
+    probes_held: int
+    # Attacks by hunters over every config, how many were replayed to a verdict, and
+    # how many of those were verified breaks.
+    attacks: int
+    attacks_judged: int
+    verified_breaks: int
+    watch: bool
+    rearm: str | None
+
+
+class ComplianceRisk(BaseModel):
+    # An entry of one of OWASP's lists, such as LLM01:2025 or ASI02.
+    id: str
+    source: str
+    name: str
+    # How an attack gets in, or what it does once it is in.
+    role: Literal["vector", "impact"]
+    tested_by: str
+    tripwires: list[str]
+    probes_run: int
+    probes_held: int
+    breaks: int
+    open_breaks: int
+    status: Literal["not_tested", "held", "broken", "patched", "fixed"]
+
+
+class ComplianceControl(BaseModel):
+    ref: str
+    title: str
+    # What the provision asks for, in this report's words and not the text of the law.
+    asks: str
+    # Never "met": only whether there is evidence that bears on it.
+    status: Literal["evidence", "partial", "gap", "none", "not_applicable"]
+    evidence: list[str]
+
+
+class ComplianceFramework(BaseModel):
+    id: str
+    name: str
+    citation: str
+    scope: str
+    controls: list[ComplianceControl]
+
+
+class ComplianceFinding(BaseModel):
+    id: uuid.UUID
+    tripwire: str
+    vector: str
+    risks: list[str]
+    config_hash: str
+    tripped_runs: int
+    verified_at: datetime
+    # Open on the current config, patched since, or patched and checked by re-arming.
+    status: Literal["broken", "patched", "fixed"]
+
+
+class ComplianceOut(BaseModel):
+    subject: ComplianceSubject
+    testing: ComplianceTesting
+    risks: list[ComplianceRisk]
+    frameworks: list[ComplianceFramework]
+    findings: list[ComplianceFinding]
+    generated_at: datetime
+    references: list[str]
+    disclaimer: str
+    # SHA-256 of everything above generated_at: the same evidence gives the same digest.
+    evidence_digest: str
+
+
 class LeaderOut(BaseModel):
     """A hunter on the leaderboard: what they chose to put on their profile, and what
     they have won."""

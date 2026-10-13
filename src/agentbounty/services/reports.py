@@ -8,11 +8,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentbounty.models import (
     Attempt,
+    AttemptState,
     Bounty,
     Canary,
     Deposit,
@@ -23,6 +24,7 @@ from agentbounty.models import (
     Run,
     Sponsor,
 )
+from agentbounty.services import compliance, rearm, scan
 from agentbounty.services.attempts import read_evidence, read_transcript
 from agentbounty.services.bounty import LoadedTarget, latest_config, load_target
 from agentbounty.services.crypto import Cipher
@@ -188,3 +190,84 @@ async def ledger_report(session: AsyncSession, bounty: Bounty) -> tuple[list[Led
         for e in entries
     ]
     return lines, await bounty_balance(session, bounty.id)
+
+
+async def compliance_evidence(
+    session: AsyncSession, cipher: Cipher, bounty: Bounty
+) -> compliance.Evidence:
+    """Everything recorded about a bounty that its audit report is drawn from."""
+    detail = await bounty_detail(session, cipher, bounty)
+    target = detail.target
+    tripwires = tuple(
+        compliance.Tripwire(
+            label=canary.definition.public_label,
+            type=canary.definition.type.value,
+            in_prompt=bool(canary.definition.secret)
+            and target is not None
+            and str(canary.definition.secret) in target.config.system_prompt,
+        )
+        for canary in (target.canaries if target else ())
+    )
+    found, _ = await scan.latest(session, bounty)
+    done = found is not None and found.state == "done"
+    probes = tuple(
+        compliance.Probe(
+            name=str(result["name"]),
+            technique=str(result["technique"]),
+            aimed_at=str(result["aimed_at"]),
+            tripped=tuple(result["tripped"]),
+        )
+        for result in (scan.results_of(cipher, found) if found is not None and done else [])
+    )
+    attacks, judged = (
+        await session.execute(
+            select(
+                func.count(Attempt.id),
+                func.count(Attempt.id).filter(Attempt.state == AttemptState.DONE),
+            ).where(Attempt.bounty_id == bounty.id)
+        )
+    ).one()
+    broken = await session.execute(
+        select(Finding, Canary, Attempt.payload_json)
+        .join(Canary, Canary.id == Finding.canary_id)
+        .join(Attempt, Attempt.id == Finding.attempt_id)
+        .where(Finding.bounty_id == bounty.id)
+        .order_by(Finding.verified_at, Finding.id)
+    )
+    breaks = tuple(
+        compliance.Break(
+            id=str(finding.id),
+            label=canary.public_label,
+            type=canary.type.value,
+            slots=tuple(str(fill["slot"]) for fill in payload),
+            config_hash=finding.config_hash,
+            tripped_runs=finding.tripped_runs,
+            verified_at=finding.verified_at,
+        )
+        for finding, canary, payload in broken
+    )
+    check = (
+        await rearm.check_for(session, bounty.id, detail.config_hash)
+        if detail.config_hash is not None
+        else None
+    )
+    return compliance.Evidence(
+        bounty_id=str(bounty.id),
+        title=bounty.title,
+        state=bounty.state.value,
+        watch=bounty.watch,
+        model=target.config.model if target else None,
+        config_version=detail.config_version,
+        config_hash=detail.config_hash,
+        entry_points=tuple(sorted(target.config.entry_points)) if target else (),
+        tools=tuple(tool.name for tool in target.config.tools) if target else (),
+        tripwires=tripwires,
+        scan_state=found.state if found is not None else None,
+        scan_finished_at=found.finished_at if found is not None else None,
+        scan_with_library=found.with_library if found is not None else False,
+        probes=probes,
+        attacks=attacks,
+        attacks_judged=judged,
+        breaks=breaks,
+        rearm=check.state.value if check is not None else None,
+    )

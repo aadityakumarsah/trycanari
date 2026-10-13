@@ -571,10 +571,45 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
             From a script, use <Endpoint method="POST" path="/v1/bounties/{id}/scan" />.
           </p>
           <p>
-            <strong>Open the report</strong> on a bounty gives one printable page: what was tested, the tripwires
-            and the risk each covers (named after OWASP's lists for LLM and agentic applications), the scan, the
-            number of attacks received and every verified break with its evidence. Save it as a PDF for whoever
-            asks how the agent was tested.
+            <strong>Open the audit report</strong> on a bounty gives one printable page: what was tested, the
+            tripwires, the scan, the number of attacks received and every verified break with its evidence. Save it
+            as a PDF for whoever asks how the agent was tested.
+          </p>
+          <h3 id="audit">7. Hand it to an auditor</h3>
+          <p>
+            The same report sets the testing against the three lists a compliance team works from, and says for
+            each entry what evidence there is and where it stands.
+          </p>
+          <Table
+            head={["List", "What is mapped"]}
+            rows={[
+              [
+                "OWASP",
+                "The Top 10 for LLM Applications (2025) and for Agentic Applications (2026). Every attack tests how one gets in: LLM01 Prompt Injection and ASI01 Agent Goal Hijack. Each tripwire tests what it would do: a secret leak is LLM02 Sensitive Information Disclosure (and LLM07 System Prompt Leakage when the secret sits in the prompt); a forbidden tool call is LLM06 Excessive Agency and ASI02 Tool Misuse and Exploitation.",
+              ],
+              [
+                "EU AI Act",
+                "Regulation (EU) 2024/1689. Article 9(2) risk identification, Article 9(6) and 9(8) testing against thresholds set in advance, Article 15(5) resilience against third parties, Annex IV point 2(g) dated test reports, and Article 72 post-market monitoring.",
+              ],
+              [
+                "ISO/IEC 42001",
+                "The 2023 edition. Clauses 6.1.2 and 8.2 risk assessment, 8.3 and 10.2 treatment and corrective action, 9.1 measurement, and the Annex A controls A.6.2.4 verification and validation, A.6.2.6 operation and monitoring, and A.8.3 external reporting.",
+              ],
+            ]}
+          />
+          <p>
+            Each risk is marked not tested, held, an open weakness, patched, or fixed and re-checked. Each provision
+            is marked with evidence on file, partial evidence, an open weakness or no evidence yet, with the
+            evidence written out beside it. A verified break is followed from the attack to the patch to the{" "}
+            <a href="#rearm">re-arm check</a> that proves the patch.
+          </p>
+          <p>
+            The report is evidence, not a certificate: it never says a requirement is met, and whether one applies
+            to you is for you and your auditor. It carries the method and its limits, a place for the responsible
+            person to sign, and a SHA-256 digest of its evidence. <strong>Download JSON</strong> gives the mapping
+            as a file for a compliance tool, and{" "}
+            <Endpoint method="GET" path="/v1/bounties/{id}/compliance" /> returns the same from a script. It holds
+            labels and counts, never a prompt, a secret or an attack.
           </p>
         </Section>
 
@@ -855,6 +890,7 @@ curl ${origin}/skill.md -o .claude/skills/trycanari/SKILL.md`}</Code>
               [<Endpoint method="GET" path="/v1/bounties/{id}/ledger" />, "Ledger entries and the balance."],
               [<Endpoint method="POST" path="/v1/bounties/{id}/scan" />, "Queue a baseline scan of the current config: six well-known attacks, each replayed once."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/scan" />, "The latest scan: each probe, what it was aimed at, what the agent did and whether it held."],
+              [<Endpoint method="GET" path="/v1/bounties/{id}/compliance" />, "The audit mapping: the testing set against OWASP's risks, the EU AI Act and ISO/IEC 42001, with where the evidence stands."],
             ]}
           />
           <h3>Browser session</h3>

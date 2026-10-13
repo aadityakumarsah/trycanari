@@ -907,7 +907,7 @@ export function DashboardBounty() {
         <div>
           <dt>Evidence</dt>
           <dd>
-            <Link to={`/dashboard/b/${bounty.id}/report`}>Open the report</Link>
+            <Link to={`/dashboard/b/${bounty.id}/report`}>Open the audit report</Link>
           </dd>
         </div>
         {(bounty.state === "live" || bounty.state === "paused") && (

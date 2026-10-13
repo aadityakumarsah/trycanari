@@ -428,6 +428,85 @@ export interface Scan {
   with_library?: boolean;
 }
 
+/** An entry of one of OWASP's lists, and how the bounty's testing stands against it. */
+export interface ComplianceRisk {
+  id: string;
+  source: string;
+  name: string;
+  role: "vector" | "impact";
+  tested_by: string;
+  tripwires: string[];
+  probes_run: number;
+  probes_held: number;
+  breaks: number;
+  open_breaks: number;
+  status: "not_tested" | "held" | "broken" | "patched" | "fixed";
+}
+
+/** A provision of a framework, and whether there is evidence that bears on it. */
+export interface ComplianceControl {
+  ref: string;
+  title: string;
+  asks: string;
+  status: "evidence" | "partial" | "gap" | "none" | "not_applicable";
+  evidence: string[];
+}
+
+export interface ComplianceFramework {
+  id: string;
+  name: string;
+  citation: string;
+  scope: string;
+  controls: ComplianceControl[];
+}
+
+export interface ComplianceFinding {
+  id: string;
+  tripwire: string;
+  vector: string;
+  risks: string[];
+  config_hash: string;
+  tripped_runs: number;
+  verified_at: string;
+  status: "broken" | "patched" | "fixed";
+}
+
+/** `GET /v1/bounties/{id}/compliance`: the testing set against the lists an auditor uses. */
+export interface Compliance {
+  subject: {
+    bounty_id: string;
+    title: string;
+    state: string;
+    model: string | null;
+    config_version: number | null;
+    config_hash: string | null;
+    entry_points: string[];
+    tools: string[];
+    tripwires: { label: string; type: string }[];
+  };
+  testing: {
+    runs_per_attack: number;
+    threshold: number;
+    scan_state: string | null;
+    scan_finished_at: string | null;
+    scan_with_library: boolean;
+    probes_run: number;
+    probes_held: number;
+    attacks: number;
+    attacks_judged: number;
+    verified_breaks: number;
+    watch: boolean;
+    rearm: string | null;
+  };
+  risks: ComplianceRisk[];
+  frameworks: ComplianceFramework[];
+  findings: ComplianceFinding[];
+  generated_at: string;
+  references: string[];
+  disclaimer: string;
+  evidence_digest: string;
+}
+
 export interface Leader {
   name: string | null;
   picture_url: string | null;

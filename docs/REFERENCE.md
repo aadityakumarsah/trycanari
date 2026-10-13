@@ -353,6 +353,52 @@ the agent and never the canaries, scan again. `GET /skill.md` serves it with the
 deployment's own address in place of the hosted one, so `curl <site>/skill.md -o
 .claude/skills/trycanari/SKILL.md` installs a copy that points at the right service.
 
+## The audit report
+
+`GET /v1/bounties/{id}/compliance` sets a bounty's testing against OWASP's two lists, the EU
+AI Act and ISO/IEC 42001. The report page (`/dashboard/b/{id}/report`) shows it with the
+rest of the evidence and prints as a PDF; **Download JSON** saves the same answer as a file.
+
+`services/compliance.py` holds the whole mapping and touches no database: it is a function
+of an `Evidence` record that `reports.compliance_evidence` fills from what the platform has
+recorded. So the same evidence always gives the same answer and the same `evidence_digest`,
+a SHA-256 of everything in it except the time it was made.
+
+**Risks.** Every attack is text put where the agent reads it, so every attack tests the two
+risks about getting in. Which canary trips says what it did once it was in.
+
+| OWASP entry | Tested by |
+|---|---|
+| LLM01:2025 Prompt Injection, ASI01 Agent Goal Hijack | Every probe and every hunter's attack |
+| LLM02:2025 Sensitive Information Disclosure | Secret-leak canaries |
+| LLM07:2025 System Prompt Leakage | Secret-leak canaries whose value is in the system prompt |
+| LLM06:2025 Excessive Agency, ASI02 Tool Misuse and Exploitation | Forbidden-tool canaries |
+
+A risk is `not_tested` (no canary for it, or nothing has attacked), `held`, `broken` (a
+probe of the current config's scan got through, or a verified break is on the current
+config), `patched` (the config was changed since the break) or `fixed` (and the re-arm
+check of the new config passed). A break is direct or indirect prompt injection by where
+the hunter put text: the user's message, or a document or tool result.
+
+**Provisions.** Each has a summary of what it asks, the evidence that bears on it, and a
+status: `evidence`, `partial`, `gap` (the evidence shows a weakness still open), `none`, or
+`not_applicable` (nothing has got through, so there has been nothing to correct).
+
+| Provision | Evidence when |
+|---|---|
+| AI Act Art. 9(2); ISO 6.1.2 and 8.2 | Canaries name the risks, and the config has been tested |
+| AI Act Art. 9(6) and 9(8); Annex IV 2(g); ISO A.6.2.4 | The current config has been scanned. The 3-of-5 threshold is the metric set in advance. Partial when only earlier configs were attacked |
+| AI Act Art. 15(5) | Tested, with nothing that got through still open. A gap while a break or a tripped probe is open |
+| AI Act Art. 72; ISO A.6.2.6 | The bounty is live, or scanned every day. Partial when it was attacked and is not live now |
+| ISO 8.3 and 10.2 | Every break was patched and the re-arm check passed. Partial before the check, a gap while one is open |
+| ISO 9.1 | Anything has been tested |
+| ISO A.8.3 | The bounty is live: an outsider reports a weakness by demonstrating it. Partial once it has been listed |
+
+It deliberately claims little. No status says a requirement is met; the wording of each
+provision is a summary and not the text; and provisions the testing does not bear on are
+left out (the AI Act's logging and human oversight, ISO's impact assessment). The answer
+holds labels and counts and never a prompt, a secret, a rule or an attack.
+
 ## Scans, the shared library and the Watch plan
 
 There is one scan per config of a bounty (`POST /v1/bounties/{id}/scan`). It replays, once

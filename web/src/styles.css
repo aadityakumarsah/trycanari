@@ -1291,6 +1291,23 @@ table.people td { vertical-align: middle; white-space: nowrap; }
 .report .facts + p { margin-top: 16px; }
 .report section { overflow-x: auto; }
 .report-foot { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--border); }
+.report-foot code { overflow-wrap: anywhere; }
+.report-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.report-note { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; background: var(--surface); color: var(--muted); font-size: 13px; line-height: 20px; }
+.page .report .report-map td { min-width: 150px; font-size: 13px; line-height: 19px; }
+.page .report .report-map td:last-child { min-width: 0; white-space: nowrap; }
+.report-map ul { margin: 0; padding-left: 16px; }
+.report-map li + li { margin-top: 6px; }
+.risk-ids { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 17px; }
+.standing { display: inline-block; padding: 2px 9px; border: 1px solid var(--border-strong); border-radius: 999px; color: var(--muted); font: 500 12px/1.5 var(--sans); white-space: nowrap; }
+.standing-held, .standing-fixed, .standing-evidence { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
+.standing-patched, .standing-partial { border-color: var(--warn); background: var(--warn-bg); color: var(--warn); }
+.standing-broken, .standing-gap { border-color: var(--bad); background: var(--bad-bg); color: var(--bad); }
+.finding-map { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.report #method li + li { margin-top: 8px; }
+.report-sign dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 32px; margin-top: 18px; }
+.report-sign dt { color: var(--muted); font-size: 12px; }
+.report-sign dd { height: 34px; margin: 0; border-bottom: 1px solid var(--border-strong); }
 
 @media (max-width: 640px) {
   .leader-breaks { display: none; }
@@ -1298,7 +1315,7 @@ table.people td { vertical-align: middle; white-space: nowrap; }
 }
 /* On paper: black on white, and only the report. */
 @media print {
-  :root { --background: #fff; --black: #fff; --surface: #fff; --surface-2: #f3f3f3; --foreground: #000; --muted: #444; --dim: #666; --border: #ccc; --border-strong: #999; --accent: #0a7a50; --accent-bg: #eaf7f1; --warn: #8a5a00; --warn-bg: #fff6e0; }
+  :root { --background: #fff; --black: #fff; --surface: #fff; --surface-2: #f3f3f3; --foreground: #000; --muted: #444; --dim: #666; --border: #ccc; --border-strong: #999; --accent: #0a7a50; --accent-bg: #eaf7f1; --warn: #8a5a00; --warn-bg: #fff6e0; --bad: #b3261e; --bad-bg: #fdecea; }
   html, body, .frame, main.frame { background: #fff !important; color: #000; border: 0; }
   .nav, .footer, .mode, .to-top, .toasts, .report-bar, #splash { display: none !important; }
   .page { max-width: none; padding: 0; }
@@ -1306,6 +1323,9 @@ table.people td { vertical-align: middle; white-space: nowrap; }
   .page .report pre, .page .report code { border-color: #ccc; background: #f6f6f6; color: #000; }
   .page .report table, .page .report th, .page .report td { border-color: #ccc; color: #000; }
   .report section { break-inside: avoid; }
+  .report .report-framework, .report #risks { break-inside: auto; }
+  .report-map tr { break-inside: avoid; }
+  .standing { background: #fff !important; }
   a { color: inherit; text-decoration: none; }
 }
 

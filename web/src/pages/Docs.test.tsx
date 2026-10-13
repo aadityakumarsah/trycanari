@@ -43,6 +43,7 @@ describe("Docs", () => {
       "/v1/bounties/{id}/close",
       "/v1/sponsor/bounties",
       "/v1/bounties/{id}/findings",
+      "/v1/bounties/{id}/compliance",
       "/v1/bounties/{id}/ledger",
       "/v1/session",
       "/agent.md",

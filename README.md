@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="648 tests" src="https://img.shields.io/badge/tests-648%20passing-6ee7b7" />
+  <img alt="667 tests" src="https://img.shields.io/badge/tests-667%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -51,8 +51,8 @@
 |---:|---|
 | **51** | API endpoints |
 | **18** | database migrations |
-| **522** | Python tests |
-| **126** | web tests |
+| **534** | Python tests |
+| **133** | web tests |
 | **~9,700** | lines of Python |
 | **~7,900** | lines of TypeScript |
 
@@ -64,6 +64,7 @@
 - [Quick start](#quick-start)
 - [Going real](#going-real)
 - [Scan from your editor](#scan-from-your-editor)
+- [The audit report](#the-audit-report)
 - [Roles: owner, admin, ambassador](#roles-owner-admin-ambassador)
 - [Configuration](#configuration)
 - [Project layout](#project-layout)
@@ -138,7 +139,8 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 - Harder targets: mark a tool as reading untrusted content and hunters must plant
   their attack in what it returns
 - A daily scan of watched bounties, and a shared library of breaks you choose to join
-- A printable evidence report, with risks named after OWASP's lists
+- An audit report: the testing set against OWASP's risks for LLM and agentic applications,
+  the EU AI Act and ISO/IEC 42001, printable, with a JSON export for compliance tools
 - One-click funding from a browser wallet
 - Escrow with a deposit code
 - Activity, findings and a full ledger
@@ -304,6 +306,29 @@ mkdir -p .claude/skills/trycanari
 curl https://trycanari.pages.dev/skill.md -o .claude/skills/trycanari/SKILL.md
 ```
 
+## The audit report
+
+**Open the audit report** on a bounty (or `GET /v1/bounties/{id}/compliance`) sets what the
+testing showed against the lists a compliance team works from. It is computed from what the
+platform recorded, in [`services/compliance.py`](src/agentbounty/services/compliance.py).
+
+| List | What is mapped |
+|---|---|
+| **OWASP** Top 10 for LLM Applications (2025) and for Agentic Applications (2026) | Every attack tests LLM01 Prompt Injection and ASI01 Agent Goal Hijack. A secret-leak canary tests LLM02 (and LLM07 when the secret is in the prompt); a forbidden-tool canary tests LLM06 and ASI02 |
+| **EU AI Act**, Regulation (EU) 2024/1689 | Article 9(2), Article 9(6) and 9(8), Article 15(5), Article 11 with Annex IV point 2(g), Article 72 |
+| **ISO/IEC 42001:2023** | Clauses 6.1.2 and 8.2, 8.3 and 10.2, 9.1; Annex A controls A.6.2.4, A.6.2.6 and A.8.3 |
+
+A risk is *not tested*, *held*, an *open weakness*, *patched*, or *fixed and re-checked*. A
+provision has *evidence on file*, *partial evidence*, an *open weakness*, *no evidence yet*
+or *nothing to show yet*, with the evidence written out beside it. A verified break is
+followed from the attack to the patch to the re-arm check that proves the patch.
+
+It is evidence, not a certificate. It never says a requirement is met: whether one applies,
+and whether it is satisfied, is for the sponsor and their auditor. The page carries the
+method and its limits, a sign-off block, and a SHA-256 digest of its evidence, so that the
+same evidence always gives the same digest. It holds labels and counts, never a prompt, a
+secret, a rule or an attack.
+
 ## Roles: owner, admin, ambassador
 
 | Role | Can | How someone gets it |
@@ -376,7 +401,7 @@ src/agentbounty/
 ├── settings.py       Every setting, read from the environment
 ├── api/              Routes: public, sponsor, admin, session, Google sign-in
 ├── services/         judge · harness · attempts · payment · ledger · credits · wallet · solana
-│                     pictures · crypto
+│                     pictures · crypto · compliance
 ├── workers/          replay (verdicts) · payment (the only holder of a wallet)
 ├── models/           Tables and enum types
 ├── admin.py          Operator commands
@@ -398,8 +423,8 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 522 Python tests, each on its own scratch database
-make web-test     # 126 web tests
+make test         # 534 Python tests, each on its own scratch database
+make web-test     # 133 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
 make e2e          # the definition of done, as one test

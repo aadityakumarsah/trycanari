@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -33,6 +34,7 @@ from agentbounty.api.schemas import (
     CanaryPublic,
     CloseIn,
     CloseOut,
+    ComplianceOut,
     ConfigDetail,
     ConfigIn,
     ConfigOut,
@@ -89,6 +91,7 @@ from agentbounty.money import format_amount
 from agentbounty.services import attempts as attempt_service
 from agentbounty.services import bounty as bounty_service
 from agentbounty.services import (
+    compliance,
     credits,
     endpoint,
     hunts,
@@ -873,6 +876,19 @@ async def start_scan(
     )
     await session.refresh(found)
     return _scan_out(cipher, found, found.config_hash)
+
+
+@router.get("/bounties/{bounty_id}/compliance")
+async def compliance_report(
+    session: Transaction, bounty: OwnBounty, cipher: CipherDep
+) -> ComplianceOut:
+    """What the bounty's testing shows, set against OWASP's lists of risks for LLM and
+    agentic applications, the EU AI Act and ISO/IEC 42001: for each, which evidence bears
+    on it and whether that evidence is there. It holds labels and counts, and never a
+    prompt, a secret, a rule or an attack. It says where evidence stands, never that a
+    requirement is met."""
+    evidence = await reports.compliance_evidence(session, cipher, bounty)
+    return ComplianceOut(**compliance.report(evidence, datetime.now(UTC)))
 
 
 @router.get("/bounties/{bounty_id}/attempts")
