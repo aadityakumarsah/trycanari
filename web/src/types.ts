@@ -186,6 +186,8 @@ export interface Account {
   can_hunt: boolean;
   /** Whether the account may list an agent. */
   can_sponsor: boolean;
+  /** Banned by an admin: it can neither attack nor list agents. */
+  banned?: boolean;
   is_ambassador: boolean;
   is_admin: boolean;
   is_owner: boolean;
@@ -222,13 +224,30 @@ export interface Person {
   sponsoring_granted: boolean;
   referral_code: string | null;
   sponsor_code: string | null;
+  banned: boolean;
+  /** Tokens left of the cap for the last 24 hours. */
+  credits_balance: number;
+  credits_cap: number;
+  /** The cap an admin set by hand in place of the tier's, if any. */
+  credit_limit: number | null;
+  verified_breaks: number;
   created_at: string;
+}
+
+export interface CodeUser {
+  email: string;
+  name: string | null;
+  joined_at: string;
 }
 
 export interface AdminCode {
   code: string;
   kind: CodeKind;
   used_by: string | null;
+  /** How many people it admits, how many it has, and who they are. */
+  max_uses: number;
+  uses: number;
+  users: CodeUser[];
   owner_email: string | null;
   created_at: string;
 }

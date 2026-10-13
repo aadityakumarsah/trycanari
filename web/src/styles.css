@@ -1753,3 +1753,31 @@ li.check.open .check-chevron { transform: rotate(180deg); }
 .cost.premium b { color: var(--foreground); }
 .tokens-costs li.premium { color: var(--warn); }
 .tokens-costs li.premium b { color: var(--warn); }
+
+/* ============ shared invites, bans and token limits ============ */
+.page form.code-maker { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
+.code-maker-fields { display: grid; grid-template-columns: 130px 96px 130px minmax(160px, 1fr) auto; align-items: end; gap: 14px; }
+.page .code-maker label { white-space: nowrap; }
+.page .code-maker input, .page .code-maker select { width: 100%; min-width: 0; }
+.page .code-maker p.code-maker-sum { padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; }
+.codes-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 22px 0 10px; }
+.codes-bar .count-note { margin-right: auto; }
+.row-actions { display: inline-flex; align-items: center; gap: 8px; }
+.page .row-actions button.danger { padding: 0 9px; }
+.use button.link { font: inherit; }
+tr.code-users td { padding: 4px 16px 14px; background: var(--surface); white-space: normal; }
+tr.code-users ol { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 24px; margin: 0; padding: 0; list-style: none; }
+tr.code-users li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; line-height: 18px; }
+tr.code-users li b { color: var(--foreground); font-weight: 500; }
+tr.code-users li small { margin-left: auto; font-size: 12px; }
+.role-tag.bad { background: var(--bad-bg); color: var(--bad); }
+tr.banned .person { opacity: 0.6; }
+.tokens-cell { display: inline-flex; align-items: center; gap: 8px; }
+.tokens-left { min-width: 52px; color: var(--muted); font: 400 13px/18px var(--mono); }
+.tokens-left b { color: var(--foreground); font-weight: 600; }
+.page .tokens-cell input { width: 68px; min-height: 32px; padding: 0 8px; font-size: 13px; }
+@media (max-width: 860px) {
+  .code-maker-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .code-maker-fields label:nth-of-type(4), .code-maker-fields button { grid-column: 1 / -1; }
+}
+.page .code-maker label small { display: inline; margin-left: 4px; }

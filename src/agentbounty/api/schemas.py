@@ -111,7 +111,7 @@ class InviteOut(BaseModel):
     code: str
     # What it lets its account do: "hunter" to attack, "sponsor" to list agents and attack.
     kind: CodeKind = "hunter"
-    # False once someone has used it. A code works once.
+    # False once it has no use left. A code works once, unless it was made for more people.
     available: bool
     invited_by: str | None
 
@@ -135,6 +135,14 @@ class PersonOut(BaseModel):
     sponsoring_granted: bool
     referral_code: str | None
     sponsor_code: str | None
+    # Banned accounts can neither attack nor list agents.
+    banned: bool
+    # Tokens left of the cap for the last 24 hours, and the limit an admin set by hand
+    # in place of the tier's, if any.
+    credits_balance: int
+    credits_cap: int
+    credit_limit: int | None
+    verified_breaks: int
     created_at: datetime
 
 
@@ -145,22 +153,41 @@ class PersonUpdate(Body):
     hunting_granted: bool | None = None
     # Let them list agents without a sponsor code, or take that back.
     sponsoring_granted: bool | None = None
+    # Ban them, or lift the ban.
+    banned: bool | None = None
+    # Tokens they may spend in any 24 hours, in place of their tier's cap. Sent as null,
+    # it puts them back on their tier's.
+    credit_limit: StrictInt | None = Field(default=None, ge=0, le=10_000)
+    # Forget what they have spent, so their allowance is full again.
+    reset_credits: bool | None = None
 
 
 class AdminCodeCreate(Body):
     # Who the codes are for: a hunter, or a sponsor (who may also hunt).
     kind: CodeKind = "hunter"
-    # How many single-use codes to make.
+    # How many codes to make.
     count: StrictInt = Field(default=1, ge=1, le=500)
+    # How many people each code admits before it is used up.
+    max_uses: StrictInt = Field(default=1, ge=1, le=10_000)
     # The code itself, when making one; otherwise they are generated.
     code: str | None = Field(default=None, min_length=6, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
+
+
+class CodeUserOut(BaseModel):
+    email: str
+    name: str | None
+    joined_at: datetime
 
 
 class AdminCodeOut(BaseModel):
     code: str
     kind: CodeKind = "hunter"
-    # Who used it, or null while it is still good.
+    # The first to use it, or null while nobody has.
     used_by: str | None
+    # How many people it admits, how many it has, and who they are, first to last.
+    max_uses: int = 1
+    uses: int = 0
+    users: list[CodeUserOut] = []
     owner_email: str | None
     created_at: datetime
 
@@ -186,6 +213,10 @@ class PeoplePage(BaseModel):
 class CodesPage(BaseModel):
     items: list[AdminCodeOut]
     total: int
+
+
+class CodesDeleted(BaseModel):
+    deleted: int
 
 
 class ApiKeyOut(BaseModel):
@@ -215,6 +246,8 @@ class AccountOut(BaseModel):
     # Whether the account may list an agent: always, unless the platform is invite-only
     # and it has not redeemed a sponsor code yet.
     can_sponsor: bool
+    # Banned by an admin: it can neither attack nor list agents, whatever codes it holds.
+    banned: bool = False
     is_ambassador: bool
     is_admin: bool
     # The owner: the only one who can make or remove admins.

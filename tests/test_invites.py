@@ -9,7 +9,6 @@ import httpx
 import pytest
 from pydantic import SecretStr
 from sqlalchemy import func, select, update
-from sqlalchemy.exc import IntegrityError
 
 from agentbounty.models import Attempt, AttemptState, Sponsor
 from agentbounty.services import credits
@@ -151,12 +150,47 @@ async def test_two_people_cannot_share_a_code_even_at_the_same_instant(club: Pla
             select(func.count()).select_from(Sponsor).where(Sponsor.referral_code == code)
         )
     assert holders == 1
-    # And the database itself would refuse a second holder, whatever the code above did.
-    with pytest.raises(IntegrityError):
-        async with club.sessions.begin() as session:
-            await session.execute(
-                update(Sponsor).where(Sponsor.email == "y@example.com").values(referral_code=code)
-            )
+
+
+async def test_a_code_made_for_several_people_admits_that_many_and_no_more(
+    club: Platform,
+) -> None:
+    async with club.sessions.begin() as session:
+        (made,) = await credits.create_codes(session, None, 1, "TEAM-CODE", max_uses=3)
+    code = made.code
+    people = []
+    for name in ("a", "b", "c", "d", "e"):
+        joined = await join(club, f"{name}@example.com", None)
+        people.append({"Authorization": f"Bearer {joined.json()['api_key']}"})
+
+    import asyncio
+
+    # Five people try it at the same instant: three get in.
+    answers = await asyncio.gather(
+        *(
+            club.client.post("/v1/account/referral", json={"code": code}, headers=headers)
+            for headers in people
+        )
+    )
+    assert sorted(answer.status_code for answer in answers) == [200, 200, 200, 403, 403]
+    refused = next(answer for answer in answers if answer.status_code == 403)
+    assert refused.json()["detail"] == "that referral code has no uses left"
+    async with club.sessions() as session:
+        holders = await session.scalar(
+            select(func.count()).select_from(Sponsor).where(Sponsor.referral_code == code)
+        )
+    assert holders == 3
+    assert (await club.client.get(f"/v1/invites/{code}")).json()["available"] is False
+    # Joining with it counts as a use too.
+    assert (await join(club, "f@example.com", code)).status_code == 403
+
+    # An ambassador's codes are for one person each.
+    async with club.sessions() as session:
+        ambassador = await session.scalar(select(Sponsor).where(Sponsor.email == "a@example.com"))
+        assert ambassador is not None
+        ambassador.is_ambassador = True
+        with pytest.raises(ServiceError, match="only an admin"):
+            await credits.create_codes(session, ambassador, 1, max_uses=2)
 
 
 async def test_without_invite_only_nothing_changes(platform: Platform) -> None:

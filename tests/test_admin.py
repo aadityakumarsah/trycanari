@@ -252,6 +252,9 @@ async def test_an_admin_makes_single_use_codes_and_an_invite_link_grants_access(
             "code": "LAUNCH-DAY",
             "kind": "hunter",
             "used_by": None,
+            "max_uses": 1,
+            "uses": 0,
+            "users": [],
             "owner_email": "boss@example.com",
             "created_at": named.json()[0]["created_at"],
         }
@@ -343,3 +346,183 @@ async def test_cookies_are_marked_secure_wherever_the_site_is_served_over_https(
 
 def test_helpers_are_importable() -> None:
     assert callable(attack)
+
+
+async def test_an_admin_shares_one_code_with_several_people_and_sees_who_used_it(
+    club: Platform,
+) -> None:
+    boss = await account(club, "boss@example.com")
+    await promote(club, "boss@example.com")
+    made = await club.client.post(
+        "/v1/admin/referral-codes", headers=boss, json={"code": "MEETUP-10", "max_uses": 2}
+    )
+    assert made.status_code == 201
+    assert (made.json()[0]["max_uses"], made.json()[0]["uses"]) == (2, 0)
+    for bad in (0, 10_001):
+        refused = await club.client.post(
+            "/v1/admin/referral-codes", headers=boss, json={"max_uses": bad}
+        )
+        assert refused.status_code == 422
+
+    first = await join(club, "first@example.com", "MEETUP-10")
+    assert first.status_code == 201
+    assert (await club.client.get("/v1/invites/MEETUP-10")).json()["available"] is True
+    second = await account(club, "second@example.com")
+    taken = await club.client.post(
+        "/v1/account/referral", headers=second, json={"code": "meetup-10"}
+    )
+    assert taken.json()["can_hunt"] is True
+    assert (await club.client.get("/v1/invites/MEETUP-10")).json()["available"] is False
+    assert (await join(club, "third@example.com", "MEETUP-10")).status_code == 403
+
+    (line,) = (await club.client.get("/v1/admin/referral-codes", headers=boss)).json()["items"]
+    assert (line["max_uses"], line["uses"], line["used_by"]) == (2, 2, "first@example.com")
+    assert sorted(user["email"] for user in line["users"]) == [
+        "first@example.com",
+        "second@example.com",
+    ]
+
+
+async def test_an_admin_deletes_codes_and_whoever_joined_keeps_their_access(
+    club: Platform,
+) -> None:
+    boss = await account(club, "boss@example.com")
+    await promote(club, "boss@example.com")
+
+    async def make(**body: Any) -> list[str]:
+        made = await club.client.post("/v1/admin/referral-codes", headers=boss, json=body)
+        return [item["code"] for item in made.json()]
+
+    async def left() -> set[str]:
+        page = await club.client.get(
+            "/v1/admin/referral-codes", headers=boss, params={"limit": 100}
+        )
+        return {item["code"] for item in page.json()["items"]}
+
+    (spent,) = await make(code="SPENT-ONE")
+    (shared,) = await make(code="SHARED-ONE", max_uses=5)
+    (sponsoring,) = await make(code="SPONSOR-ONE", kind="sponsor")
+    spare = await make(count=3)
+    hunter = await join(club, "hunter@example.com", spent)
+    sharer = await join(club, "sharer@example.com", shared)
+    lister = await join(club, "lister@example.com", sponsoring)
+
+    # Not for anyone else, and not for a code that is not there.
+    nobody = await account(club, "nobody@example.com")
+    assert (
+        await club.client.delete(f"/v1/admin/referral-codes/{spent}", headers=nobody)
+    ).status_code == 404
+    assert (
+        await club.client.delete("/v1/admin/referral-codes/NOT-THERE", headers=boss)
+    ).status_code == 404
+    assert (
+        await club.client.delete("/v1/admin/referral-codes", headers=boss, params={"which": "all"})
+    ).status_code == 422
+
+    # One at a time: a code part-way through its uses goes, and its link with it.
+    gone = await club.client.delete(f"/v1/admin/referral-codes/{shared}", headers=boss)
+    assert gone.json() == {"deleted": 1}
+    assert (await club.client.get(f"/v1/invites/{shared}")).status_code == 404
+    # Every used-up code at once: the unused ones stay.
+    cleared = await club.client.delete(
+        "/v1/admin/referral-codes", headers=boss, params={"which": "used_up"}
+    )
+    assert cleared.json() == {"deleted": 2}
+    assert await left() == set(spare)
+    # And every unused one.
+    cleared = await club.client.delete(
+        "/v1/admin/referral-codes", headers=boss, params={"which": "unused"}
+    )
+    assert cleared.json() == {"deleted": 3}
+    assert await left() == set()
+
+    # Whoever joined with a deleted code can still do what it let them do.
+    for joined, sponsors in ((hunter, False), (sharer, False), (lister, True)):
+        headers = {"Authorization": f"Bearer {joined.json()['api_key']}"}
+        me = (await club.client.get("/v1/account", headers=headers)).json()
+        assert (me["can_hunt"], me["can_sponsor"]) == (True, sponsors)
+
+    log = (await club.client.get("/v1/admin/actions", headers=boss)).json()["items"]
+    assert [item["detail"] for item in log if item["action"] == "codes_deleted"] == [
+        "3 unused code(s)",
+        "2 used-up code(s)",
+        f"the code {shared}",
+    ]
+
+
+async def test_an_admin_bans_an_account_and_sets_and_refills_its_tokens(club: Platform) -> None:
+    master = await owner(club)
+    boss = await account(club, "boss@example.com")
+    await promote(club, "boss@example.com")
+    await club.client.post("/v1/admin/referral-codes", headers=boss, json={"code": "COME-IN"})
+    joined = await join(club, "hunter@example.com", "COME-IN")
+    hunter = {"Authorization": f"Bearer {joined.json()['api_key']}"}
+    bounty = await (await club.sponsor()).live()
+
+    async def person(email: str) -> dict[str, Any]:
+        page = await club.client.get("/v1/admin/people", headers=boss, params={"q": email})
+        (found,) = page.json()["items"]
+        return found  # type: ignore[no-any-return]
+
+    async def change(email: str, **body: Any) -> httpx.Response:
+        who = await person(email)
+        return await club.client.patch(f"/v1/admin/people/{who['id']}", headers=boss, json=body)
+
+    async def me() -> dict[str, Any]:
+        return (await club.client.get("/v1/account", headers=hunter)).json()  # type: ignore[no-any-return]
+
+    # A new account starts on the tier's allowance, which is small.
+    starter = club.app.state.settings.starter_credits
+    assert starter == 5
+    seen = await person("hunter@example.com")
+    assert (seen["banned"], seen["credit_limit"]) == (False, None)
+    assert (seen["credits_balance"], seen["credits_cap"]) == (starter, starter)
+
+    # A limit of its own, in place of the tier's.
+    limited = await change("hunter@example.com", credit_limit=1)
+    assert (limited.json()["credit_limit"], limited.json()["credits_cap"]) == (1, 1)
+    credits_now = (await me())["credits"]
+    assert (credits_now["cap"], credits_now["balance"], credits_now["next_cap"]) == (1, 1, None)
+    assert (await change("hunter@example.com", credit_limit=-1)).status_code == 422
+    # With a limit below what an attack costs, there is nothing to attack with.
+    assert (await attack(club, bounty, hunter)).status_code == 402
+    # Null puts it back on the tier's.
+    back = await change("hunter@example.com", credit_limit=None)
+    assert (back.json()["credit_limit"], back.json()["credits_cap"]) == (None, starter)
+
+    # It spends some, and a refill forgets what it spent.
+    assert (await attack(club, bounty, hunter)).status_code == 202
+    await club.work()
+    spent = (await me())["credits"]["balance"]
+    assert spent < starter
+    refilled = await change("hunter@example.com", reset_credits=True)
+    assert refilled.json()["credits_balance"] == starter
+    assert (await me())["credits"]["balance"] == starter
+
+    # Banned: it can neither attack nor list agents, and a code does not help.
+    banned = await change("hunter@example.com", banned=True)
+    assert (banned.json()["banned"], banned.json()["can_hunt"]) == (True, False)
+    mine = await me()
+    assert (mine["banned"], mine["can_hunt"], mine["can_sponsor"]) == (True, False, False)
+    refused = await attack(club, bounty, hunter)
+    assert (refused.status_code, refused.json()["detail"]) == (403, "this account has been banned")
+    # The ban is lifted and it is as it was.
+    assert (await change("hunter@example.com", banned=False)).json()["can_hunt"] is True
+    assert (await attack(club, bounty, hunter)).status_code == 202
+
+    # Nobody who runs the platform is locked out of it from here.
+    assert (await change("boss@example.com", banned=True)).status_code == 403
+    assert (await change(OWNER, banned=True)).status_code == 403
+    await club.client.patch(
+        f"/v1/admin/people/{(await person('boss@example.com'))['id']}",
+        headers=master,
+        json={"is_admin": False},
+    )
+
+    log = (await club.client.get("/v1/admin/actions", headers=master)).json()["items"]
+    done = [(item["action"], item["detail"]) for item in log if item["target_email"]]
+    assert ("banned=true", "hunter@example.com") in done
+    assert ("banned=false", "hunter@example.com") in done
+    assert ("credit_limit", "1") in done
+    assert ("credit_limit", "the tier's") in done
+    assert ("credits_reset", "hunter@example.com") in done

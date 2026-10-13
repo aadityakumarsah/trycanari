@@ -48,7 +48,12 @@ from agentbounty.models.enums import (
 class Sponsor(Base):
     __tablename__ = "sponsors"
     # Accounts are listed newest first.
-    __table_args__ = (Index("ix_sponsors_created_at", "created_at"),)
+    __table_args__ = (
+        Index("ix_sponsors_created_at", "created_at"),
+        CheckConstraint(
+            "credit_limit IS NULL OR credit_limit >= 0", name="credit_limit_not_negative"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     email: Mapped[str] = mapped_column(Text, unique=True)
@@ -75,35 +80,46 @@ class Sponsor(Base):
     # May hand out referral codes.
     is_ambassador: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # The referral code the account has redeemed, which is what lets it take part in
-    # bounties. Unique: a code admits one account, and the database holds it to that.
-    referral_code: Mapped[str | None] = mapped_column(Text, unique=True)
+    # bounties. Several accounts may hold one code, when it was made for several.
+    referral_code: Mapped[str | None] = mapped_column(Text, index=True)
     # Let in by an admin, without a code.
     hunting_granted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # A sponsor code the account has redeemed, which lets it list agents and attack them.
     # Kept apart from referral_code so that a hunter invited to sponsor later holds both.
-    sponsor_code: Mapped[str | None] = mapped_column(Text, unique=True)
+    sponsor_code: Mapped[str | None] = mapped_column(Text, index=True)
     # Let list agents by an admin, without a code.
     sponsoring_granted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # Made only to try the platform out. Shown to no one: not on the leaderboard, and not
     # in the admin's list of people. Set in the database, never through the API.
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # When an admin banned the account. A banned account can neither attack nor list agents.
+    banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Tokens the account may spend in any 24 hours, when an admin has set that by hand.
+    # Unset, its tier decides (services/credits.py).
+    credit_limit: Mapped[int | None] = mapped_column(Integer)
+    # When an admin last wiped what the account had spent. Nothing before it counts.
+    credits_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_now()
 
 
 class ReferralCode(Base):
-    """A code that lets one account take part in bounties. Whether it has been used is
-    not stored here: it is used when an account holds it."""
+    """A code that lets an account take part in bounties: one account, unless it was made
+    for more. How often it has been used is not stored here: it is used once for each
+    account that holds it."""
 
     __tablename__ = "referral_codes"
     __table_args__ = (
         Index("ix_referral_codes_created_at", "created_at"),
         CheckConstraint("kind IN ('hunter', 'sponsor')", name="kind_known"),
+        CheckConstraint("max_uses > 0", name="max_uses_positive"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     code: Mapped[str] = mapped_column(Text, unique=True)
     # What it lets its account do: "hunter" to attack, "sponsor" to list agents and attack.
     kind: Mapped[str] = mapped_column(Text, default="hunter", server_default="hunter")
+    # How many accounts it admits before it is used up.
+    max_uses: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
     # The ambassador who made it. A code made by the operator has no owner.
     owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"), index=True)
     created_at: Mapped[datetime] = created_now()

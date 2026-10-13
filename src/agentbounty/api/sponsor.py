@@ -144,6 +144,7 @@ async def account(session: Transaction, sponsor: SponsorDep, settings: SettingsD
         bio=sponsor.bio,
         can_hunt=credits.can_hunt(sponsor, settings),
         can_sponsor=credits.can_sponsor(sponsor, settings),
+        banned=credits.is_banned(sponsor),
         is_ambassador=sponsor.is_ambassador,
         is_admin=credits.is_admin(sponsor, settings),
         is_owner=credits.is_owner(sponsor, settings),

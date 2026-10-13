@@ -112,8 +112,8 @@ class Settings(BaseSettings):
 
     # Credits an account may spend in any 24 hours: at first, and once it has a verified
     # break to its name.
-    starter_credits: int = Field(default=8, ge=1)
-    proven_credits: int = Field(default=40, ge=1)
+    starter_credits: int = Field(default=5, ge=1)
+    proven_credits: int = Field(default=25, ge=1)
     # Extra tokens the first attack on a bounty costs an account, on top of its length
     # price. Attacks on a bounty the account has already engaged cost only the length
     # price, so spreading thin across many bounties is dear and focusing is cheap.

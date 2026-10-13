@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Annotated
+from datetime import UTC, datetime
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -25,7 +26,9 @@ from agentbounty.api.schemas import (
     AdminActionOut,
     AdminCodeCreate,
     AdminCodeOut,
+    CodesDeleted,
     CodesPage,
+    CodeUserOut,
     PeoplePage,
     PersonOut,
     PersonUpdate,
@@ -53,8 +56,9 @@ Limit = Annotated[int, Query(ge=1, le=100)]
 Offset = Annotated[int, Query(ge=0, le=1_000_000)]
 
 
-def _person(account: Sponsor, settings: Settings) -> PersonOut:
+async def _person(session: AsyncSession, account: Sponsor, settings: Settings) -> PersonOut:
     owner = credits.is_owner(account, settings)
+    allowed = await credits.allowance(session, account, settings)
     return PersonOut(
         id=account.id,
         email=account.email,
@@ -71,6 +75,11 @@ def _person(account: Sponsor, settings: Settings) -> PersonOut:
         sponsoring_granted=account.sponsoring_granted,
         referral_code=account.referral_code,
         sponsor_code=account.sponsor_code,
+        banned=credits.is_banned(account),
+        credits_balance=allowed.balance,
+        credits_cap=allowed.cap,
+        credit_limit=account.credit_limit,
+        verified_breaks=allowed.breaks,
         created_at=account.created_at,
     )
 
@@ -128,7 +137,8 @@ async def people(
         .offset(offset)
     )
     return PeoplePage(
-        items=[_person(account, settings) for account in found], total=int(total or 0)
+        items=[await _person(session, account, settings) for account in found.all()],
+        total=int(total or 0),
     )
 
 
@@ -141,7 +151,7 @@ async def update_person(
     admin: AdminDep,
 ) -> PersonOut:
     """Make someone an ambassador or an admin, or stop them being one; let them hunt
-    without a code, or take that back."""
+    without a code, or take that back; ban them; set or reset their tokens."""
     account = await session.scalar(
         select(Sponsor).where(Sponsor.id == account_id).with_for_update()
     )
@@ -157,8 +167,26 @@ async def update_person(
         if value is not None and value != getattr(account, field):
             setattr(account, field, value)
             record(session, admin, f"{field}={str(value).lower()}", account, account.email)
+    if body.banned is not None and body.banned != credits.is_banned(account):
+        if body.banned:
+            # Whoever runs the platform is not locked out of it from here: an owner never,
+            # and an admin only once the owner has stopped them being one.
+            if account.id == admin.id:
+                raise HTTPException(403, "you cannot ban yourself")
+            if credits.is_admin(account, settings):
+                raise HTTPException(403, "an admin cannot be banned; remove them as an admin first")
+        account.banned_at = datetime.now(UTC) if body.banned else None
+        record(session, admin, f"banned={str(body.banned).lower()}", account, account.email)
+    # Null is a value here: it puts the account back on its tier's cap.
+    if "credit_limit" in body.model_fields_set and body.credit_limit != account.credit_limit:
+        account.credit_limit = body.credit_limit
+        said = "the tier's" if body.credit_limit is None else str(body.credit_limit)
+        record(session, admin, "credit_limit", account, said)
+    if body.reset_credits:
+        account.credits_reset_at = datetime.now(UTC)
+        record(session, admin, "credits_reset", account, account.email)
     await session.flush()
-    return _person(account, settings)
+    return await _person(session, account, settings)
 
 
 @router.get("/actions")
@@ -204,6 +232,12 @@ async def referral_codes(
                 code=line.code.code,
                 kind=line.code.kind,  # type: ignore[arg-type]
                 used_by=line.used_by,
+                max_uses=line.code.max_uses,
+                uses=len(line.people),
+                users=[
+                    CodeUserOut(email=who.email, name=who.name, joined_at=who.joined_at)
+                    for who in line.people
+                ],
                 owner_email=line.owner_email,
                 created_at=line.code.created_at,
             )
@@ -217,23 +251,55 @@ async def referral_codes(
 async def create_referral_codes(
     body: AdminCodeCreate, session: Transaction, admin: AdminDep
 ) -> list[AdminCodeOut]:
-    """Make single-use referral codes: many at once, or one of the admin's choosing."""
+    """Make referral codes: many at once, or one of the admin's choosing. Each works
+    once, unless it is made for more people."""
     made = await credits.create_codes(
-        session, admin, body.count, body.code, unlimited=True, kind=body.kind
+        session,
+        admin,
+        body.count,
+        body.code,
+        unlimited=True,
+        kind=body.kind,
+        max_uses=body.max_uses,
     )
     for code in made:
         await session.refresh(code)
-    record(session, admin, "codes_created", None, f"{len(made)} {body.kind} code(s)")
+    shared = f", each for {body.max_uses} people" if body.max_uses > 1 else ""
+    record(session, admin, "codes_created", None, f"{len(made)} {body.kind} code(s){shared}")
     return [
         AdminCodeOut(
             code=code.code,
             kind=body.kind,
             used_by=None,
+            max_uses=code.max_uses,
             owner_email=admin.email,
             created_at=code.created_at,
         )
         for code in made
     ]
+
+
+@router.delete("/referral-codes")
+async def delete_referral_codes(
+    which: Literal["used_up", "unused"], session: Transaction, admin: AdminDep
+) -> CodesDeleted:
+    """Delete every code with no use left, or every code nobody has used. Whoever joined
+    with a code keeps the access it gave them."""
+    deleted = await credits.delete_codes(session, which)
+    if deleted:
+        said = "used-up" if which == credits.USED_UP else "unused"
+        record(session, admin, "codes_deleted", None, f"{deleted} {said} code(s)")
+    return CodesDeleted(deleted=deleted)
+
+
+@router.delete("/referral-codes/{code}")
+async def delete_referral_code(code: str, session: Transaction, admin: AdminDep) -> CodesDeleted:
+    """Delete one code, used or not. Whoever joined with it keeps their access."""
+    found = await credits.delete_code(session, code[:40])
+    if found is None:
+        raise HTTPException(404, "no such code")
+    record(session, admin, "codes_deleted", None, f"the code {found.code}")
+    return CodesDeleted(deleted=1)
 
 
 # --- the model provider -------------------------------------------------------------------

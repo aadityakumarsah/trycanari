@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 
-import { accountChanged, rememberedReferral } from "../account.tsx";
+import { accountChanged, rememberedReferral, useAccount } from "../account.tsx";
 import { api } from "../api.ts";
 import { useAction } from "../hooks.ts";
 import { useToast } from "../toast.tsx";
@@ -27,6 +27,7 @@ export function ReferralGate({ compact = false, kind = "hunter" }: { compact?: b
   const [code, setCode] = useState(rememberedReferral);
   const redeeming = useAction();
   const toast = useToast();
+  const banned = useAccount().data?.banned === true;
 
   async function redeem(event: FormEvent) {
     event.preventDefault();
@@ -37,6 +38,19 @@ export function ReferralGate({ compact = false, kind = "hunter" }: { compact?: b
       toast(now.can_sponsor ? "Code accepted. You can list agents and hunt now." : "Code accepted. You can hunt now.");
     });
     void done;
+  }
+
+  // A code would change nothing for a banned account, so it is not asked for one.
+  if (banned) {
+    return (
+      <section className={compact ? "panel gate referral compact" : "panel gate referral"}>
+        <span className="gate-icon">
+          <Icon name="ban" size={20} />
+        </span>
+        <h2>This account has been banned</h2>
+        <p className="muted">It can no longer attack bounties or list agents. If you think this is a mistake, get in touch with us.</p>
+      </section>
+    );
   }
 
   return (
