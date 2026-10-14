@@ -53,6 +53,7 @@ const ICONS = {
   lock: "M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3",
   menu: "M4 7h16M4 12h16M4 17h16",
   repeat: "M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4",
+  refresh: "M20 11a8 8 0 1 0 1 5M20 4v7h-7",
   target: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
   up: "M6 15l6-6 6 6",
 } as const;
