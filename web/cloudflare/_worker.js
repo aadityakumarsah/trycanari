@@ -69,13 +69,17 @@ async function proxy(request, env, url) {
     });
     // Add smart caching headers for public data
     const newResponse = new Response(response.body, response);
+    const isStudioAsset = request.method === "GET" &&
+      url.pathname.startsWith("/studio-assets/");
     const isPublicData = request.method === "GET" &&
       (url.pathname === "/v1/auth/providers" ||
        url.pathname === "/v1/bounties" ||
        url.pathname === "/v1/activity" ||
        url.pathname === "/v1/leaderboard");
 
-    if (isPublicData && response.ok) {
+    if (isStudioAsset && response.ok) {
+      newResponse.headers.set("cache-control", "public, max-age=31536000, immutable");
+    } else if (isPublicData && response.ok) {
       // Keep public data very fresh, but permit a known-good response during a brief
       // origin restart instead of replacing the page with an error.
       newResponse.headers.set(

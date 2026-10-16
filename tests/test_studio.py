@@ -129,3 +129,17 @@ async def test_studio_allowance_decrements_and_resets_after_the_window(
         )
     reset = await platform.client.get(f"/studio/{bounty_id}", headers=hunter.headers)
     assert "<b>5</b> / 5 attempts tokens" in reset.text
+
+
+async def test_studio_uses_a_fingerprinted_stylesheet(platform: Platform) -> None:
+    hunter = await platform.sponsor()
+    bounty_id = await hunter.live()
+
+    page = await platform.client.get(f"/studio/{bounty_id}", headers=hunter.headers)
+    assert "/studio-assets/studio-b313559.css" in page.text
+
+    stylesheet = await platform.client.get("/studio-assets/studio-b313559.css")
+    assert stylesheet.status_code == 200
+    assert stylesheet.headers["content-type"].startswith("text/css")
+    assert stylesheet.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert "--accent-surface: #0b1410" in stylesheet.text

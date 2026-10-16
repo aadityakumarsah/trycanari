@@ -30,6 +30,7 @@ from agentbounty.services.wallet import address_rule
 PACKAGE = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=PACKAGE / "templates")
 CSS = PACKAGE / "static" / "studio.css"
+STYLESHEET_PATH = "/studio-assets/studio-b313559.css"
 
 router = APIRouter(tags=["studio"], include_in_schema=False)
 
@@ -103,11 +104,12 @@ def _editor_context(
 
 
 @router.get("/studio-assets/studio.css")
+@router.get(STYLESHEET_PATH)
 async def stylesheet() -> FileResponse:
     return FileResponse(
         CSS,
         media_type="text/css",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
 
 
