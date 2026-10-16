@@ -7,9 +7,13 @@ The studio never invents a second representation of an attack. It parses the sam
 from __future__ import annotations
 
 import base64
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
+from agentbounty.models import AttemptState
 from agentbounty.services import attempts
 from agentbounty.services.harness import (
     EntryPoint,
@@ -96,6 +100,25 @@ TECHNIQUES: tuple[Technique, ...] = (
 
 class StudioInputError(ValueError):
     """A studio form tried to fill a slot it does not own or formed one incorrectly."""
+
+
+@dataclass(frozen=True)
+class ReplayView:
+    """One replay's factual UI state, derived only from recorded attempt progress."""
+
+    number: int
+    tone: str
+    label: str
+    icon: str
+
+
+@dataclass(frozen=True)
+class AttemptNotice:
+    """A safe operational explanation for a queued or failed model run."""
+
+    tone: str
+    title: str
+    detail: str
 
 
 def _single(data: Mapping[str, Sequence[str]], name: str) -> str:
@@ -249,3 +272,69 @@ def insert_technique(
 
 def why_not_verified(status: attempts.AttemptStatus) -> tuple[str, ...]:
     return attempts.why_not_verified(status)
+
+
+def replay_views(status: attempts.AttemptStatus, *, total: int = 5) -> tuple[ReplayView, ...]:
+    """Describe all replay slots without treating completion as a successful break."""
+    recorded = {run.run_index: run for run in status.runs}
+    views: list[ReplayView] = []
+    failed_index = min(status.runs_done, total - 1)
+    for index in range(total):
+        number = index + 1
+        run = recorded.get(index)
+        if status.state is AttemptState.DONE:
+            if run is None:
+                views.append(ReplayView(number, "not-run", "not counted", "-"))
+            elif run.tripped:
+                views.append(ReplayView(number, "tripped", "canary tripped", "!"))
+            else:
+                views.append(ReplayView(number, "held", "agent held", "✓"))
+        elif status.state is AttemptState.ERROR:
+            if index == failed_index:
+                views.append(ReplayView(number, "failed", "model failed", "!"))
+            elif index < failed_index:
+                views.append(ReplayView(number, "discarded", "discarded", "x"))
+            else:
+                views.append(ReplayView(number, "not-run", "not run", str(number)))
+        elif status.state is AttemptState.RUNNING and index < status.runs_done:
+            views.append(ReplayView(number, "complete", "replay complete", "✓"))
+        elif status.state is AttemptState.RUNNING and index == status.runs_done:
+            views.append(ReplayView(number, "active", "running", str(number)))
+        else:
+            views.append(ReplayView(number, "waiting", "waiting", str(number)))
+    return tuple(views)
+
+
+def attempt_notice(
+    attempt: Any,
+    status: attempts.AttemptStatus,
+    *,
+    now: datetime | None = None,
+) -> AttemptNotice | None:
+    """Explain capacity deferrals and terminal failures without leaking provider secrets."""
+    current = now or datetime.now(UTC)
+    retry_at = attempt.started_at
+    if status.state is AttemptState.QUEUED and retry_at is not None and retry_at > current:
+        seconds = max(1, math.ceil((retry_at - current).total_seconds()))
+        wait = (
+            "under a minute"
+            if seconds < 60
+            else f"about {math.ceil(seconds / 60)} minute"
+            + ("" if math.ceil(seconds / 60) == 1 else "s")
+        )
+        return AttemptNotice(
+            "cooldown",
+            "Model provider cooling down",
+            f"The provider limited capacity. Canari will retry automatically in {wait}; "
+            "this does not consume an attempt token.",
+        )
+    if status.state is AttemptState.ERROR:
+        tries = max(1, int(attempt.tries))
+        return AttemptNotice(
+            "failed",
+            "No verdict was produced",
+            f"The model could not complete a clean set of five replays after {tries} "
+            f"{'try' if tries == 1 else 'tries'}. Partial replays were discarded and the "
+            "attempt token is returned.",
+        )
+    return None

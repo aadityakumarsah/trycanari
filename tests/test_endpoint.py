@@ -276,7 +276,9 @@ async def test_a_failed_test_says_why_and_is_not_an_error(platform: Platform) ->
     body = {"model": "house-model", "endpoint_base": BASE, "endpoint_key": "wrong"}
     result = await sponsor.call("POST", f"/v1/bounties/{bounty}/model-test", json=body)
     assert result["ok"] is False
-    assert result["detail"].startswith("The endpoint refused the key. (model API answered 401")
+    assert result["detail"].startswith(
+        "The endpoint refused the key. (model API rejected the request with 401"
+    )
     assert result["models"] == []
 
 

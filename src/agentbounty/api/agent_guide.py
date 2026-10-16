@@ -108,7 +108,8 @@ Send the API key on every request below.
 
 4. `GET /v1/hunter/attempts/{{attempt_id}}` returns `state` (`queued`, `running`,
    `done`, `error`). While queued it gives
-   `queue_ahead`, and while running `runs_done` of `runs_total`. Once done it adds
+   `queue_ahead`; a provider-capacity delay also gives `retry_at` and does not increase
+   `tries`. While running it gives `runs_done` of `runs_total`. Once done it adds
    `verdict`, `tripped_runs`, `canary`, the agent's `replies` from one run, and
    `payout` with its `txid` if verified. `feedback` explains a miss only from stored
    replay facts; `runs` and `canaries` expose the underlying tallies.

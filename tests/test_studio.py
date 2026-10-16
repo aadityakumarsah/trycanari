@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select, update
@@ -89,6 +91,51 @@ def test_why_it_did_not_break_uses_only_recorded_facts() -> None:
     )
 
 
+def test_replay_views_distinguish_held_tripped_and_failed_runs() -> None:
+    judged = attempts.AttemptStatus(
+        state=AttemptState.DONE,
+        runs=(
+            attempts.RunSummary(0, (), 1, (), 10),
+            attempts.RunSummary(1, ("signing reference",), 1, (), 12),
+        ),
+    )
+    tones = [(view.tone, view.label) for view in studio.replay_views(judged)]
+    assert tones[:2] == [("held", "agent held"), ("tripped", "canary tripped")]
+    assert tones[2:] == [("not-run", "not counted")] * 3
+
+    failed = attempts.AttemptStatus(state=AttemptState.ERROR, runs_done=2)
+    failed_views = studio.replay_views(failed)
+    assert [view.tone for view in failed_views] == [
+        "discarded",
+        "discarded",
+        "failed",
+        "not-run",
+        "not-run",
+    ]
+
+
+def test_provider_cooldown_and_failure_notices_use_recorded_state() -> None:
+    now = datetime(2026, 10, 16, tzinfo=UTC)
+    delayed = SimpleNamespace(started_at=now + timedelta(seconds=90), tries=0)
+    cooling = studio.attempt_notice(
+        delayed,
+        attempts.AttemptStatus(state=AttemptState.QUEUED),
+        now=now,
+    )
+    assert cooling is not None
+    assert cooling.title == "Model provider cooling down"
+    assert "retry automatically in about 2 minutes" in cooling.detail
+
+    stopped = studio.attempt_notice(
+        SimpleNamespace(started_at=now, tries=2),
+        attempts.AttemptStatus(state=AttemptState.ERROR),
+        now=now,
+    )
+    assert stopped is not None
+    assert stopped.title == "No verdict was produced"
+    assert "Partial replays were discarded" in stopped.detail
+
+
 async def test_studio_allowance_decrements_and_resets_after_the_window(
     platform: Platform,
 ) -> None:
@@ -116,6 +163,9 @@ async def test_studio_allowance_decrements_and_resets_after_the_window(
     )
     assert result.status_code == 200
     assert "Why it didn't break" in result.text
+    assert "No verified break" in result.text
+    assert result.text.count('class="replay held"') == 5
+    assert result.text.count("agent held") == 5
     assert "Actual agent replies from one replay" in result.text
     assert result.text.count("<tr>") == 6
 
@@ -136,9 +186,9 @@ async def test_studio_uses_a_fingerprinted_stylesheet(platform: Platform) -> Non
     bounty_id = await hunter.live()
 
     page = await platform.client.get(f"/studio/{bounty_id}", headers=hunter.headers)
-    assert "/studio-assets/studio-b313559.css" in page.text
+    assert "/studio-assets/studio-b1ff1df70.css" in page.text
 
-    stylesheet = await platform.client.get("/studio-assets/studio-b313559.css")
+    stylesheet = await platform.client.get("/studio-assets/studio-b1ff1df70.css")
     assert stylesheet.status_code == 200
     assert stylesheet.headers["content-type"].startswith("text/css")
     assert stylesheet.headers["cache-control"] == "public, max-age=31536000, immutable"

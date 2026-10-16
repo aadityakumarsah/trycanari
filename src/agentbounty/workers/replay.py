@@ -52,6 +52,7 @@ from agentbounty.services.model import (
     FakeModel,
     ModelClient,
     ModelParams,
+    ModelPermanentError,
     ModelRateLimitError,
     ModelResponse,
     RealModel,
@@ -206,6 +207,15 @@ async def process(
                 session, claim, retry_after=timedelta(seconds=exc.retry_after)
             )
         return
+    except ModelPermanentError as exc:
+        logger.error(
+            "provider permanently rejected attempt %s with status %s",
+            claim.attempt_id,
+            exc.status_code,
+        )
+        async with sessions.begin() as session:
+            await attempts.fail_permanently(session, claim)
+        return
     except Exception:
         logger.exception("replay of attempt %s failed", claim.attempt_id)
         async with sessions.begin() as session:
@@ -287,6 +297,15 @@ async def process_continuous(
             await continuous.defer_for_capacity(
                 session, claim, retry_after=timedelta(seconds=exc.retry_after)
             )
+        return
+    except ModelPermanentError as exc:
+        logger.error(
+            "provider permanently rejected continuous replay %s with status %s",
+            claim.run_id,
+            exc.status_code,
+        )
+        async with sessions.begin() as session:
+            await continuous.fail(session, claim)
         return
     except Exception:
         logger.exception("continuous replay for bounty %s failed", claim.bounty_id)
@@ -371,6 +390,15 @@ async def process_scan(
                 session, claim, retry_after=timedelta(seconds=exc.retry_after)
             )
         return
+    except ModelPermanentError as exc:
+        logger.error(
+            "provider permanently rejected scan %s with status %s",
+            claim.scan_id,
+            exc.status_code,
+        )
+        async with sessions.begin() as session:
+            await scan.fail(session, claim)
+        return
     except Exception:
         logger.exception("baseline scan for bounty %s failed", claim.bounty_id)
         async with sessions.begin() as session:
@@ -444,6 +472,15 @@ async def process_rearm(
             await rearm.defer_for_capacity(
                 session, claim, retry_after=timedelta(seconds=exc.retry_after)
             )
+        return
+    except ModelPermanentError as exc:
+        logger.error(
+            "provider permanently rejected re-arm check %s with status %s",
+            claim.check_id,
+            exc.status_code,
+        )
+        async with sessions.begin() as session:
+            await rearm.record(session, claim, passed=False, tripped_runs=0)
         return
     except Exception:
         logger.exception("re-arm replay for bounty %s failed", claim.bounty_id)

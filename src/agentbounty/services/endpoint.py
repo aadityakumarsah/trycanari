@@ -22,7 +22,15 @@ from urllib.parse import urlsplit
 import httpcore
 import httpx
 
-from agentbounty.services.model import ChatMessage, ModelClient, ModelError, ModelParams, RealModel
+from agentbounty.services.model import (
+    ChatMessage,
+    ModelClient,
+    ModelError,
+    ModelParams,
+    ModelPermanentError,
+    ModelRateLimitError,
+    RealModel,
+)
 from agentbounty.settings import Settings
 
 MAX_URL_CHARACTERS = 300
@@ -158,17 +166,20 @@ def connector(settings: Settings) -> Connector:
     return connect
 
 
-def _hint(error: str) -> str:
+def _hint(error: ModelError) -> str:
     """The likeliest cause of a failed test, in words for the sponsor."""
-    if "answered 401" in error or "answered 403" in error:
+    if isinstance(error, ModelPermanentError) and error.status_code in {401, 403}:
         return "The endpoint refused the key."
-    if "answered 404" in error:
+    if isinstance(error, ModelPermanentError) and error.status_code == 404:
         return "The endpoint does not know this model, or the URL is not the API's base."
-    if "answered 429" in error:
+    if isinstance(error, ModelPermanentError) and error.status_code in {400, 422}:
+        return "The endpoint rejected the request; check the model name and API compatibility."
+    if isinstance(error, ModelRateLimitError):
         return "The endpoint says it is being asked too often."
-    if "request failed" in error:
+    message = str(error)
+    if "request failed" in message:
         return "The endpoint could not be reached."
-    if "unexpected body" in error:
+    if "unexpected body" in message:
         return "The endpoint answered, but not the way an OpenAI-compatible API does."
     return "The endpoint returned an error."
 
@@ -191,7 +202,7 @@ async def test(model: ModelClient, name: str) -> TestResult:
             ModelParams(name, 256),
         )
     except ModelError as exc:
-        detail = f"{_hint(str(exc))} ({exc})"
+        detail = f"{_hint(exc)} ({exc})"
         return TestResult(False, detail, int((time.monotonic() - started) * 1000))
     said = response.text.strip()[:80]
     detail = f"The model answered: {said}" if said else "The model answered."

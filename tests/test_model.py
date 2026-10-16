@@ -13,6 +13,7 @@ from agentbounty.services.model import (
     FakeModel,
     ModelError,
     ModelParams,
+    ModelPermanentError,
     ModelRateLimitError,
     RealModel,
     ToolCallRequest,
@@ -219,9 +220,10 @@ async def test_real_model_does_not_retry_a_bad_request() -> None:
         calls += 1
         return httpx.Response(400, text="invalid model")
 
-    with pytest.raises(ModelError, match="answered 400"):
+    with pytest.raises(ModelPermanentError, match="rejected the request with 400") as raised:
         await real_model(httpx.MockTransport(bad_request)).complete([user("hi")], [], PARAMS)
     assert calls == 1
+    assert raised.value.status_code == 400
 
 
 async def test_real_model_retries_disconnects_then_defers_without_losing_work() -> None:

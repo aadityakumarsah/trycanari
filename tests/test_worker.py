@@ -19,6 +19,7 @@ from agentbounty.services.model import (
     FakeModel,
     ModelError,
     ModelParams,
+    ModelPermanentError,
     ModelRateLimitError,
     ModelResponse,
     ToolSpec,
@@ -293,6 +294,9 @@ async def test_provider_capacity_waits_without_spending_an_attempt_try(platform:
     row = await attempt_row(platform, attempt)
     assert (row.state, row.tries, row.runs_done) == (AttemptState.QUEUED, 0, 0)
     assert row.started_at is not None
+    waiting = await platform.status(attempt)
+    assert waiting["tries"] == 0
+    assert waiting["retry_at"] is not None
     assert await claim(platform) is None
 
     async with platform.sessions.begin() as session:
@@ -300,6 +304,32 @@ async def test_provider_capacity_waits_without_spending_an_attempt_try(platform:
     assert await platform.work(FakeModel()) == 1
     assert (await platform.status(attempt))["verdict"] == "verified"
     assert await count(platform, Run) == 5
+
+
+async def test_a_permanent_provider_rejection_is_not_retried(platform: Platform) -> None:
+    bounty_id = await (await platform.sponsor()).live()
+    attempt = await platform.submit(bounty_id, STRONG)
+
+    class InvalidRequest(FakeModel):
+        async def complete(
+            self,
+            messages: Sequence[ChatMessage],
+            tools: Sequence[ToolSpec],
+            params: ModelParams,
+        ) -> ModelResponse:
+            raise ModelPermanentError("invalid model", 400)
+
+    assert await replay.work_once(
+        platform.sessions,
+        platform.cipher,
+        InvalidRequest(),
+        max_tries=3,
+    )
+    row = await attempt_row(platform, attempt)
+    assert (row.state, row.tries, row.runs_done) == (AttemptState.ERROR, 1, 0)
+    status = await platform.status(attempt)
+    assert (status["state"], status["tries"], status["retry_at"]) == ("error", 1, None)
+    assert await count(platform, Run) == 0
 
 
 async def test_an_attempt_that_keeps_failing_ends_in_error(platform: Platform) -> None:

@@ -1182,6 +1182,10 @@ class CanaryTallyOut(BaseModel):
 
 class AttemptStatusOut(BaseModel):
     state: AttemptState
+    # Worker tries so far. Provider-capacity deferrals do not increase this value.
+    tries: int = 0
+    # When a provider throttle delayed the attempt, the next automatic retry time.
+    retry_at: datetime | None = None
     # Set once the attempt is done. "not_counted": the bounty was no longer live on the
     # config the attempt was submitted against.
     verdict: Literal["verified", "not_verified", "not_counted"] | None = None
