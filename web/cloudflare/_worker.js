@@ -5,8 +5,17 @@
 // PROXY_SECRET (a Pages secret, the same value as the API's) lets the API trust the
 // client address this worker reports.
 
-const API_PREFIXES = ["/v1/"];
-const API_PATHS = new Set(["/v1", "/health", "/agent.md", "/skill.md", "/api-docs", "/openapi.json"]);
+const ORIGIN_PREFIXES = ["/v1/", "/studio/", "/studio-assets/", "/evidence/"];
+const ORIGIN_PATHS = new Set([
+  "/v1",
+  "/studio",
+  "/evidence",
+  "/health",
+  "/agent.md",
+  "/skill.md",
+  "/api-docs",
+  "/openapi.json",
+]);
 
 // The same headers the API puts on the page (see src/agentbounty/api/spa.py).
 const PAGE_HEADERS = {
@@ -16,8 +25,8 @@ const PAGE_HEADERS = {
   "Cache-Control": "no-cache",
 };
 
-function isApi(pathname) {
-  return API_PATHS.has(pathname) || API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+function isOriginRoute(pathname) {
+  return ORIGIN_PATHS.has(pathname) || ORIGIN_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
 async function page(request, env) {
@@ -98,6 +107,6 @@ async function proxy(request, env, url) {
 export default {
   fetch(request, env) {
     const url = new URL(request.url);
-    return isApi(url.pathname) ? proxy(request, env, url) : page(request, env);
+    return isOriginRoute(url.pathname) ? proxy(request, env, url) : page(request, env);
   },
 };
