@@ -77,8 +77,13 @@ async function proxy(request, env, url) {
        url.pathname === "/v1/activity" ||
        url.pathname === "/v1/leaderboard");
 
-    if (isStudioAsset && response.ok) {
+    const isStylesheet = (response.headers.get("content-type") ?? "")
+      .toLowerCase()
+      .startsWith("text/css");
+    if (isStudioAsset && response.ok && isStylesheet) {
       newResponse.headers.set("cache-control", "public, max-age=31536000, immutable");
+    } else if (isStudioAsset) {
+      newResponse.headers.set("cache-control", "no-store");
     } else if (isPublicData && response.ok) {
       // Keep public data very fresh, but permit a known-good response during a brief
       // origin restart instead of replacing the page with an error.
