@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { completeness, inviteLink, pictureOf, useAccount } from "../account.tsx";
@@ -10,7 +10,7 @@ import { Avatar, Badge, ErrorNote, firstName, Skeleton } from "../components/ui.
 import { useAction, useLoad } from "../hooks.ts";
 import { formatZec, paidIn, parseZec, sym } from "../money.ts";
 import { useToast } from "../toast.tsx";
-import type { Account, ReferralCode, SponsorBounty } from "../types.ts";
+import type { Account, ReferralCode, ReferralCodesPage, SponsorBounty } from "../types.ts";
 
 interface OnboardingTemplate {
   key: string;
@@ -239,13 +239,27 @@ function Tier({ account }: { account: Account }) {
 
 /** A sponsor or ambassador's bounded invite links and their redemption history. */
 function Referrals() {
-  const codes = useLoad((signal) => api<ReferralCode[]>("GET", "/v1/referral-codes", { signal }), "codes", "codes");
+  const codes = useLoad(
+    (signal) => api<ReferralCodesPage>("GET", "/v1/referral-codes/page?limit=8", { signal }),
+    "codes-page",
+    "codes-page",
+  );
+  const [list, setList] = useState<ReferralCode[]>([]);
   const [count, setCount] = useState("1");
   const [maxUses, setMaxUses] = useState("1");
   const making = useAction();
+  const loadingMore = useAction();
   const toast = useToast();
-  const list = codes.data ?? [];
-  const unused = list.reduce((total, item) => total + item.max_uses - item.uses, 0);
+  const capacity = codes.data?.available_seats ?? 25;
+
+  useEffect(() => {
+    if (codes.data) setList(codes.data.items);
+  }, [codes.data]);
+
+  useEffect(() => {
+    if (Number(maxUses) > capacity) setMaxUses("1");
+    if (Number(count) > capacity) setCount("1");
+  }, [capacity, count, maxUses]);
 
   async function make(event: FormEvent) {
     event.preventDefault();
@@ -261,6 +275,19 @@ function Referrals() {
     });
   }
 
+  async function more() {
+    await loadingMore.run(async () => {
+      const next = await api<ReferralCodesPage>(
+        "GET",
+        `/v1/referral-codes/page?limit=8&offset=${list.length}`,
+      );
+      setList((current) => [
+        ...current,
+        ...next.items.filter((item) => !current.some((known) => known.code === item.code)),
+      ]);
+    });
+  }
+
   return (
     <section className="panel">
       <h2>Your invites</h2>
@@ -273,7 +300,7 @@ function Referrals() {
           Links
           <select disabled={Number(maxUses) > 1} value={count} onChange={(e) => setCount(e.target.value)}>
             {[1, 3, 5, 10].map((size) => (
-              <option key={size} value={size}>
+              <option key={size} value={size} disabled={size > capacity}>
                 {size}
               </option>
             ))}
@@ -283,42 +310,53 @@ function Referrals() {
           People per link
           <select value={maxUses} onChange={(e) => setMaxUses(e.target.value)}>
             {[1, 3, 5, 10, 25].map((size) => (
-              <option key={size} value={size}>{size}</option>
+              <option key={size} value={size} disabled={size > capacity}>{size}</option>
             ))}
           </select>
         </label>
-        <button disabled={making.busy}>
+        <button disabled={making.busy || capacity === 0}>
           <Icon name="plus" size={15} /> {making.busy ? "Creating…" : "Create invite links"}
         </button>
-        {list.length > 0 && (
+        {codes.data && (
           <span className="muted count-note">
-            {unused} open seats
+            {codes.data.available_seats === 0
+              ? `${codes.data.seat_limit}-seat allowance full`
+              : `${codes.data.available_seats} new ${codes.data.available_seats === 1 ? "seat" : "seats"} available`}
           </span>
         )}
       </form>
-      <ErrorNote>{making.error || codes.error}</ErrorNote>
-      {codes.data?.length === 0 && <p className="empty">You have not made an invite yet.</p>}
+      <ErrorNote>{making.error || loadingMore.error || codes.error}</ErrorNote>
+      {codes.data?.total === 0 && <p className="empty">You have not made an invite yet.</p>}
       {list.length > 0 && (
-        <ul className="codes">
-          {list.map((item) => (
-            <li key={item.code} className={item.used ? "spent" : undefined}>
-              <code>{item.code}</code>
-              <span className={item.used ? "badge" : "badge badge-live"}>{item.uses}/{item.max_uses} joined</span>
-              <span className="muted">{item.users.map((user) => user.name || user.email).join(", ")}</span>
-              {!item.used && (
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(inviteLink(item.code)).then(() => toast("Invite link copied"));
-                  }}
-                >
-                  <Icon name="link" size={14} /> Copy invite link
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <>
+          <div className="codes-window" tabIndex={0} aria-label="Invite links">
+            <ul className="codes">
+              {list.map((item) => (
+                <li key={item.code} className={item.used ? "spent" : undefined}>
+                  <code>{item.code}</code>
+                  <span className={item.used ? "badge" : "badge badge-live"}>{item.uses}/{item.max_uses} joined</span>
+                  <span className="muted">{item.users.map((user) => user.name || user.email).join(", ")}</span>
+                  {!item.used && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(inviteLink(item.code)).then(() => toast("Invite link copied"));
+                      }}
+                    >
+                      <Icon name="link" size={14} /> Copy invite link
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+          {codes.data && list.length < codes.data.total && (
+            <button type="button" className="secondary list-more" disabled={loadingMore.busy} onClick={() => void more()}>
+              {loadingMore.busy ? "Loading…" : `Load more (${codes.data.total - list.length} remaining)`}
+            </button>
+          )}
+        </>
       )}
     </section>
   );

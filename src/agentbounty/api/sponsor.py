@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import false, func, select
 
 from agentbounty.api.deps import CipherDep, OwnBounty, SettingsDep, SponsorDep, Transaction
@@ -74,6 +74,7 @@ from agentbounty.api.schemas import (
     RearmOut,
     ReferralCodeCreate,
     ReferralCodeOut,
+    ReferralCodesPage,
     ReferralRedeem,
     ReferralUserOut,
     RegressionCaseOut,
@@ -442,6 +443,37 @@ async def referral_codes(session: Transaction, sponsor: SponsorDep) -> list[Refe
         )
         for line in await credits.codes_of(session, sponsor)
     ]
+
+
+@router.get("/referral-codes/page")
+async def referral_codes_page(
+    session: Transaction,
+    sponsor: SponsorDep,
+    limit: int = Query(default=8, ge=1, le=25),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+) -> ReferralCodesPage:
+    """One small page of this account's links, for incremental dashboard loading."""
+    lines = await credits.codes_of(session, sponsor, limit=limit, offset=offset)
+    total, open_seats = await credits.code_stats(session, sponsor)
+    return ReferralCodesPage(
+        items=[
+            ReferralCodeOut(
+                code=line.code.code,
+                used=len(line.people) >= line.code.max_uses,
+                max_uses=line.code.max_uses,
+                uses=len(line.people),
+                users=[
+                    ReferralUserOut(email=user.email, name=user.name, joined_at=user.joined_at)
+                    for user in line.people
+                ],
+                created_at=line.code.created_at,
+            )
+            for line in lines
+        ],
+        total=total,
+        seat_limit=credits.MAX_UNUSED_PER_AMBASSADOR,
+        available_seats=max(0, credits.MAX_UNUSED_PER_AMBASSADOR - open_seats),
+    )
 
 
 @router.post("/referral-codes", status_code=201, dependencies=[Depends(limit_by_client)])

@@ -510,13 +510,16 @@ async def delete_codes(session: AsyncSession, which: str) -> int:
     return len(codes)
 
 
-async def codes_of(session: AsyncSession, owner: Sponsor) -> list[CodeLine]:
+async def codes_of(
+    session: AsyncSession, owner: Sponsor, *, limit: int = 200, offset: int = 0
+) -> list[CodeLine]:
     """An inviter's codes and every account that redeemed them, newest code first."""
     rows = await session.execute(
         select(ReferralCode)
         .where(ReferralCode.owner_id == owner.id)
         .order_by(ReferralCode.created_at.desc(), ReferralCode.id)
-        .limit(200)
+        .limit(limit)
+        .offset(offset)
     )
     codes = list(rows.scalars())
     wanted = [code.code for code in codes]
@@ -546,3 +549,15 @@ async def codes_of(session: AsyncSession, owner: Sponsor) -> list[CodeLine]:
         )
         for code in codes
     ]
+
+
+async def code_stats(session: AsyncSession, owner: Sponsor) -> tuple[int, int]:
+    """How many links an inviter owns and how many seats remain across them."""
+    total = await session.scalar(
+        select(func.count()).select_from(ReferralCode).where(ReferralCode.owner_id == owner.id)
+    )
+    rows = await session.execute(
+        select(ReferralCode.max_uses, _uses()).where(ReferralCode.owner_id == owner.id)
+    )
+    open_seats = sum(maximum - int(uses or 0) for maximum, uses in rows)
+    return int(total or 0), open_seats

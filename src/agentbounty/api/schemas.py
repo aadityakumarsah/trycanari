@@ -294,6 +294,13 @@ class ReferralCodeOut(BaseModel):
     created_at: datetime
 
 
+class ReferralCodesPage(BaseModel):
+    items: list[ReferralCodeOut]
+    total: int
+    seat_limit: int
+    available_seats: int
+
+
 class SponsorCreated(BaseModel):
     sponsor_id: uuid.UUID
     # Shown once. Only its hash is stored.
