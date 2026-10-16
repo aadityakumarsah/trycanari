@@ -1,8 +1,8 @@
 """The definition of done, in one test: fund, attack, verify, pay, patch, re-arm.
 
 It runs against the real database with FakeWallet and FakeModel. The hunter is
-the attacker agent from Step 9 with a scripted model, so the attack goes through
-the same public API a real hunter uses.
+the attacker agent with a scripted model, so the attack goes through only the
+key-authenticated API an agent hunter uses.
 """
 
 from __future__ import annotations
@@ -110,13 +110,17 @@ async def test_the_definition_of_done(platform: Platform) -> None:
     assert (listed["id"], listed["accepting_attempts"]) == (bounty_id, True)
 
     # === 2. A hunter attacks: a weak attempt fails, a strong one is verified ==============
+    hunter = await platform.sponsor("autonomous-hunter@example.com")
     transport = httpx.ASGITransport(app=platform.app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as public:
-        attacker = Attacker(public, ScriptedHunter(), "scripted", wait=stack_runs, max_polls=10)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=hunter.headers
+    ) as api:
+        attacker = Attacker(api, ScriptedHunter(), "scripted", wait=stack_runs, max_polls=10)
         hunt = await attacker.hunt(bounty_id, HUNTER, max_attempts=4)
     weak, strong = hunt.tries
     assert (weak.outcome["verdict"], weak.outcome["tripped_runs"]) == ("not_verified", 0)
     assert weak.outcome["replies"] == [{"text": "How can I help?", "tool_calls": []}]
+    assert weak.outcome["feedback"]
     assert "payout" not in weak.outcome or weak.outcome["payout"] is None
     assert (strong.outcome["verdict"], strong.outcome["tripped_runs"]) == ("verified", 5)
     assert strong.outcome["canary"] == {
@@ -162,7 +166,7 @@ async def test_the_definition_of_done(platform: Platform) -> None:
     # The sponsor has the transcript and the evidence to work from.
     (report,) = await sponsor.call("GET", f"{base}/findings")
     assert report["attack"] == [
-        {"slot": slot, "content": content} for slot, content in STRONG_FILLS.items()
+        {"slot": slot, "content": content, "turns": []} for slot, content in STRONG_FILLS.items()
     ]
     evidence = report["runs"][0]["evidence"][0]
     assert (evidence["canary"]["public_label"], evidence["message_index"]) == (

@@ -9,10 +9,12 @@ OpenAI-compatible endpoint also accepts.
 from __future__ import annotations
 
 import asyncio
+import email.utils
 import json
 import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 import httpx
@@ -69,6 +71,14 @@ class ModelResponse:
 
 class ModelError(RuntimeError):
     """The model API failed or answered with something unusable."""
+
+
+class ModelRateLimitError(ModelError):
+    """The provider is temporarily out of capacity for this account."""
+
+    def __init__(self, message: str, retry_after: float) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class ModelClient(Protocol):
@@ -245,16 +255,50 @@ def _arguments(raw: str) -> Mapping[str, object]:
 # longest single wait. Together they stay inside what one replay is allowed to take.
 RATE_LIMIT_WAITS = 4
 MAX_MODELS_LISTED = 300
-RATE_LIMIT_MAX_WAIT_SECONDS = 20.0
+RATE_LIMIT_MAX_INLINE_WAIT_SECONDS = 20.0
+RATE_LIMIT_DEFAULT_RETRY_SECONDS = 60.0
+RATE_LIMIT_MAX_RETRY_SECONDS = 86_400.0
+TEMPORARY_PROVIDER_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+
+_DURATION = re.compile(
+    r"(?:(?P<hours>\d+(?:\.\d+)?)h)?\s*"
+    r"(?:(?P<minutes>\d+(?:\.\d+)?)m(?!s))?\s*"
+    r"(?:(?P<seconds>\d+(?:\.\d+)?)s)?",
+    re.IGNORECASE,
+)
 
 
 def _retry_after(response: httpx.Response, waited: int) -> float:
-    """How long to wait before asking again: what the provider says, within reason."""
+    """How long the provider asks us to wait, including Groq's error-message format."""
+    raw = response.headers.get("retry-after", "").strip()
     try:
-        asked = float(response.headers.get("retry-after", ""))
+        asked = float(raw)
     except ValueError:
-        asked = 2.0 * (waited + 1)
-    return max(0.5, min(asked, RATE_LIMIT_MAX_WAIT_SECONDS))
+        asked = 0.0
+        if raw:
+            try:
+                until = email.utils.parsedate_to_datetime(raw)
+                if until.tzinfo is None:
+                    until = until.replace(tzinfo=UTC)
+                asked = (until - datetime.now(UTC)).total_seconds()
+            except (TypeError, ValueError, OverflowError):
+                pass
+        if asked <= 0:
+            # Groq commonly puts "try again in 1m23.4s" in its JSON error text
+            # without a Retry-After header.
+            for found in _DURATION.finditer(response.text):
+                if not any(found.group(name) for name in ("hours", "minutes", "seconds")):
+                    continue
+                asked = (
+                    float(found.group("hours") or 0) * 3600
+                    + float(found.group("minutes") or 0) * 60
+                    + float(found.group("seconds") or 0)
+                )
+                if asked > 0:
+                    break
+        if asked <= 0:
+            asked = 2.0 * (waited + 1)
+    return max(0.5, min(asked, RATE_LIMIT_MAX_RETRY_SECONDS))
 
 
 class RealModel:
@@ -276,6 +320,9 @@ class RealModel:
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self._client = client or httpx.AsyncClient(timeout=timeout_seconds)
         self._sleep = sleep
+        # The replay worker and optional house hunter share this client. Free tiers
+        # are especially sensitive to simultaneous requests, so send one at a time.
+        self._requests = asyncio.Lock()
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -322,16 +369,33 @@ class RealModel:
                 }
                 for tool in tools
             ]
-        # A provider that says "slow down" is obeyed rather than treated as a failure: a
-        # free tier allows only so many tokens a minute, and five replays can reach that.
+        async with self._requests:
+            return await self._complete(body)
+
+    async def _complete(self, body: Mapping[str, object]) -> ModelResponse:
+        # Short throttles are waited out here. Longer ones are returned to the queue,
+        # which retries later without spending one of the attempt's failure tries.
         for waited in range(RATE_LIMIT_WAITS + 1):
             try:
                 response = await self._client.post(self._url, json=body, headers=self._headers)
             except httpx.HTTPError as exc:
-                raise ModelError(f"model API request failed: {type(exc).__name__}") from exc
-            if response.status_code != httpx.codes.TOO_MANY_REQUESTS or waited == RATE_LIMIT_WAITS:
+                retry_after = min(2.0 * (waited + 1), RATE_LIMIT_MAX_INLINE_WAIT_SECONDS)
+                if waited == RATE_LIMIT_WAITS:
+                    raise ModelRateLimitError(
+                        f"model API connection temporarily failed: {type(exc).__name__}",
+                        RATE_LIMIT_DEFAULT_RETRY_SECONDS,
+                    ) from exc
+                await self._sleep(retry_after)
+                continue
+            if response.status_code not in TEMPORARY_PROVIDER_STATUSES:
                 break
-            await self._sleep(_retry_after(response, waited))
+            retry_after = _retry_after(response, waited)
+            if waited == RATE_LIMIT_WAITS or retry_after > RATE_LIMIT_MAX_INLINE_WAIT_SECONDS:
+                raise ModelRateLimitError(
+                    f"model API temporarily answered {response.status_code}: {response.text[:300]}",
+                    retry_after or RATE_LIMIT_DEFAULT_RETRY_SECONDS,
+                )
+            await self._sleep(retry_after)
         if response.status_code != httpx.codes.OK:
             raise ModelError(f"model API answered {response.status_code}: {response.text[:300]}")
         try:

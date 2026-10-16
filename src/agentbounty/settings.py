@@ -96,10 +96,10 @@ class Settings(BaseSettings):
     # no proxy is believed.
     proxy_secret: SecretStr | None = None
 
-    # Invite-only mode. Anyone may make an account, but an attack must come from an account
-    # that has redeemed a referral code, and it spends credits from a rolling 24-hour
-    # allowance. This is what stops a stranger running up the model bill. Off, anyone may
-    # attack without an account.
+    # Invite-only mode. Anyone may make an account, but an API attack must come from an
+    # account that has redeemed a referral code, and spends credits from a rolling 24-hour
+    # allowance. The signed-in Attack Studio always uses that allowance. With this off,
+    # anonymous API callers may still attack without one.
     invite_only: bool = False
     # Where uploaded profile pictures are kept: cloudinary://<api_key>:<api_secret>@<cloud>.
     # Unset, people keep the picture Google or GitHub gives them and cannot upload one.

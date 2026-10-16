@@ -32,7 +32,7 @@ async function page(request, env) {
   return response;
 }
 
-function proxy(request, env, url) {
+async function proxy(request, env, url) {
   if (!env.API_ORIGIN) {
     return Response.json({ detail: "The API is not connected to this site yet." }, { status: 503 });
   }
@@ -50,12 +50,49 @@ function proxy(request, env, url) {
     headers.set("x-proxy-secret", env.PROXY_SECRET);
     headers.set("x-client-address", request.headers.get("cf-connecting-ip") ?? "unknown");
   }
-  return fetch(target, {
-    method: request.method,
-    headers,
-    body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
-    redirect: "manual",
-  });
+  const body = request.method === "GET" || request.method === "HEAD" ? undefined : request.body;
+  try {
+    const response = await fetch(target, {
+      method: request.method,
+      headers,
+      body,
+      redirect: "manual",
+    });
+    // Add smart caching headers for public data
+    const newResponse = new Response(response.body, response);
+    const isPublicData = request.method === "GET" &&
+      (url.pathname === "/v1/auth/providers" ||
+       url.pathname === "/v1/bounties" ||
+       url.pathname === "/v1/activity" ||
+       url.pathname === "/v1/leaderboard");
+
+    if (isPublicData && response.ok) {
+      // Keep public data very fresh, but permit a known-good response during a brief
+      // origin restart instead of replacing the page with an error.
+      newResponse.headers.set(
+        "cache-control",
+        "public, max-age=5, stale-while-revalidate=15, stale-if-error=300",
+      );
+    } else {
+      // Session and account data, and every mutation, must never be reused.
+      newResponse.headers.set("cache-control", "no-store, no-cache, must-revalidate");
+    }
+
+    // Forward rate limit headers from API
+    const rateLimit = response.headers.get("X-RateLimit-Limit");
+    const rateRemaining = response.headers.get("X-RateLimit-Remaining");
+    const rateReset = response.headers.get("X-RateLimit-Reset");
+    if (rateLimit) newResponse.headers.set("X-RateLimit-Limit", rateLimit);
+    if (rateRemaining) newResponse.headers.set("X-RateLimit-Remaining", rateRemaining);
+    if (rateReset) newResponse.headers.set("X-RateLimit-Reset", rateReset);
+
+    return newResponse;
+  } catch (_error) {
+    return Response.json(
+      { detail: "The API is waking up. This page will retry automatically." },
+      { status: 503, headers: { "Retry-After": "2", "Cache-Control": "no-store" } },
+    );
+  }
 }
 
 export default {

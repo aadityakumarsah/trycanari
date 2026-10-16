@@ -19,25 +19,43 @@ class RateLimiter:
     limit is the configured one times the number of processes. The caps that
     protect money and model spend (per payout address, per bounty, the daily
     run budget) are counted in the database instead and hold across processes.
+
+    A strict window makes the response predictable: once the configured number has
+    been accepted, the next request gets 429 and a Retry-After header the client can
+    obey. Database-backed spend caps remain the cross-process source of truth.
     """
 
     def __init__(self, per_minute: int) -> None:
         self._limit = per_minute
         self._hits: dict[str, deque[float]] = {}
 
-    def allow(self, client: str) -> bool:
-        now = time.monotonic()
-        if len(self._hits) > _MAX_CLIENTS:
-            self._hits = {
-                key: hits for key, hits in self._hits.items() if now - hits[-1] < WINDOW_SECONDS
-            }
+    def _recent(self, client: str, now: float) -> deque[float]:
         hits = self._hits.setdefault(client, deque())
         while hits and now - hits[0] >= WINDOW_SECONDS:
             hits.popleft()
+        return hits
+
+    def allow(self, client: str, burst: bool = True) -> bool:
+        del burst  # Kept for callers that deliberately disable bursts; windows have none.
+        now = time.monotonic()
+        if len(self._hits) > _MAX_CLIENTS:
+            self._cleanup(now)
+        hits = self._recent(client, now)
         if len(hits) >= self._limit:
             return False
         hits.append(now)
         return True
+
+    def _cleanup(self, now: float) -> None:
+        """Remove stale entries to prevent memory bloat."""
+        self._hits = {
+            key: hits
+            for key, hits in self._hits.items()
+            if hits and now - hits[-1] < WINDOW_SECONDS
+        }
+
+    def get_remaining(self, client: str) -> int:
+        return max(0, self._limit - len(self._recent(client, time.monotonic())))
 
 
 def from_our_proxy(request: Request) -> bool:
@@ -75,6 +93,30 @@ def limit_by_client(request: Request) -> None:
     limiter: RateLimiter = request.app.state.rate_limiter
     client = client_address(request)
     if not limiter.allow(client):
+        remaining = limiter.get_remaining(client)
         raise HTTPException(
-            429, "too many requests; slow down", headers={"Retry-After": str(int(WINDOW_SECONDS))}
+            429,
+            "too many requests; slow down",
+            headers={
+                "Retry-After": str(int(WINDOW_SECONDS)),
+                "X-RateLimit-Limit": str(request.app.state.settings.rate_limit_per_minute),
+                "X-RateLimit-Remaining": str(max(0, remaining)),
+                "X-RateLimit-Reset": str(int(time.time() + WINDOW_SECONDS)),
+            },
+        )
+
+
+def limit_by_identity(request: Request, identity: str) -> None:
+    """Apply the configured allowance to a stable, already-authenticated identity."""
+    limiter: RateLimiter = request.app.state.rate_limiter
+    if not limiter.allow(identity, burst=False):
+        raise HTTPException(
+            429,
+            "too many requests for this API key; slow down",
+            headers={
+                "Retry-After": str(int(WINDOW_SECONDS)),
+                "X-RateLimit-Limit": str(request.app.state.settings.rate_limit_per_minute),
+                "X-RateLimit-Remaining": str(max(0, limiter.get_remaining(identity))),
+                "X-RateLimit-Reset": str(int(time.time() + WINDOW_SECONDS)),
+            },
         )

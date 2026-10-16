@@ -1,0 +1,18 @@
+<div id="slot-editor" class="slot-editor" hx-post="/studio/{{ bounty_id }}/preview" hx-trigger="input changed delay:350ms from:textarea" hx-include="#attack-form" hx-target="#preview" hx-swap="innerHTML">
+  {% for slot in config.entry_points %}
+  {% set frame = config.frame(slot) %}
+  <article class="slot-card">
+    <header><div><span class="slot-kind">{{ slot.value.replace('_', ' ') }}</span><h3>{{ slot_names[slot] }}</h3></div><span class="scope">In scope</span></header>
+    <p>{{ slot_help[slot] }}</p>
+    {% if frame.label %}<div class="scaffold"><b>Trusted scaffold · read only</b><code>{{ frame.label }}</code></div>{% endif %}
+    {% if slot.value == 'multi_turn' %}
+      {% for index in range(frame.turns) %}
+      <label>Turn {{ index + 1 }}<textarea name="slot__{{ slot.value }}__{{ index }}" maxlength="20000" rows="4" placeholder="Hunter-controlled turn {{ index + 1 }}">{{ fields['slot__' ~ slot.value ~ '__' ~ index] }}</textarea></label>
+      {% endfor %}
+    {% else %}
+      <label>Your injected content<textarea name="slot__{{ slot.value }}" maxlength="20000" rows="7" placeholder="Write or insert a technique scaffold">{{ fields['slot__' ~ slot.value] }}</textarea></label>
+    {% endif %}
+  </article>
+  {% endfor %}
+  {% if config.task %}<div class="task"><b>Trusted task · read only</b><p>{{ config.task }}</p></div>{% endif %}
+</div>

@@ -35,7 +35,7 @@ services:
       # calls: one to write each attack and five replays to judge it. Set to "false" to
       # switch it off.
       - key: HOUSE_HUNTER
-        value: "true"
+        value: "false"
       - key: HOUSE_ATTEMPTS
         value: "5"
       - key: DATABASE_URL

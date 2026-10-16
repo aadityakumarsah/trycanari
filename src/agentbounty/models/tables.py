@@ -216,6 +216,10 @@ class TargetConfig(Base):
     model: Mapped[str] = mapped_column(Text)
     params_json: Mapped[dict[str, Any]] = mapped_column(JSONB)
     entry_points_json: Mapped[list[str]] = mapped_column(JSONB)
+    # The sponsor's frame around each entry point, by slot: the document's name, the tool
+    # that carries a planted result, the URL of the page, how many turns may be scripted.
+    # none_as_null: a config that declares no scaffold stores SQL NULL, not {}.
+    scaffold_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     # What the agent is asked to do when the hunter does not write the user's message.
     # Shown to hunters: it is the job their planted text has to derail.
     task: Mapped[str | None] = mapped_column(Text)
@@ -230,8 +234,12 @@ class Canary(Base):
     __tablename__ = "canaries"
     __table_args__ = (
         CheckConstraint(
-            "(type = 'secret_leak' AND secret_enc IS NOT NULL AND rule_json IS NULL)"
-            " OR (type = 'forbidden_tool' AND rule_json IS NOT NULL AND secret_enc IS NULL)",
+            "(type IN ('secret_leak', 'system_prompt_leak', 'phishing_link_injection',"
+            " 'malicious_code_injection') AND secret_enc IS NOT NULL AND rule_json IS NULL)"
+            " OR (type IN ('forbidden_tool', 'unauthorized_action', 'policy_violation')"
+            " AND rule_json IS NOT NULL AND secret_enc IS NULL)"
+            " OR (type = 'data_exfiltration' AND secret_enc IS NOT NULL"
+            " AND rule_json IS NOT NULL)",
             name="definition_matches_type",
         ),
     )
@@ -271,7 +279,8 @@ class Attempt(Base):
     # SHA-256 of the token the hunter reads the result with.
     status_token: Mapped[str] = mapped_column(Text, unique=True)
     submitted_at: Mapped[datetime] = created_now()
-    # When a worker last claimed the attempt, and how many times one has.
+    # When a worker last claimed the attempt. For a queued attempt delayed by provider
+    # throttling, a future value is the earliest time a worker may claim it again.
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     tries: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     # The account that made the attempt, when it was made by one, and what it cost in
@@ -318,6 +327,26 @@ class Finding(Base):
         server_default="verified",
     )
     verified_at: Mapped[datetime] = created_now()
+
+
+class SavedAttack(Base):
+    """A verified break kept as both a regression case and a corpus probe.
+
+    It deliberately stores only the attack and canary kind. Canary definitions, rules,
+    planted values and transcripts remain in their encrypted/source records.
+    """
+
+    __tablename__ = "saved_attacks"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    finding_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("findings.id"), unique=True, index=True
+    )
+    bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"), index=True)
+    broken_config_hash: Mapped[str] = mapped_column(Text, index=True)
+    canary_type: Mapped[CanaryType] = mapped_column(pg_enum(CanaryType, "canary_type"), index=True)
+    payload_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = created_now()
 
 
 class Deposit(Base):
@@ -454,6 +483,39 @@ class Scan(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Whether it replays the shared library too. Decided when it is asked for.
     with_library: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Set when the sponsor explicitly asks for every corpus attack of one deterministic kind.
+    corpus_type: Mapped[CanaryType | None] = mapped_column(pg_enum(CanaryType, "canary_type"))
+    created_at: Mapped[datetime] = created_now()
+
+
+class ContinuousRun(Base):
+    """A corpus replay against one immutable agent version.
+
+    The result is encrypted because even a safe summary can be derived from a
+    sponsor's private configuration.  The row is also the usage record for the
+    account's monthly continuous-testing plan; deposits remain the payment
+    record, just as they do for the existing Watch plan.
+    """
+
+    __tablename__ = "continuous_runs"
+    __table_args__ = (
+        CheckConstraint("state IN ('queued', 'running', 'done', 'error')", name="state_known"),
+        CheckConstraint(
+            "trigger IN ('version', 'ci', 'schedule', 'model_update')", name="trigger_known"
+        ),
+        Index("ix_continuous_runs_bounty_finished", "bounty_id", "finished_at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"), index=True)
+    config_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("target_configs.id"), index=True)
+    config_hash: Mapped[str] = mapped_column(Text, index=True)
+    trigger: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, default="queued", server_default="queued", index=True)
+    # Ciphertext of per-probe verdicts. It deliberately does not duplicate attack payloads.
+    results_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_now()
 
 

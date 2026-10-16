@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import and_, func, or_, select
@@ -31,6 +32,7 @@ from agentbounty.api.schemas import (
     PayoutOut,
     ReplyOut,
     RunSummaryOut,
+    ScaffoldPublic,
     SponsorPublic,
     StatsOut,
     ToolCallOut,
@@ -50,7 +52,7 @@ from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.services import attempts as attempt_service
 from agentbounty.services import credits, judge
 from agentbounty.services.attempts import SubmissionLimits
-from agentbounty.services.harness import EntryPoint, SlotFill
+from agentbounty.services.harness import EntryPoint, SlotFill, scaffold_from_json
 from agentbounty.services.wallet import address_rule
 
 router = APIRouter(prefix="/v1", tags=["public"], dependencies=[Depends(limit_by_client)])
@@ -61,6 +63,7 @@ COMPLETED_SHOWN = 60
 RECENT_BREAKS = 8
 LEADERS = 10
 _MAX_CACHED = 2_000
+STALE_IF_ERROR_SECONDS = 300.0
 
 
 async def cached[T](request: Request, key: str, load: Callable[[], Awaitable[T]]) -> T:
@@ -76,12 +79,28 @@ async def cached[T](request: Request, key: str, load: Callable[[], Awaitable[T]]
     if hit is not None and hit[0] > now:
         value: T = hit[1]
         return value
-    value = await load()
-    if ttl > 0:
-        if len(cache) > _MAX_CACHED:
-            cache.clear()
-        cache[key] = (now + ttl, value)
-    return value
+    locks: dict[str, asyncio.Lock] = request.app.state.public_cache_locks
+    if len(locks) > _MAX_CACHED:
+        locks.clear()
+    lock = locks.setdefault(key, asyncio.Lock())
+    async with lock:
+        now = time.monotonic()
+        hit = cache.get(key)
+        if hit is not None and hit[0] > now:
+            return cast(T, hit[1])
+        try:
+            value = await load()
+        except Exception:
+            # Public pages may show a clearly recent known-good snapshot through a brief
+            # database restart. Private/account data never enters this cache.
+            if hit is not None and now - hit[0] <= STALE_IF_ERROR_SECONDS:
+                return cast(T, hit[1])
+            raise
+        if ttl > 0:
+            if len(cache) > _MAX_CACHED:
+                cache.clear()
+            cache[key] = (now + ttl, value)
+        return value
 
 
 def _count_of(column: Any) -> Any:
@@ -107,15 +126,26 @@ async def public_views(
     config_ids = [bounty.live_config_id for bounty, *_ in rows if bounty.live_config_id]
     entry_points: dict[uuid.UUID, list[str]] = {}
     tasks: dict[uuid.UUID, str] = {}
+    scaffolds: dict[uuid.UUID, dict[EntryPoint, ScaffoldPublic]] = {}
     canaries: dict[uuid.UUID, list[CanaryPublic]] = {}
     if config_ids:
-        for config_id, slots, task in await session.execute(
+        for config_id, slots, task, scaffold in await session.execute(
             select(
-                TargetConfigRow.id, TargetConfigRow.entry_points_json, TargetConfigRow.task
+                TargetConfigRow.id,
+                TargetConfigRow.entry_points_json,
+                TargetConfigRow.task,
+                TargetConfigRow.scaffold_json,
             ).where(TargetConfigRow.id.in_(config_ids))
         ):
             entry_points[config_id] = slots
             tasks[config_id] = task or ""
+            # The label and the turn count, so a hunter knows what their text will look
+            # like to the agent and how many turns they may script. Not which tool
+            # carries it: the agent's tools are the sponsor's to keep.
+            scaffolds[config_id] = {
+                slot: ScaffoldPublic(label=frame.label, turns=frame.turns)
+                for slot, frame in scaffold_from_json(scaffold).items()
+            }
         for config_id, kind, label in await session.execute(
             select(Canary.config_id, Canary.type, Canary.public_label)
             .where(Canary.config_id.in_(config_ids))
@@ -179,6 +209,7 @@ async def public_views(
                 EntryPoint(slot)
                 for slot in entry_points.get(bounty.live_config_id or bounty.id, [])
             ],
+            scaffold=scaffolds.get(bounty.live_config_id or bounty.id, {}),
             task=tasks.get(bounty.live_config_id or bounty.id, ""),
             canaries=canaries.get(bounty.live_config_id or bounty.id, []),
             attempts=attempts,
@@ -475,7 +506,7 @@ async def submit_attempt(
 ) -> AttemptAccepted:
     """Submit an attack. In invite-only mode it must come from an account, and it spends
     credits from that account's allowance."""
-    fills = [SlotFill(fill.slot, fill.content) for fill in body.fills]
+    fills = [SlotFill(fill.slot, fill.content, tuple(fill.turns)) for fill in body.fills]
     if settings.invite_only and account is None:
         raise HTTPException(
             401,

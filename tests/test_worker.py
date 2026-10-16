@@ -19,6 +19,7 @@ from agentbounty.services.model import (
     FakeModel,
     ModelError,
     ModelParams,
+    ModelRateLimitError,
     ModelResponse,
     ToolSpec,
 )
@@ -268,6 +269,35 @@ async def test_a_failed_replay_leaves_nothing_behind_and_is_retried(platform: Pl
     assert await count(platform, Finding) == 0
 
     assert await platform.work(model) == 1
+    assert (await platform.status(attempt))["verdict"] == "verified"
+    assert await count(platform, Run) == 5
+
+
+async def test_provider_capacity_waits_without_spending_an_attempt_try(platform: Platform) -> None:
+    bounty_id = await (await platform.sponsor()).live()
+    attempt = await platform.submit(bounty_id, STRONG)
+
+    class LimitedOnce(CountingModel):
+        async def complete(
+            self,
+            messages: Sequence[ChatMessage],
+            tools: Sequence[ToolSpec],
+            params: ModelParams,
+        ) -> ModelResponse:
+            if self.conversations == 0:
+                self.conversations += 1
+                raise ModelRateLimitError("free tier is cooling down", 120)
+            return await super().complete(messages, tools, params)
+
+    assert await replay.work_once(platform.sessions, platform.cipher, LimitedOnce(), max_tries=3)
+    row = await attempt_row(platform, attempt)
+    assert (row.state, row.tries, row.runs_done) == (AttemptState.QUEUED, 0, 0)
+    assert row.started_at is not None
+    assert await claim(platform) is None
+
+    async with platform.sessions.begin() as session:
+        await session.execute(update(Attempt).where(Attempt.id == row.id).values(started_at=None))
+    assert await platform.work(FakeModel()) == 1
     assert (await platform.status(attempt))["verdict"] == "verified"
     assert await count(platform, Run) == 5
 

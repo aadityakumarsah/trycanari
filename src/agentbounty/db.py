@@ -44,10 +44,11 @@ def create_engine(database_url: str) -> AsyncEngine:
     return create_async_engine(
         url,
         connect_args=connect_args,
-        # A hosted database is a slow round trip away, and checking a connection before
-        # every use costs one. Connections are replaced before a pooler would drop them
-        # instead. Five at most per process, so three processes fit a small pooler.
+        # Hosted poolers can drop an idle connection while a free service sleeps. Check
+        # before reuse and recycle regularly, so the first evening request still works.
+        # Five connections at most per process keeps three processes within a small pool.
         pool_recycle=240,
+        pool_pre_ping=True,
         pool_size=4,
         max_overflow=1,
     )

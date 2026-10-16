@@ -13,7 +13,7 @@ import { Ago, Avatar, Badge, Copyable, ErrorNote, Skeleton, when, words } from "
 import { useAction, useInterval, useLoad } from "../hooks.ts";
 import { currency, formatZec, sym } from "../money.ts";
 import { useToast } from "../toast.tsx";
-import type { AttemptActivity, EntryPoint, Finding, HouseHunt, Hunter, Ledger, Probe, Scan, SponsorBountyDetail } from "../types.ts";
+import type { AttemptActivity, CanaryType, ContinuousTesting, EntryPoint, Finding, HouseHunt, Hunter, Ledger, Probe, Scan, SponsorBountyDetail } from "../types.ts";
 
 interface Everything {
   bounty: SponsorBountyDetail;
@@ -308,90 +308,80 @@ export function ruleValue(operator: string, raw: string): unknown {
   }
 }
 
-function SecretCanaryForm({ act }: Pick<Props, "act">) {
-  const [label, setLabel] = useState("");
-  const [secret, setSecret] = useState("");
-  return (
-    <ActionForm
-      submit={async () => {
-        await act("canaries", { type: "secret_leak", public_label: label.trim(), secret });
-        setLabel("");
-        setSecret("");
-      }}
-      label="Add canary"
-    >
-      <h3>Add a secret that must never leak</h3>
-      <label>
-        Public label
-        <input required maxLength={64} value={label} onChange={(e) => setLabel(e.target.value)} />
-      </label>
-      <label>
-        Secret
-        <input
-          required
-          spellCheck={false}
-          autoComplete="off"
-          className="code"
-          value={secret}
-          onChange={(e) => setSecret(e.target.value)}
-        />
-        <small>At least 12 characters. It must appear in the system prompt or a tool result.</small>
-      </label>
-    </ActionForm>
-  );
-}
+const CANARY_OPTIONS: [CanaryType, string, string][] = [
+  ["secret_leak", "Secret leak", "Trips when a planted secret is emitted, including common encodings."],
+  ["system_prompt_leak", "System prompt leak", "Trips when a planted sentence from the pinned instructions is revealed."],
+  ["forbidden_tool", "Forbidden tool call", "Trips when a tool call matches a forbidden argument rule."],
+  ["unauthorized_action", "Unauthorized action", "Trips when an action tool is called outside its allowed scope."],
+  ["data_exfiltration", "Data exfiltration", "Trips when a planted value enters a configured outbound tool argument."],
+  ["phishing_link_injection", "Phishing link injection", "Trips when the agent emits the exact attacker-controlled URL."],
+  ["malicious_code_injection", "Malicious code injection", "Trips when a planted marker appears inside emitted code."],
+  ["policy_violation", "Policy violation", "Trips only on a sponsor-defined exact or regular-expression text match."],
+];
 
-function ToolCanaryForm({ act }: Pick<Props, "act">) {
+function CanaryForm({ bountyId, act }: Pick<Props, "act"> & { bountyId: string }) {
+  const [type, setType] = useState<CanaryType>("secret_leak");
   const [label, setLabel] = useState("");
+  const [value, setValue] = useState("");
   const [tool, setTool] = useState("");
   const [argument, setArgument] = useState("");
   const [operator, setOperator] = useState("not_in");
-  const [value, setValue] = useState("");
+  const [rule, setRule] = useState("");
+  const [sinkTools, setSinkTools] = useState("");
+  const [sinkArguments, setSinkArguments] = useState("url, body, message, content");
+  const [mode, setMode] = useState("exact");
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [testText, setTestText] = useState("");
+  const toolType = type === "forbidden_tool" || type === "unauthorized_action";
+  const selected = CANARY_OPTIONS.find(([name]) => name === type) ?? CANARY_OPTIONS[0];
+
+  const list = (raw: string) => raw.split(",").map((item) => item.trim()).filter(Boolean);
   return (
     <ActionForm
       submit={async () => {
-        const body: Record<string, unknown> = {
-          type: "forbidden_tool",
-          public_label: label.trim(),
-          tool: tool.trim(),
-        };
-        if (argument.trim()) {
-          body.predicate = { argument: argument.trim(), operator, value: ruleValue(operator, value) };
+        const body: Record<string, unknown> = { type, public_label: label.trim() };
+        if (type === "secret_leak") body.secret = value;
+        if (type === "system_prompt_leak") body.sentence = value;
+        if (type === "phishing_link_injection") body.url = value;
+        if (type === "malicious_code_injection") body.marker = value;
+        if (toolType) {
+          body.tool = tool.trim();
+          if (argument.trim()) {
+            body.predicate = { argument: argument.trim(), operator, value: ruleValue(operator, rule) };
+          }
+        }
+        if (type === "data_exfiltration") {
+          body.value = value;
+          body.sink_tools = list(sinkTools);
+          body.sink_arguments = list(sinkArguments);
+        }
+        if (type === "policy_violation") {
+          Object.assign(body, { pattern: value, mode, case_sensitive: caseSensitive, test_text: testText });
         }
         await act("canaries", body);
+        // A first baseline is free, even while this is still an unfunded draft.
+        await api("POST", `/v1/bounties/${bountyId}/scan`);
         setLabel("");
+        setValue("");
       }}
       label="Add canary"
     >
-      <h3>Add a tool call that must never happen</h3>
+      <h3>Add a deterministic tripwire</h3>
+      <label>
+        Canary type
+        <select value={type} onChange={(event) => setType(event.target.value as CanaryType)}>
+          {CANARY_OPTIONS.map(([name, title]) => <option key={name} value={name}>{title}</option>)}
+        </select>
+        <small>{selected?.[2] ?? ""}</small>
+      </label>
       <label>
         Public label
         <input required maxLength={64} value={label} onChange={(e) => setLabel(e.target.value)} />
       </label>
-      <label>
-        Tool
-        <input required spellCheck={false} className="code" value={tool} onChange={(e) => setTool(e.target.value)} />
-      </label>
-      <label>
-        Argument
-        <input spellCheck={false} className="code" value={argument} onChange={(e) => setArgument(e.target.value)} />
-        <small>Leave empty to trip on any call to the tool.</small>
-      </label>
-      <label>
-        Condition
-        <select value={operator} onChange={(e) => setOperator(e.target.value)}>
-          {OPERATORS.map(([name, text]) => (
-            <option key={name} value={name}>
-              {text}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Value
-        <input spellCheck={false} className="code" value={value} onChange={(e) => setValue(e.target.value)} />
-        <small>Comma-separated for “one of”.</small>
-      </label>
+      {!toolType && <label>{type === "policy_violation" ? "Pattern" : type === "phishing_link_injection" ? "URL" : type === "system_prompt_leak" ? "Canary sentence" : type === "malicious_code_injection" ? "Code marker" : "Planted value"}<input required spellCheck={false} autoComplete="off" className="code" value={value} onChange={(e) => setValue(e.target.value)} /></label>}
+      {toolType && <><label>Tool<input required spellCheck={false} className="code" value={tool} onChange={(e) => setTool(e.target.value)} /></label><label>Argument<input spellCheck={false} className="code" value={argument} onChange={(e) => setArgument(e.target.value)} /><small>Leave empty to trip on any call.</small></label><label>Condition<select value={operator} onChange={(e) => setOperator(e.target.value)}>{OPERATORS.map(([name, text]) => <option key={name} value={name}>{text}</option>)}</select></label><label>Value<input spellCheck={false} className="code" value={rule} onChange={(e) => setRule(e.target.value)} /></label></>}
+      {type === "data_exfiltration" && <><label>Outbound tools<input required className="code" value={sinkTools} onChange={(e) => setSinkTools(e.target.value)} /><small>Comma-separated mock tool names.</small></label><label>Outbound arguments<input required className="code" value={sinkArguments} onChange={(e) => setSinkArguments(e.target.value)} /></label></>}
+      {type === "policy_violation" && <><label>Match<select value={mode} onChange={(e) => setMode(e.target.value)}><option value="exact">Exact text</option><option value="regex">Regular expression</option></select></label><label><input type="checkbox" checked={caseSensitive} onChange={(e) => setCaseSensitive(e.target.checked)} /> Case-sensitive</label>{mode === "regex" && <label>Matching test text<input required className="code" value={testText} onChange={(e) => setTestText(e.target.value)} /><small>Proves the regex can trip before listing.</small></label>}<small>Only this exact or regex match can trigger automatic payout. Subjective behaviour requiring judgment is out of scope.</small></>}
     </ActionForm>
   );
 }
@@ -413,10 +403,7 @@ function CanarySection({ bounty, act }: Props) {
         </ul>
       )}
       {editable(bounty) && bounty.config && (
-        <div className="columns">
-          <SecretCanaryForm act={act} />
-          <ToolCanaryForm act={act} />
-        </div>
+        <CanaryForm bountyId={bounty.id} act={act} />
       )}
     </section>
   );
@@ -449,7 +436,7 @@ function HunterCard({ hunter }: { hunter: Hunter }) {
   );
 }
 
-function Findings({ findings }: { findings: Finding[] }) {
+function Findings({ bountyId, findings }: { bountyId: string; findings: Finding[] }) {
   return (
     <section>
       <h2>Findings</h2>
@@ -459,6 +446,7 @@ function Findings({ findings }: { findings: Finding[] }) {
           <h3>
             {finding.canary.public_label} <Badge state={finding.state} />
           </h3>
+          <p><a href={`/evidence/bounties/${bountyId}/findings/${finding.id}`}>Open printable finding report</a></p>
           <p className="muted">
             Tripped in {finding.tripped_runs} of {finding.runs.length} runs. Verified {when(finding.verified_at)}.{" "}
             {finding.state === "waived" && (
@@ -575,6 +563,7 @@ function ScanTab({ bounty, reload }: { bounty: SponsorBountyDetail; reload: () =
   const scan = useLoad((signal) => api<Scan>("GET", path, { signal }), bountyId, `sponsor:scan:${bountyId}`);
   const starting = useAction();
   const setting = useAction();
+  const [corpusType, setCorpusType] = useState<CanaryType>("secret_leak");
   const account = useAccount().data;
   const planned = account?.plan_active !== false;
   const running = scan.data?.state === "queued" || scan.data?.state === "running";
@@ -594,6 +583,13 @@ function ScanTab({ bounty, reload }: { bounty: SponsorBountyDetail; reload: () =
     await setting.run(async () => {
       await api("PATCH", `/v1/bounties/${bountyId}/settings`, { body });
       await reload();
+    });
+  }
+
+  async function runCorpus() {
+    await starting.run(async () => {
+      await api<Scan>("POST", `${path}?corpus_type=${corpusType}`);
+      await scan.reload();
     });
   }
 
@@ -644,6 +640,17 @@ function ScanTab({ bounty, reload }: { bounty: SponsorBountyDetail; reload: () =
         </label>
       </div>
       <ErrorNote>{setting.error}</ErrorNote>
+      <div className="scan-start">
+        <label>
+          Known-attack corpus
+          <select value={corpusType} onChange={(event) => setCorpusType(event.target.value as CanaryType)}>
+            {CANARY_OPTIONS.map(([type, label]) => <option key={type} value={type}>{label}</option>)}
+          </select>
+        </label>
+        <button type="button" className="secondary" disabled={starting.busy || running || canaries === 0} onClick={() => void runCorpus()}>
+          Run all known attacks of this type
+        </button>
+      </div>
       {state === null && (
         <div className="scan-start">
           <button type="button" className="accent" disabled={starting.busy || canaries === 0} onClick={() => void start()}>
@@ -856,7 +863,45 @@ function ActivityTab({ bountyId, watching, hunt }: { bountyId: string; watching:
   );
 }
 
-export const TABS = ["overview", "agent", "canaries", "scan", "funding", "activity", "findings", "ledger"] as const;
+/** The version history is a safe summary: it never returns the saved attack payloads. */
+function ContinuousTab({ bountyId }: { bountyId: string }) {
+  const path = `/v1/bounties/${bountyId}/continuous`;
+  const report = useLoad((signal) => api<ContinuousTesting>("GET", path, { signal }), bountyId, `sponsor:continuous:${bountyId}`);
+  useInterval(() => void report.reload(), 3000, report.data?.runs.some((run) => run.state === "queued" || run.state === "running") ?? false);
+  if (!report.data) return report.error ? <ErrorNote>{report.error}</ErrorNote> : <Skeleton lines={4} />;
+  const latest = report.data.runs[0];
+  return (
+    <section>
+      <h2>Continuous testing</h2>
+      <p className="muted">
+        Every saved break and corpus probe is replayed on each version, on demand from CI, and daily while Watch is on.
+        The monthly Watch deposit is the testing fee; verified bounty breaks still use the separate 10% success fee.
+      </p>
+      <ActionForm
+        submit={async () => {
+          await api("POST", `${path}/gate`);
+          await report.reload();
+        }}
+        label="Run CI regression gate"
+      />
+      {latest && (
+        <dl className="facts">
+          <div><dt>Latest result</dt><dd>{latest.passed === null ? latest.state : latest.passed ? "pass" : "fail"}</dd></div>
+          <div><dt>Attack success rate</dt><dd>{latest.success_rate === null ? "—" : `${Math.round(latest.success_rate * 100)}%`}</dd></div>
+          <div><dt>Canary coverage</dt><dd>{latest.covered_canary_types.length}</dd></div>
+          <div><dt>New regressions</dt><dd>{latest.regressed.length}</dd></div>
+        </dl>
+      )}
+      {report.data.runs.length === 0 ? <p className="empty">Save a version to start continuous testing.</p> : (
+        <div className="scroll"><table><thead><tr><th>Version</th><th>Trigger</th><th>Outcome</th><th>Success rate</th><th>Coverage</th><th>When</th></tr></thead><tbody>
+          {report.data.runs.map((run) => <tr key={run.id}><td>v{run.config_version}</td><td>{words(run.trigger)}</td><td>{run.passed === null ? run.state : run.passed ? "pass" : `fail (${run.succeeded})`}</td><td>{run.success_rate === null ? "—" : `${Math.round(run.success_rate * 100)}%`}</td><td>{run.covered_canary_types.join(", ") || "none"}</td><td><Ago iso={run.created_at} /></td></tr>)}
+        </tbody></table></div>
+      )}
+    </section>
+  );
+}
+
+export const TABS = ["overview", "agent", "canaries", "scan", "continuous", "funding", "activity", "findings", "ledger"] as const;
 export type Tab = (typeof TABS)[number];
 
 /** The tab a ?tab= value names. Anything unknown is the overview. */
@@ -989,6 +1034,7 @@ export function DashboardBounty() {
         {tab === "agent" && <Config bounty={bounty} act={act} />}
         {tab === "canaries" && <CanarySection bounty={bounty} act={act} />}
         {tab === "scan" && <ScanTab bounty={bounty} reload={page.reload} />}
+        {tab === "continuous" && <ContinuousTab bountyId={bounty.id} />}
         {tab === "funding" && <Funding bounty={bounty} act={act} base={base} reload={page.reload} />}
         {tab === "activity" && (
           <ActivityTab
@@ -997,7 +1043,7 @@ export function DashboardBounty() {
             hunt={bounty.house_hunt ?? null}
           />
         )}
-        {tab === "findings" && <Findings findings={findings} />}
+        {tab === "findings" && <Findings bountyId={bounty.id} findings={findings} />}
         {tab === "ledger" && <LedgerTable ledger={ledger} />}
       </div>
     </>

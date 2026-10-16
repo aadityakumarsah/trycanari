@@ -132,7 +132,7 @@ async def test_a_hunter_reads_their_own_attacks_and_what_they_were_paid(
         5,
     )
     assert first["canary"] == {"type": "forbidden_tool", "public_label": "unapproved_transfer"}
-    assert first["attack"] == [{"slot": "user_message", "content": STRONG}]
+    assert first["attack"] == [{"slot": "user_message", "content": STRONG, "turns": []}]
     assert (first["bounty_id"], first["reward_zatoshi"], first["payout"]) == (
         bounty_id,
         REWARD,

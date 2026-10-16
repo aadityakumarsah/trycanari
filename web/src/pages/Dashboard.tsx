@@ -12,6 +12,13 @@ import { formatZec, paidIn, parseZec, sym } from "../money.ts";
 import { useToast } from "../toast.tsx";
 import type { Account, ReferralCode, SponsorBounty } from "../types.ts";
 
+interface OnboardingTemplate {
+  key: string;
+  title: string;
+  description: string;
+  canary_labels: string[];
+}
+
 /** How much of the escrow a bounty needs is in place, as a whole percentage. */
 export function funded(bounty: Pick<SponsorBounty, "balance_zatoshi" | "required_zatoshi">): number {
   if (bounty.required_zatoshi <= 0) return 0;
@@ -24,6 +31,11 @@ function NewBounty({ onCancel }: { onCancel?: () => void }) {
   const [description, setDescription] = useState("");
   const [reward, setReward] = useState("");
   const creating = useAction();
+  const templates = useLoad(
+    (signal) => api<OnboardingTemplate[]>("GET", "/v1/onboarding/templates", { signal }),
+    "onboarding-templates",
+    "onboarding-templates",
+  );
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -34,6 +46,18 @@ function NewBounty({ onCancel }: { onCancel?: () => void }) {
     });
   }
 
+  async function useTemplate(template: OnboardingTemplate) {
+    await creating.run(async () => {
+      const body = {
+        title: title.trim() || template.title,
+        description: description.trim() || template.description,
+        reward_zatoshi: parseZec(reward),
+      };
+      const created = await api<{ id: string }>("POST", `/v1/bounties/templates/${template.key}`, { body });
+      navigate(`/dashboard/b/${created.id}?tab=scan`);
+    });
+  }
+
   return (
     <section className="panel">
       <h2>New bounty</h2>
@@ -41,6 +65,17 @@ function NewBounty({ onCancel }: { onCancel?: () => void }) {
         This creates a draft. Next you describe the agent, plant canaries and fund the reward; nothing is public
         until it goes live.
       </p>
+      <div className="field-block">
+        <b>Start from a tested shape</b>
+        <p className="muted small">Creates an editable draft with the relevant canaries, then starts the free baseline scan.</p>
+        <div className="tool-add">
+          {(templates.data ?? []).map((template) => (
+            <button key={template.key} type="button" className="chip" disabled={!reward || creating.busy} onClick={() => void useTemplate(template)}>
+              {template.title}
+            </button>
+          ))}
+        </div>
+      </div>
       <form onSubmit={(event) => void create(event)}>
         <label>
           Title
@@ -202,23 +237,27 @@ function Tier({ account }: { account: Account }) {
   );
 }
 
-/** An ambassador's referral codes. Each one lets one person in, once. */
+/** A sponsor or ambassador's bounded invite links and their redemption history. */
 function Referrals() {
   const codes = useLoad((signal) => api<ReferralCode[]>("GET", "/v1/referral-codes", { signal }), "codes", "codes");
   const [count, setCount] = useState("1");
+  const [maxUses, setMaxUses] = useState("1");
   const making = useAction();
   const toast = useToast();
   const list = codes.data ?? [];
-  const unused = list.filter((item) => !item.used).length;
+  const unused = list.reduce((total, item) => total + item.max_uses - item.uses, 0);
 
   async function make(event: FormEvent) {
     event.preventDefault();
     await making.run(async () => {
-      const made = await api<ReferralCode[]>("POST", "/v1/referral-codes", { body: { count: Number(count) } });
+      const shared = Number(maxUses) > 1;
+      const made = await api<ReferralCode[]>("POST", "/v1/referral-codes", {
+        body: { count: shared ? 1 : Number(count), max_uses: Number(maxUses) },
+      });
       const links = made.map((item) => inviteLink(item.code)).join("\n");
       await navigator.clipboard.writeText(links).catch(() => undefined);
       await codes.reload();
-      toast(made.length === 1 ? "Invite link created and copied" : `${made.length} invite links created and copied`);
+      toast(shared ? "Shared invite link created and copied" : made.length === 1 ? "Invite link created and copied" : `${made.length} invite links created and copied`);
     });
   }
 
@@ -226,17 +265,25 @@ function Referrals() {
     <section className="panel">
       <h2>Your invites</h2>
       <p className="muted">
-        You are an ambassador. Each invite link lets <b>one</b> person take part in bounties, and stops working
-        once they have used it. You can hold up to 25 unused at a time.
+        Create individual links or one shared link with several seats. You can see every account that redeems
+        your link, and can have up to 25 open seats at once.
       </p>
       <form className="inline-form" onSubmit={(event) => void make(event)}>
         <label>
-          How many
-          <select value={count} onChange={(e) => setCount(e.target.value)}>
+          Links
+          <select disabled={Number(maxUses) > 1} value={count} onChange={(e) => setCount(e.target.value)}>
             {[1, 3, 5, 10].map((size) => (
               <option key={size} value={size}>
                 {size}
               </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          People per link
+          <select value={maxUses} onChange={(e) => setMaxUses(e.target.value)}>
+            {[1, 3, 5, 10, 25].map((size) => (
+              <option key={size} value={size}>{size}</option>
             ))}
           </select>
         </label>
@@ -245,7 +292,7 @@ function Referrals() {
         </button>
         {list.length > 0 && (
           <span className="muted count-note">
-            {unused} unused, {list.length - unused} used
+            {unused} open seats
           </span>
         )}
       </form>
@@ -256,8 +303,8 @@ function Referrals() {
           {list.map((item) => (
             <li key={item.code} className={item.used ? "spent" : undefined}>
               <code>{item.code}</code>
-              <span className={item.used ? "badge" : "badge badge-live"}>{item.used ? "used" : "available"}</span>
-              <span className="muted" />
+              <span className={item.used ? "badge" : "badge badge-live"}>{item.uses}/{item.max_uses} joined</span>
+              <span className="muted">{item.users.map((user) => user.name || user.email).join(", ")}</span>
               {!item.used && (
                 <button
                   type="button"
@@ -284,25 +331,52 @@ export function Dashboard() {
     "sponsor:bounties",
   );
   const [adding, setAdding] = useState(false);
-  const account = useAccount().data;
+  const account = useAccount();
   const mine = bounties.data ?? [];
   const live = mine.filter((bounty) => bounty.state === "live").length;
   const escrow = mine.reduce((sum, bounty) => sum + bounty.balance_zatoshi, 0);
 
+  // Show loading state for account
+  if (account.loading && !account.data) {
+    return (
+      <>
+        <div className="page-head">
+          <h1>Dashboard</h1>
+        </div>
+        <Skeleton block lines={4} />
+      </>
+    );
+  }
+
+  // Show account error with retry option
+  if (account.error && !account.data) {
+    return (
+      <>
+        <div className="page-head">
+          <h1>Dashboard</h1>
+        </div>
+        <ErrorNote>{account.error}</ErrorNote>
+        <button className="button" onClick={() => void account.reload()}>
+          <Icon name="refresh" size={14} /> Retry
+        </button>
+      </>
+    );
+  }
+
   return (
     <>
-      {account && <Welcome account={account} />}
-      {account?.invite_only && !account.can_hunt && <ReferralGate compact />}
-      {account?.invite_only && account.can_hunt && (
+      {account.data && <Welcome account={account.data} />}
+      {account.data?.invite_only && !account.data.can_hunt && <ReferralGate compact />}
+      {account.data?.invite_only && account.data.can_hunt && (
         <>
-          <Quest account={account} />
-          <Tier account={account} />
+          <Quest account={account.data} />
+          <Tier account={account.data} />
         </>
       )}
-      {account?.is_ambassador && <Referrals />}
+      {(account.data?.is_ambassador || account.data?.can_sponsor) && <Referrals />}
 
-      {account && !account.can_sponsor && <ReferralGate compact kind="sponsor" />}
-      <section className={account && !account.can_sponsor ? "create locked" : "create"}>
+      {account.data && !account.data.can_sponsor && <ReferralGate compact kind="sponsor" />}
+      <section className={account.data && !account.data.can_sponsor ? "create locked" : "create"}>
         <div className="create-earn">
           <p className="eyebrow">You pay</p>
           <b>Only for proof</b>
@@ -316,8 +390,8 @@ export function Dashboard() {
             type="button"
             className="accent"
             onClick={() => setAdding(true)}
-            disabled={adding || account?.can_sponsor === false}
-            title={account?.can_sponsor === false ? "Listing an agent needs a sponsor code" : undefined}
+            disabled={adding || account.data?.can_sponsor === false}
+            title={account.data?.can_sponsor === false ? "Listing an agent needs a sponsor code" : undefined}
           >
             Start listing <Icon name="chevron" size={15} />
           </button>
@@ -325,13 +399,18 @@ export function Dashboard() {
         </div>
       </section>
 
-      {account?.can_sponsor && <WatchPlan />}
+      {account.data?.can_sponsor && <WatchPlan />}
 
       <div className="page-head sub">
         <h2>Your bounties</h2>
         <span className="muted">{mine.length} total</span>
       </div>
       <ErrorNote>{bounties.error}</ErrorNote>
+      {bounties.error && (
+        <button className="button secondary" onClick={() => void bounties.reload()}>
+          <Icon name="refresh" size={14} /> Reload
+        </button>
+      )}
       {!bounties.data && !bounties.error && <Skeleton block lines={2} />}
 
       {mine.length > 0 && (
@@ -352,10 +431,10 @@ export function Dashboard() {
       )}
 
       {adding && <NewBounty onCancel={() => setAdding(false)} />}
-      {bounties.data?.length === 0 && !adding && (
+      {bounties.data?.length === 0 && !adding && !bounties.loading && (
         <div className="empty">
           <p>You have not listed an agent yet.</p>
-          {account?.can_sponsor !== false && (
+          {account.data?.can_sponsor !== false && (
             <button type="button" className="text-button" onClick={() => setAdding(true)}>
               List your first agent
             </button>

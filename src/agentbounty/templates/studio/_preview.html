@@ -1,0 +1,12 @@
+{% if error is defined %}<div class="fragment-error">{{ error }}</div>
+{% elif not preview or not preview.items %}<div class="preview-empty">Start writing in a slot to assemble the context.</div>
+{% else %}
+<div class="context-stack">
+  {% for item in preview.items %}
+  <article class="context-message {{ item.role }}">
+    <header><b>{{ item.role }}</b><span>{{ item.label }}</span></header>
+    <pre>{% for segment in item.segments %}{% if segment.injected %}<mark>{{ segment.text }}</mark>{% else %}{{ segment.text }}{% endif %}{% endfor %}</pre>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}

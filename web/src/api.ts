@@ -7,10 +7,20 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly retryAfterMs: number | null = null,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+function retryAfter(response: Response): number | null {
+  const value = response.headers.get("Retry-After");
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(value);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : null;
 }
 
 interface ValidationItem {
@@ -53,8 +63,14 @@ export async function api<T>(method: string, path: string, options: CallOptions 
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const fallback =
-      response.status === 429 ? "Too many requests. Wait a minute and try again." : `Request failed (${response.status}).`;
-    throw new ApiError(response.status, errorDetail(body, fallback));
+      response.status === 429 ? `Too many requests. Wait ${response.headers.get("Retry-After") || "a minute"} and try again.` :
+      response.status === 400 || response.status === 422 ? "Some information is invalid. Check the highlighted fields and try again." :
+      response.status === 401 ? "You need to sign in first." :
+      response.status === 403 ? "You don't have permission for this." :
+      response.status === 404 ? "Not found." :
+      response.status === 503 ? "The service is temporarily unavailable. Please try again." :
+      `Request failed (${response.status}).`;
+    throw new ApiError(response.status, errorDetail(body, fallback), retryAfter(response));
   }
   return body as T;
 }
@@ -68,7 +84,7 @@ export async function upload<T>(path: string, file: Blob): Promise<T> {
     body: file,
   });
   const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new ApiError(response.status, errorDetail(body, `Upload failed (${response.status}).`));
+  if (!response.ok) throw new ApiError(response.status, errorDetail(body, `Upload failed (${response.status}).`), retryAfter(response));
   return body as T;
 }
 

@@ -29,7 +29,7 @@ from sqlalchemy import and_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from agentbounty.attacker import Attacker, Submission, Try
+from agentbounty.attacker import Attacker, AttackFills, Submission, Try
 from agentbounty.models import (
     Attempt,
     AttemptState,
@@ -235,12 +235,15 @@ class HouseArena:
                 ],
             }
 
-    async def submit(
-        self, bounty_id: str, fills: dict[str, str], payout_address: str
-    ) -> Submission:
+    async def submit(self, bounty_id: str, fills: AttackFills, payout_address: str) -> Submission:
         settings = self._settings
         try:
-            wanted = [SlotFill(EntryPoint(slot), content) for slot, content in fills.items()]
+            wanted = [
+                SlotFill(EntryPoint(slot), turns=tuple(content))
+                if isinstance(content, list)
+                else SlotFill(EntryPoint(slot), content)
+                for slot, content in fills.items()
+            ]
         except ValueError as error:
             return Submission(refused=str(error))
         try:
@@ -289,6 +292,7 @@ class HouseArena:
                     {"text": reply["content"], "tool_calls": reply["tool_calls"]}
                     for reply in status.replies
                 ],
+                "feedback": list(attempts.why_not_verified(status)),
             }
             if status.state not in (AttemptState.QUEUED, AttemptState.RUNNING):
                 break

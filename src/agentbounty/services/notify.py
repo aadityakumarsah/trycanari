@@ -29,6 +29,7 @@ from agentbounty.models import (
     Sponsor,
 )
 from agentbounty.services import judge, mail
+from agentbounty.services.harness import fills_from_json
 from agentbounty.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -242,7 +243,9 @@ async def _claim(
                 total_runs=judge.RUNS_PER_ATTEMPT,
                 actor_github=actor.github if actor else None,
                 payout_address=attempt.payout_address,
-                attack=tuple((fill["slot"], fill["content"]) for fill in attempt.payload_json),
+                attack=tuple(
+                    (str(fill.slot), fill.text) for fill in fills_from_json(attempt.payload_json)
+                ),
                 house=finding.state is FindingState.WAIVED,
             )
             email = mail.compose(event, recipient.email, settings.currency, settings.public_url)

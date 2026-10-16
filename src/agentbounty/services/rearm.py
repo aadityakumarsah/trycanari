@@ -12,16 +12,17 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentbounty.models import (
-    Attempt,
     Bounty,
     BountyState,
+    ContinuousRun,
     Finding,
     RearmCheck,
     RearmState,
+    SavedAttack,
 )
 from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.services.bounty import latest_config
@@ -73,6 +74,17 @@ async def request(session: AsyncSession, bounty: Bounty) -> RearmCheck:
     row = await latest_config(session, bounty.id)
     if row is None:
         raise ServiceError(409, "upload a config first")
+    # Uploading a version queues the broader corpus automatically. The re-arm gate
+    # replays this bounty's same paid cases, so prefer the explicit gate and avoid
+    # spending model calls twice when it has not started yet.
+    await session.execute(
+        delete(ContinuousRun).where(
+            ContinuousRun.bounty_id == bounty.id,
+            ContinuousRun.config_hash == row.config_hash,
+            ContinuousRun.trigger == "version",
+            ContinuousRun.state == "queued",
+        )
+    )
     broken = await session.scalar(
         select(Finding.id).where(
             Finding.bounty_id == bounty.id, Finding.config_hash == row.config_hash
@@ -102,7 +114,10 @@ class RearmClaim:
 async def claim_next(session: AsyncSession) -> RearmClaim | None:
     check = await session.scalar(
         select(RearmCheck)
-        .where(RearmCheck.state == RearmState.QUEUED)
+        .where(
+            RearmCheck.state == RearmState.QUEUED,
+            or_(RearmCheck.started_at.is_(None), RearmCheck.started_at <= datetime.now(UTC)),
+        )
         .order_by(RearmCheck.created_at, RearmCheck.id)
         .limit(1)
         .with_for_update(skip_locked=True)
@@ -115,15 +130,15 @@ async def claim_next(session: AsyncSession) -> RearmClaim | None:
     return RearmClaim(check.id, check.bounty_id, check.config_hash, check.started_at)
 
 
-async def paid_attacks(session: AsyncSession, bounty_id: uuid.UUID) -> list[list[dict[str, str]]]:
-    """The fills of every attempt that broke the bounty, oldest first."""
-    payloads = await session.scalars(
-        select(Attempt.payload_json)
-        .join(Finding, Finding.attempt_id == Attempt.id)
-        .where(Finding.bounty_id == bounty_id)
-        .order_by(Finding.verified_at, Finding.id)
+async def saved_attacks(session: AsyncSession, bounty_id: uuid.UUID) -> list[SavedAttack]:
+    """Every durable regression case for this bounty, oldest first."""
+    return list(
+        await session.scalars(
+            select(SavedAttack)
+            .where(SavedAttack.bounty_id == bounty_id)
+            .order_by(SavedAttack.created_at, SavedAttack.id)
+        )
     )
-    return [list(payload) for payload in payloads]
 
 
 async def record(
@@ -151,6 +166,16 @@ async def release(session: AsyncSession, claim: RearmClaim) -> None:
             RearmCheck.started_at == claim.started_at,
         )
         .values(state=RearmState.QUEUED)
+    )
+
+
+async def defer_for_capacity(
+    session: AsyncSession, claim: RearmClaim, *, retry_after: timedelta
+) -> None:
+    await session.execute(
+        update(RearmCheck)
+        .where(RearmCheck.id == claim.check_id, RearmCheck.state == RearmState.RUNNING)
+        .values(state=RearmState.QUEUED, started_at=datetime.now(UTC) + retry_after)
     )
 
 

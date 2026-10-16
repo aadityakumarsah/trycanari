@@ -13,6 +13,7 @@ from agentbounty.services.model import (
     FakeModel,
     ModelError,
     ModelParams,
+    ModelRateLimitError,
     RealModel,
     ToolCallRequest,
     ToolSpec,
@@ -148,7 +149,7 @@ async def test_real_model_waits_out_a_rate_limit_and_then_answers() -> None:
     answers = [
         httpx.Response(429, headers={"retry-after": "3"}, text="slow down"),
         httpx.Response(429, text="slow down"),
-        httpx.Response(429, headers={"retry-after": "600"}, text="slow down"),
+        httpx.Response(429, headers={"retry-after": "10"}, text="slow down"),
         httpx.Response(200, json=completion({"content": "done"})),
     ]
     waits: list[float] = []
@@ -163,8 +164,21 @@ async def test_real_model_waits_out_a_rate_limit_and_then_answers() -> None:
         sleep=record,
     )
     assert (await model.complete([user("hi")], [], PARAMS)).text == "done"
-    # What the provider asked for; a guess when it did not say; never more than the cap.
-    assert waits == [3.0, 4.0, 20.0]
+    # What the provider asked for, and a short backoff when it did not say.
+    assert waits == [3.0, 4.0, 10.0]
+
+
+async def test_real_model_defers_a_long_groq_free_tier_limit() -> None:
+    response = httpx.Response(
+        429,
+        json={"error": {"message": "Rate limit reached. Please try again in 2m13.5s."}},
+    )
+    model = real_model(httpx.MockTransport(lambda _: response))
+
+    with pytest.raises(ModelRateLimitError) as raised:
+        await model.complete([user("hi")], [], PARAMS)
+
+    assert raised.value.retry_after == 133.5
 
 
 async def test_real_model_gives_up_on_a_rate_limit_that_does_not_lift() -> None:
@@ -177,6 +191,51 @@ async def test_real_model_gives_up_on_a_rate_limit_that_does_not_lift() -> None:
     with pytest.raises(ModelError, match="answered 429"):
         await real_model(httpx.MockTransport(limited)).complete([user("hi")], [], PARAMS)
     assert len(calls) == 5
+
+
+@pytest.mark.parametrize("status", [408, 500, 502, 503, 504])
+async def test_real_model_retries_temporary_provider_failures(status: int) -> None:
+    calls = 0
+
+    def temporarily_unavailable(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            return httpx.Response(status, text="provider unavailable")
+        return httpx.Response(200, json=completion({"content": "recovered"}))
+
+    response = await real_model(httpx.MockTransport(temporarily_unavailable)).complete(
+        [user("hi")], [], PARAMS
+    )
+    assert response.text == "recovered"
+    assert calls == 3
+
+
+async def test_real_model_does_not_retry_a_bad_request() -> None:
+    calls = 0
+
+    def bad_request(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(400, text="invalid model")
+
+    with pytest.raises(ModelError, match="answered 400"):
+        await real_model(httpx.MockTransport(bad_request)).complete([user("hi")], [], PARAMS)
+    assert calls == 1
+
+
+async def test_real_model_retries_disconnects_then_defers_without_losing_work() -> None:
+    calls = 0
+
+    def disconnected(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.ConnectError("offline", request=request)
+
+    with pytest.raises(ModelRateLimitError, match="connection temporarily failed") as raised:
+        await real_model(httpx.MockTransport(disconnected)).complete([user("hi")], [], PARAMS)
+    assert calls == 5
+    assert raised.value.retry_after == 60
 
 
 async def test_real_model_sends_a_function_calling_request_and_reads_tool_calls() -> None:

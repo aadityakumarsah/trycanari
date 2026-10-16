@@ -17,13 +17,21 @@ from pydantic import (
 )
 
 from agentbounty.models import AttemptState, BountyState, CanaryType, PayoutState, RearmState
-from agentbounty.services.harness import MAX_SLOT_CHARACTERS, EntryPoint
-from agentbounty.services.judge import Operator
+from agentbounty.services.harness import (
+    DEFAULT_SCRIPTED_TURNS,
+    MAX_LABEL_CHARACTERS,
+    MAX_SCRIPTED_TURNS,
+    MAX_SLOT_CHARACTERS,
+    EntryPoint,
+)
+from agentbounty.services.judge import Operator, PatternMode
 
 MAX_ZATOSHI = 21_000_000 * 100_000_000
 
 Name = Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$")]
 Label = Annotated[str, Field(min_length=1, max_length=64)]
+# One user turn of a scripted attack.
+Turn = Annotated[str, Field(min_length=1, max_length=MAX_SLOT_CHARACTERS)]
 
 
 class Body(BaseModel):
@@ -266,13 +274,23 @@ class AccountOut(BaseModel):
 
 
 class ReferralCodeCreate(Body):
-    # How many single-use codes to make.
+    # Make several single-use links, or one shared link with several seats.
     count: StrictInt = Field(default=1, ge=1, le=10)
+    max_uses: StrictInt = Field(default=1, ge=1, le=25)
+
+
+class ReferralUserOut(BaseModel):
+    email: str
+    name: str | None
+    joined_at: datetime
 
 
 class ReferralCodeOut(BaseModel):
     code: str
     used: bool
+    max_uses: int = 1
+    uses: int = 0
+    users: list[ReferralUserOut] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -294,6 +312,17 @@ class BountyCreated(BaseModel):
     state: BountyState
 
 
+class OnboardingTemplateOut(BaseModel):
+    key: str
+    title: str
+    description: str
+    canary_labels: list[str]
+
+
+class TemplateBountyIn(BountyCreate):
+    pass
+
+
 class ToolIn(Body):
     name: Name
     description: str = Field(default="", max_length=2_000)
@@ -306,12 +335,26 @@ class ToolIn(Body):
     untrusted: bool = False
 
 
+class ScaffoldIn(Body):
+    """The sponsor's frame around one entry point. The hunter writes none of it."""
+
+    # What the agent is told it is looking at: a document's name, a page's URL, the
+    # heading on a memory note.
+    label: str = Field(default="", max_length=MAX_LABEL_CHARACTERS)
+    # The tool whose result carries the hunter's text (tool_result and web_page).
+    tool: Name | None = None
+    # How many user turns a multi_turn script may hold.
+    turns: int = Field(default=DEFAULT_SCRIPTED_TURNS, ge=1, le=MAX_SCRIPTED_TURNS)
+
+
 class ConfigIn(Body):
     system_prompt: str = Field(min_length=1, max_length=100_000)
     model: str = Field(min_length=1, max_length=200)
     tools: list[ToolIn] = Field(default_factory=list, max_length=32)
     params: dict[str, Any] = Field(default_factory=dict)
     entry_points: list[EntryPoint] = Field(default_factory=lambda: [EntryPoint.USER_MESSAGE])
+    # The frame around each entry point, by slot. A slot left out is unframed.
+    scaffold: dict[EntryPoint, ScaffoldIn] = Field(default_factory=dict)
     # What the agent is asked to do when the hunter does not write the user's message.
     # Needed with the tool-result entry point, and shown to hunters.
     task: str = Field(default="", max_length=4_000)
@@ -401,7 +444,59 @@ class ToolCanaryIn(Body):
     predicate: PredicateIn | None = None
 
 
-CanaryIn = Annotated[SecretCanaryIn | ToolCanaryIn, Field(discriminator="type")]
+class SystemPromptCanaryIn(Body):
+    type: Literal[CanaryType.SYSTEM_PROMPT_LEAK]
+    public_label: Label
+    sentence: str = Field(min_length=1, max_length=1_000)
+
+
+class UnauthorizedActionCanaryIn(Body):
+    type: Literal[CanaryType.UNAUTHORIZED_ACTION]
+    public_label: Label
+    tool: Name
+    predicate: PredicateIn | None = None
+
+
+class DataExfiltrationCanaryIn(Body):
+    type: Literal[CanaryType.DATA_EXFILTRATION]
+    public_label: Label
+    value: str = Field(max_length=1_000)
+    sink_tools: list[Name] = Field(min_length=1, max_length=16)
+    sink_arguments: list[Name] = Field(min_length=1, max_length=16)
+
+
+class PhishingLinkCanaryIn(Body):
+    type: Literal[CanaryType.PHISHING_LINK_INJECTION]
+    public_label: Label
+    url: str = Field(min_length=1, max_length=2_000)
+
+
+class MaliciousCodeCanaryIn(Body):
+    type: Literal[CanaryType.MALICIOUS_CODE_INJECTION]
+    public_label: Label
+    marker: str = Field(min_length=4, max_length=1_000)
+
+
+class PolicyViolationCanaryIn(Body):
+    type: Literal[CanaryType.POLICY_VIOLATION]
+    public_label: Label
+    pattern: str = Field(min_length=1, max_length=1_000)
+    mode: PatternMode = PatternMode.EXACT
+    case_sensitive: bool = False
+    test_text: str = Field(default="", max_length=2_000)
+
+
+CanaryIn = Annotated[
+    SecretCanaryIn
+    | ToolCanaryIn
+    | SystemPromptCanaryIn
+    | UnauthorizedActionCanaryIn
+    | DataExfiltrationCanaryIn
+    | PhishingLinkCanaryIn
+    | MaliciousCodeCanaryIn
+    | PolicyViolationCanaryIn,
+    Field(discriminator="type"),
+]
 
 
 class CanaryOut(BaseModel):
@@ -446,8 +541,12 @@ class CanaryPublic(BaseModel):
 
 
 class FillIn(Body):
+    """One slot of an attack. Every slot but multi_turn carries `content`; multi_turn
+    carries `turns`, the user turns to send in order."""
+
     slot: EntryPoint
-    content: str = Field(min_length=1, max_length=MAX_SLOT_CHARACTERS)
+    content: str = Field(default="", max_length=MAX_SLOT_CHARACTERS)
+    turns: list[Turn] = Field(default_factory=list, max_length=MAX_SCRIPTED_TURNS)
 
 
 class ToolCallOut(BaseModel):
@@ -486,6 +585,22 @@ class ToolOut(BaseModel):
     untrusted: bool = False
 
 
+class ScaffoldOut(BaseModel):
+    """A frame as its sponsor set it."""
+
+    label: str = ""
+    tool: str | None = None
+    turns: int = DEFAULT_SCRIPTED_TURNS
+
+
+class ScaffoldPublic(BaseModel):
+    """What a hunter is told about a frame: what their text will look like to the agent,
+    and how many turns they may script. Never which tool carries it."""
+
+    label: str = ""
+    turns: int = DEFAULT_SCRIPTED_TURNS
+
+
 class ConfigDetail(BaseModel):
     version: int
     config_hash: str
@@ -496,6 +611,7 @@ class ConfigDetail(BaseModel):
     tools: list[ToolOut]
     params: dict[str, Any]
     entry_points: list[EntryPoint]
+    scaffold: dict[EntryPoint, ScaffoldOut] = Field(default_factory=dict)
     task: str = ""
     endpoint_base: str | None = None
     # The key itself is never sent back.
@@ -620,6 +736,34 @@ class BountySettingsOut(BaseModel):
     watch: bool
 
 
+class ContinuousProbeOut(BaseModel):
+    case_id: uuid.UUID
+    canary_type: CanaryType
+    source: Literal["past_break", "corpus"]
+    tripped: bool
+
+
+class ContinuousRunOut(BaseModel):
+    id: uuid.UUID
+    config_version: int
+    config_hash: str
+    trigger: Literal["version", "ci", "schedule", "model_update"]
+    state: Literal["queued", "running", "done", "error"]
+    passed: bool | None
+    total: int
+    succeeded: int
+    success_rate: float | None
+    covered_canary_types: list[CanaryType]
+    regressed: list[ContinuousProbeOut]
+    created_at: datetime
+    finished_at: datetime | None
+
+
+class ContinuousTestingOut(BaseModel):
+    plan: PlanOut
+    runs: list[ContinuousRunOut]
+
+
 class PlanOut(BaseModel):
     """The Watch plan, as an account sees it."""
 
@@ -688,6 +832,7 @@ class ScanOut(BaseModel):
     # When it last ran to the end, and whether that run drew on the shared library.
     finished_at: datetime | None = None
     with_library: bool = False
+    corpus_type: CanaryType | None = None
 
 
 class ComplianceSubject(BaseModel):
@@ -823,6 +968,15 @@ class FindingOut(BaseModel):
     hunter: HunterOut | None = None
 
 
+class RegressionCaseOut(BaseModel):
+    id: uuid.UUID
+    finding_id: uuid.UUID
+    broken_config_hash: str
+    canary_type: CanaryType
+    attack: list[FillIn]
+    created_at: datetime
+
+
 class LedgerEntryOut(BaseModel):
     kind: str
     amount_zatoshi: int
@@ -876,6 +1030,8 @@ class BountyPublic(BaseModel):
     accepting_attempts: bool
     reward_zatoshi: int
     entry_points: list[EntryPoint]
+    # The frame around each entry point, for the slots whose frame a hunter needs to see.
+    scaffold: dict[EntryPoint, ScaffoldPublic] = Field(default_factory=dict)
     # What the agent is asked to do when the hunter does not write the user's message.
     task: str = ""
     canaries: list[CanaryPublic]
@@ -885,6 +1041,31 @@ class BountyPublic(BaseModel):
     # The hunters who broke it, newest first.
     broken_by: list[BreakerOut] = Field(default_factory=list)
     created_at: datetime
+
+
+class HunterRulesOut(BaseModel):
+    runs_per_attempt: int
+    trips_required: int
+    max_slot_characters: int
+    max_scripted_turns: int
+    payout_address_kind: str
+    attempts_per_payout_address_per_hour: int
+    attempts_per_bounty_per_hour: int
+
+
+class HunterAllowanceOut(BaseModel):
+    tier: str
+    balance: int
+    cap: int
+    spent: int
+    window_hours: int = 24
+    next_tier: str | None
+    next_cap: int | None
+
+
+class HunterBountyOut(BountyPublic):
+    rules: HunterRulesOut
+    allowance: HunterAllowanceOut
 
 
 class StatsOut(BaseModel):
@@ -964,6 +1145,10 @@ class AttemptAccepted(BaseModel):
     status_token: str
 
 
+class HunterAttemptAccepted(BaseModel):
+    attempt_id: uuid.UUID
+
+
 class ReplyOut(BaseModel):
     text: str
     tool_calls: list[ToolCallOut]
@@ -1010,6 +1195,12 @@ class AttemptStatusOut(BaseModel):
     # Once done: every replay in brief, and how each canary of the agent fared.
     runs: list[RunSummaryOut] = Field(default_factory=list)
     canaries: list[CanaryTallyOut] = Field(default_factory=list)
+
+
+class HunterAttemptStatusOut(AttemptStatusOut):
+    attempt_id: uuid.UUID
+    # Generated only from replay tallies, tool calls and the shown agent replies.
+    feedback: list[str] = Field(default_factory=list)
 
 
 # --- an account's own attempts and notifications ----------------------------------------

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Finding {{ report.finding.id }} · {{ bounty.title }}</title>
+    <link rel="stylesheet" href="/evidence-assets/evidence.css">
+    <script src="/evidence-assets/evidence.js" defer></script>
+  </head>
+  <body>
+    <nav class="toolbar">
+      <a href="/dashboard/b/{{ bounty.id }}?tab=findings">← Back to findings</a>
+      <a href="/dashboard/b/{{ bounty.id }}/report">Agent evidence report</a>
+      <button type="button" data-print>Print or save as PDF</button>
+    </nav>
+    <main>
+      <header>
+        <p class="eyebrow">Verified finding report</p>
+        <h1>{{ bounty.title }}</h1>
+        <p>Finding <code>{{ report.finding.id }}</code> · configuration <code>{{ report.finding.config_hash }}</code></p>
+      </header>
+
+      <section class="summary">
+        <dl>
+          <div><dt>Canary</dt><dd>{{ report.canary.public_label }} <small>{{ report.canary.type.value }}</small></dd></div>
+          <div><dt>Verified</dt><dd>{{ report.finding.verified_at.strftime('%d %b %Y · %H:%M UTC') }}</dd></div>
+          <div><dt>Reliability</dt><dd>{{ report.finding.tripped_runs }} of {{ runs|length }} replays tripped</dd></div>
+          <div><dt>Found by</dt><dd>{{ hunter.name or hunter.email if hunter else 'Anonymous hunter' }}</dd></div>
+          <div><dt>Payout</dt><dd>{% if report.payout %}{{ report.payout.amount_zatoshi }} · {{ report.payout.state.value }}{% else %}Not paid (house finding){% endif %}</dd></div>
+          <div><dt>Transaction</dt><dd><code>{{ report.payout.txid if report.payout and report.payout.txid else 'Pending or not applicable' }}</code></dd></div>
+        </dl>
+      </section>
+
+      <section>
+        <h2>Exact submitted attack</h2>
+        {% for fill in report.attack %}
+        <article class="fill">
+          <h3>{{ fill.slot|replace('_', ' ') }}</h3>
+          {% if fill.turns %}
+            {% for turn in fill.turns %}<pre>Turn {{ loop.index }}\n{{ turn }}</pre>{% endfor %}
+          {% else %}<pre>{{ fill.content }}</pre>{% endif %}
+        </article>
+        {% endfor %}
+      </section>
+
+      <section>
+        <h2>Five independent transcripts</h2>
+        {% for run in runs %}
+        <article class="run">
+          <h3>Run {{ run.run_index + 1 }} <span class="{{ 'trip' if run.tripped else 'held' }}">{{ 'Tripped' if run.tripped else 'Held' }}</span></h3>
+          <ol class="transcript">
+            {% for item in run.messages %}
+            <li class="message {{ 'highlight' if item.evidence else '' }}" data-message-index="{{ loop.index0 }}">
+              <b>{{ item.message.role }}</b>
+              {% if item.message.content %}<p>{{ item.message.content }}</p>{% endif %}
+              {% for call in item.message.tool_calls %}<pre>{{ call.name }}({{ call.arguments | tojson(indent=2) }})</pre>{% endfor %}
+              {% for hit in item.evidence %}
+              <aside>Tripped {{ hit.canary.public_label if hit.canary else 'canary' }} at {{ hit.location }}{% if hit.representation %} · {{ hit.representation }}{% endif %}</aside>
+              {% endfor %}
+            </li>
+            {% endfor %}
+          </ol>
+        </article>
+        {% endfor %}
+      </section>
+    </main>
+  </body>
+</html>

@@ -47,7 +47,7 @@ _ALPHABET = "".join(sorted(set(string.ascii_uppercase + string.digits) - set("0O
 
 def cost_of(fills: Sequence[SlotFill]) -> int:
     """Credits an attack with these fills costs."""
-    size = sum(len(fill.content) for fill in fills)
+    size = sum(len(fill.text) for fill in fills)
     for limit, credits in COSTS:
         if size <= limit:
             return credits
@@ -333,26 +333,29 @@ async def create_codes(
     if code is not None and count != 1:
         raise ServiceError(422, "a code of your own choosing can only be made one at a time")
     if owner is not None and not unlimited:
-        if not owner.is_ambassador:
-            raise ServiceError(403, "only ambassadors can make referral codes")
+        may_invite = bool(
+            owner.is_ambassador or owner.is_admin or owner.sponsoring_granted or owner.sponsor_code
+        )
+        if not may_invite:
+            raise ServiceError(403, "only sponsors and ambassadors can make referral codes")
         if is_banned(owner):
             raise ServiceError(403, "this account has been banned")
-        if max_uses != 1:
-            raise ServiceError(403, "only an admin can make a code for several people")
         if kind == SPONSOR:
             raise ServiceError(403, "only an admin can make sponsor codes")
+        if max_uses > 1 and count != 1:
+            raise ServiceError(422, "make one shared link at a time")
         # Counted with the ambassador's row held, so two requests cannot both fit under it.
         await session.execute(select(Sponsor.id).where(Sponsor.id == owner.id).with_for_update())
-        unused = await session.scalar(
-            select(func.count())
-            .select_from(ReferralCode)
-            .where(ReferralCode.owner_id == owner.id, _holder().is_(None))
+        owned = await session.execute(
+            select(ReferralCode.max_uses, _uses()).where(ReferralCode.owner_id == owner.id)
         )
-        if int(unused or 0) + count > MAX_UNUSED_PER_AMBASSADOR:
+        unused = sum(maximum - int(uses or 0) for maximum, uses in owned)
+        requested = count * max_uses
+        if unused + requested > MAX_UNUSED_PER_AMBASSADOR:
             raise ServiceError(
                 409,
                 f"you can hold {MAX_UNUSED_PER_AMBASSADOR} unused codes at a time;"
-                f" you have {int(unused or 0)}. Share those first",
+                f" you have {unused}. Share those first",
             )
     if code is not None:
         value = normalise(code)
@@ -412,7 +415,7 @@ class CodeLine:
     # The first account to use it, or None while it is unused.
     used_by: str | None
     owner_email: str | None
-    # Everyone who used it, first to last. Only the admin's list fills this in.
+    # Everyone who used it, first to last.
     people: tuple[Joined, ...] = ()
 
 
@@ -508,11 +511,38 @@ async def delete_codes(session: AsyncSession, which: str) -> int:
 
 
 async def codes_of(session: AsyncSession, owner: Sponsor) -> list[CodeLine]:
-    """An ambassador's codes, newest first, each with whether it has been used."""
+    """An inviter's codes and every account that redeemed them, newest code first."""
     rows = await session.execute(
-        select(ReferralCode, _holder())
+        select(ReferralCode)
         .where(ReferralCode.owner_id == owner.id)
         .order_by(ReferralCode.created_at.desc(), ReferralCode.id)
         .limit(200)
     )
-    return [CodeLine(code, holder, owner.email) for code, holder in rows]
+    codes = list(rows.scalars())
+    wanted = [code.code for code in codes]
+    joined: dict[str, list[Joined]] = {}
+    if wanted:
+        holders = await session.execute(
+            select(
+                Sponsor.referral_code,
+                Sponsor.sponsor_code,
+                Sponsor.email,
+                Sponsor.name,
+                Sponsor.created_at,
+            )
+            .where(or_(Sponsor.referral_code.in_(wanted), Sponsor.sponsor_code.in_(wanted)))
+            .order_by(Sponsor.created_at, Sponsor.id)
+        )
+        for hunter_code, sponsor_code, email, name, joined_at in holders:
+            for held in (hunter_code, sponsor_code):
+                if held in wanted:
+                    joined.setdefault(held, []).append(Joined(email, name, joined_at))
+    return [
+        CodeLine(
+            code,
+            joined[code.code][0].email if joined.get(code.code) else None,
+            owner.email,
+            tuple(joined.get(code.code, ())),
+        )
+        for code in codes
+    ]
