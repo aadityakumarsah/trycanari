@@ -23,4 +23,4 @@ await rm(`${site}/app/index.html`);
 await cp("functions", `${site}/functions`, { recursive: true });
 // Use the current Wrangler release: older releases can upload the static site
 // while silently leaving a Pages Functions bundle inactive.
-await run(["bunx", "wrangler@4", "pages", "deploy", site, "--project-name", project, "--branch", "main", "--commit-dirty=true"]);
+await run(["npx", "--package=node@22", "--package=wrangler@4", "wrangler", "pages", "deploy", site, "--project-name", project, "--branch", "main", "--commit-dirty=true"]);
