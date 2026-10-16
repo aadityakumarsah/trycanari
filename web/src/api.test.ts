@@ -7,9 +7,10 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-function answer(status: number, body: unknown) {
+function answer(status: number, body: unknown, headers?: HeadersInit) {
+  const init: ResponseInit = headers === undefined ? { status } : { status, headers };
   const fake = mock(async (_url: string | URL | Request, _init?: RequestInit) =>
-    new Response(body === undefined ? "<html>" : JSON.stringify(body), { status }),
+    new Response(body === undefined ? "<html>" : JSON.stringify(body), init),
   );
   globalThis.fetch = fake as unknown as typeof fetch;
   return fake;
@@ -52,10 +53,11 @@ describe("api", () => {
   });
 
   test("explains a rate limit and survives a body that is not JSON", async () => {
-    answer(429, undefined);
+    answer(429, undefined, { "Retry-After": "7" });
     await api("GET", "/v1/bounties").catch((error: ApiError) => {
       expect(error.status).toBe(429);
       expect(error.message).toContain("Too many requests");
+      expect(error.retryAfterMs).toBe(7000);
     });
   });
 });

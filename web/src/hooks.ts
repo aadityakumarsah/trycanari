@@ -31,11 +31,27 @@ function starting<T>(remember: string | undefined): LoadState<T> {
   return { data: known ?? null, error: "", status: null, loading: known === undefined };
 }
 
+function pause(milliseconds: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, milliseconds);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
+}
+
 /**
  * Loads something when the component mounts and whenever `key` changes.
  * A reload keeps showing the data it already has, so the page does not flicker.
  * With `remember`, the last answer is shown immediately on the next visit and
  * replaced when the fresh one arrives.
+ *
+ * Optimized with:
+ * - 30-second timeout to allow a sleeping free service to wake up
+ * - Automatic retry on network errors with exponential backoff
+ * - Smart handling of rate limits (429)
+ * - Stale cache validation (shows cached data but refreshes in background)
  */
 export function useLoad<T>(load: (signal: AbortSignal) => Promise<T>, key: string, remember?: string): Loaded<T> {
   const [state, setState] = useState<LoadState<T>>(() => starting<T>(remember));
@@ -44,27 +60,59 @@ export function useLoad<T>(load: (signal: AbortSignal) => Promise<T>, key: strin
   const latest = useRef(load);
   latest.current = load;
   const controller = useRef<AbortController | null>(null);
+  const generation = useRef(0);
+  const MAX_RETRIES = 3;
+  const TIMEOUT_MS = 30000;
 
   const run = useCallback(async () => {
+    const runGeneration = ++generation.current;
     controller.current?.abort();
-    const mine = new AbortController();
-    controller.current = mine;
-    try {
-      const data = await latest.current(mine.signal);
-      if (mine.signal.aborted) return;
-      if (rememberAs.current !== undefined) remembered.set(rememberAs.current, data);
-      setState({ data, error: "", status: null, loading: false });
-    } catch (error) {
-      if (mine.signal.aborted) return;
-      const status = error instanceof ApiError ? error.status : null;
-      setState((previous) => ({ data: previous.data, error: messageOf(error), status, loading: false }));
+    setState((previous) => ({ ...previous, error: "", loading: previous.data === null }));
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+      const mine = new AbortController();
+      controller.current = mine;
+      let timedOut = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        mine.abort();
+      }, TIMEOUT_MS);
+      try {
+        const data = await latest.current(mine.signal);
+        clearTimeout(timeout);
+        if (runGeneration !== generation.current) return;
+        if (rememberAs.current !== undefined) remembered.set(rememberAs.current, data);
+        setState({ data, error: "", status: null, loading: false });
+        return;
+      } catch (error) {
+        clearTimeout(timeout);
+        if (runGeneration !== generation.current || (mine.signal.aborted && !timedOut)) return;
+        const status = error instanceof ApiError ? error.status : null;
+        const message = timedOut
+          ? "The server took too long to respond. Please try again."
+          : messageOf(error);
+        const retryable = timedOut || status === null || status === 429 || status >= 500;
+        if (!retryable || attempt === MAX_RETRIES) {
+          setState((previous) => ({ data: previous.data, error: message, status, loading: false }));
+          return;
+        }
+        const requested = error instanceof ApiError ? error.retryAfterMs : null;
+        // Obey the server for throttles. Cap one UI wait so a tab can recover promptly
+        // after deployment restarts or a stale proxy response.
+        const delay = Math.min(requested ?? 1000 * 2 ** attempt, 60_000);
+        await pause(delay, mine.signal);
+        if (runGeneration !== generation.current) return;
+      }
     }
   }, []);
 
   useEffect(() => {
     setState(starting<T>(rememberAs.current));
     void run();
-    return () => controller.current?.abort();
+    return () => {
+      generation.current += 1;
+      controller.current?.abort();
+    };
   }, [key, run]);
 
   return { ...state, reload: run };

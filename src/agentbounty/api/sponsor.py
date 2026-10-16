@@ -38,8 +38,12 @@ from agentbounty.api.schemas import (
     ConfigDetail,
     ConfigIn,
     ConfigOut,
+    ContinuousProbeOut,
+    ContinuousRunOut,
+    ContinuousTestingOut,
     CostStep,
     CreditsOut,
+    DataExfiltrationCanaryIn,
     EvidenceOut,
     FillIn,
     FindingOut,
@@ -53,6 +57,7 @@ from agentbounty.api.schemas import (
     HuntTotals,
     LedgerEntryOut,
     LedgerOut,
+    MaliciousCodeCanaryIn,
     MessageOut,
     ModelsOut,
     ModelTestIn,
@@ -60,14 +65,20 @@ from agentbounty.api.schemas import (
     NotificationOut,
     NotificationsOut,
     NotificationsRead,
+    OnboardingTemplateOut,
     PayoutOut,
+    PhishingLinkCanaryIn,
     PlanOut,
+    PolicyViolationCanaryIn,
     ProbeOut,
     RearmOut,
     ReferralCodeCreate,
     ReferralCodeOut,
     ReferralRedeem,
+    ReferralUserOut,
+    RegressionCaseOut,
     RunOut,
+    ScaffoldOut,
     ScanOut,
     SecretCanaryIn,
     SponsorBounty,
@@ -79,7 +90,10 @@ from agentbounty.api.schemas import (
     SponsorshipOut,
     SponsorTotals,
     StateOut,
+    SystemPromptCanaryIn,
+    TemplateBountyIn,
     ToolOut,
+    UnauthorizedActionCanaryIn,
 )
 from agentbounty.api.session import COOKIE, seal_sponsor, set_session_cookie
 from agentbounty.models import (
@@ -90,19 +104,23 @@ from agentbounty.models import (
     CanaryType,
     Finding,
     FindingState,
+    SavedAttack,
     Scan,
     Sponsor,
 )
+from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.money import format_amount
 from agentbounty.services import attempts as attempt_service
 from agentbounty.services import bounty as bounty_service
 from agentbounty.services import (
     compliance,
+    continuous,
     credits,
     endpoint,
     house,
     hunts,
     notify,
+    onboarding,
     pictures,
     plans,
     playbook,
@@ -114,8 +132,17 @@ from agentbounty.services import (
 from agentbounty.services.bounty import CanaryDefinition
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
-from agentbounty.services.harness import MockTool, TargetConfig
-from agentbounty.services.judge import RUNS_PER_ATTEMPT, ArgumentPredicate, ToolRule
+from agentbounty.services.harness import MockTool, Scaffold, TargetConfig
+from agentbounty.services.judge import (
+    RUNS_PER_ATTEMPT,
+    ArgumentPredicate,
+    DataExfiltration,
+    MaliciousCodeInjection,
+    PhishingLinkInjection,
+    PolicyViolation,
+    SystemPromptLeak,
+    ToolRule,
+)
 from agentbounty.services.model import RealModel
 from agentbounty.services.wallet import address_rule
 from agentbounty.settings import Settings
@@ -403,7 +430,15 @@ async def referral_codes(session: Transaction, sponsor: SponsorDep) -> list[Refe
     """The referral codes this account has made, and which have been used."""
     return [
         ReferralCodeOut(
-            code=line.code.code, used=line.used_by is not None, created_at=line.code.created_at
+            code=line.code.code,
+            used=len(line.people) >= line.code.max_uses,
+            max_uses=line.code.max_uses,
+            uses=len(line.people),
+            users=[
+                ReferralUserOut(email=user.email, name=user.name, joined_at=user.joined_at)
+                for user in line.people
+            ],
+            created_at=line.code.created_at,
         )
         for line in await credits.codes_of(session, sponsor)
     ]
@@ -413,12 +448,20 @@ async def referral_codes(session: Transaction, sponsor: SponsorDep) -> list[Refe
 async def create_referral_codes(
     body: ReferralCodeCreate, session: Transaction, sponsor: SponsorDep
 ) -> list[ReferralCodeOut]:
-    """Make single-use referral codes. Only ambassadors can."""
-    made = await credits.create_codes(session, sponsor, body.count)
+    """Make individual invite links or one shared link with several bounded seats."""
+    made = await credits.create_codes(session, sponsor, body.count, max_uses=body.max_uses)
     for code in made:
         await session.refresh(code)
     return [
-        ReferralCodeOut(code=code.code, used=False, created_at=code.created_at) for code in made
+        ReferralCodeOut(
+            code=code.code,
+            used=False,
+            max_uses=code.max_uses,
+            uses=0,
+            users=[],
+            created_at=code.created_at,
+        )
+        for code in made
     ]
 
 
@@ -435,6 +478,53 @@ async def create_bounty(
     bounty = await bounty_service.create_bounty(
         session, sponsor, body.reward_zatoshi, settings.fee_rate, body.title, body.description
     )
+    return BountyCreated(id=bounty.id, state=bounty.state)
+
+
+@router.get("/onboarding/templates")
+async def onboarding_templates() -> list[OnboardingTemplateOut]:
+    """Small, editable starter agents with deterministic canaries already attached."""
+    return [
+        OnboardingTemplateOut(
+            key=item.key,
+            title=item.title,
+            description=item.description,
+            canary_labels=[canary.public_label for canary in item.canaries],
+        )
+        for item in onboarding.starters()
+    ]
+
+
+@router.post("/bounties/templates/{key}", status_code=201)
+async def create_from_template(
+    key: str,
+    body: TemplateBountyIn,
+    session: Transaction,
+    sponsor: SponsorDep,
+    cipher: CipherDep,
+    settings: SettingsDep,
+) -> BountyCreated:
+    """Create an editable draft and queue its free baseline before it is funded."""
+    if not credits.can_sponsor(sponsor, settings):
+        raise ServiceError(403, "listing an agent needs a sponsor invite: enter a sponsor code")
+    template = onboarding.starter(key)
+    if template is None:
+        raise ServiceError(404, "that starter template does not exist")
+    if body.reward_zatoshi < settings.currency.minimum:
+        minimum = format_amount(settings.currency.minimum, settings.currency)
+        raise ServiceError(422, f"the reward must be at least {minimum} {settings.currency.symbol}")
+    bounty = await bounty_service.create_bounty(
+        session,
+        sponsor,
+        body.reward_zatoshi,
+        settings.fee_rate,
+        body.title or template.title,
+        body.description or template.description,
+    )
+    await bounty_service.put_config(session, cipher, bounty, template.config)
+    for canary in template.canaries:
+        await bounty_service.add_canary(session, cipher, bounty, canary)
+    await scan.request(session, bounty, with_library=False)
     return BountyCreated(id=bounty.id, state=bounty.state)
 
 
@@ -547,11 +637,21 @@ async def put_config(
             entry_points=tuple(body.entry_points),
             endpoint=base,
             task=body.task.strip(),
+            scaffold={
+                slot: Scaffold(label=frame.label.strip(), tool=frame.tool, turns=frame.turns)
+                for slot, frame in body.scaffold.items()
+            },
         )
     except ValueError as exc:
         raise ServiceError(422, str(exc)) from exc
     key = body.endpoint_key.get_secret_value() if body.endpoint_key else None
     row = await bounty_service.put_config(session, cipher, bounty, config, key)
+    # A target config is an immutable agent version. Every new version is immediately
+    # tested against the durable corpus when the sponsor has the monthly plan.
+    if plans.active(
+        await session.get_one(Sponsor, bounty.sponsor_id), settings
+    ) and await continuous.has_cases(session, bounty.id):
+        await continuous.request(session, bounty, row, trigger="version")
     return ConfigOut(version=row.version, config_hash=row.config_hash)
 
 
@@ -564,6 +664,39 @@ async def add_canary(
             definition = CanaryDefinition(
                 CanaryType.SECRET_LEAK, body.public_label, secret=body.secret
             )
+        elif isinstance(body, SystemPromptCanaryIn):
+            value = SystemPromptLeak(body.sentence).sentence
+            definition = CanaryDefinition(
+                CanaryType.SYSTEM_PROMPT_LEAK, body.public_label, secret=value
+            )
+        elif isinstance(body, DataExfiltrationCanaryIn):
+            parameters = DataExfiltration(
+                body.value, tuple(body.sink_tools), tuple(body.sink_arguments)
+            )
+            definition = CanaryDefinition(
+                CanaryType.DATA_EXFILTRATION,
+                body.public_label,
+                secret=body.value,
+                exfiltration=parameters,
+            )
+        elif isinstance(body, PhishingLinkCanaryIn):
+            value = PhishingLinkInjection(body.url).url
+            definition = CanaryDefinition(
+                CanaryType.PHISHING_LINK_INJECTION, body.public_label, secret=value
+            )
+        elif isinstance(body, MaliciousCodeCanaryIn):
+            value = MaliciousCodeInjection(body.marker).marker
+            definition = CanaryDefinition(
+                CanaryType.MALICIOUS_CODE_INJECTION, body.public_label, secret=value
+            )
+        elif isinstance(body, PolicyViolationCanaryIn):
+            definition = CanaryDefinition(
+                CanaryType.POLICY_VIOLATION,
+                body.public_label,
+                policy=PolicyViolation(
+                    body.pattern, body.mode, body.case_sensitive, body.test_text
+                ),
+            )
         else:
             predicate = (
                 None
@@ -573,7 +706,11 @@ async def add_canary(
                 )
             )
             definition = CanaryDefinition(
-                CanaryType.FORBIDDEN_TOOL, body.public_label, rule=ToolRule(body.tool, predicate)
+                CanaryType.UNAUTHORIZED_ACTION
+                if isinstance(body, UnauthorizedActionCanaryIn)
+                else CanaryType.FORBIDDEN_TOOL,
+                body.public_label,
+                rule=ToolRule(body.tool, predicate),
             )
     except ValueError as exc:
         raise ServiceError(422, str(exc)) from exc
@@ -784,6 +921,10 @@ async def my_bounty(
             ],
             params=dict(target.config.params),
             entry_points=sorted(target.config.entry_points),
+            scaffold={
+                slot: ScaffoldOut(label=frame.label, tool=frame.tool, turns=frame.turns)
+                for slot, frame in target.config.scaffold.items()
+            },
             task=target.config.task,
             endpoint_base=target.config.endpoint,
             endpoint_key_set=target.endpoint_key is not None,
@@ -806,9 +947,7 @@ async def my_bounty(
                 type=canary.definition.type,
                 public_label=canary.definition.public_label,
                 secret=canary.definition.secret,
-                rule=None
-                if canary.definition.rule is None
-                else bounty_service.rule_to_json(canary.definition.rule),
+                rule=bounty_service.structured_parameters(canary.definition),
             )
             for canary in (target.canaries if target else ())
         ],
@@ -915,6 +1054,93 @@ async def findings(session: Transaction, bounty: OwnBounty, cipher: CipherDep) -
     return out
 
 
+@router.get("/bounties/{bounty_id}/regressions")
+async def regression_cases(session: Transaction, bounty: OwnBounty) -> list[RegressionCaseOut]:
+    """Exact verified attacks retained as replayable cases for this agent."""
+    cases = await session.scalars(
+        select(SavedAttack)
+        .where(SavedAttack.bounty_id == bounty.id)
+        .order_by(SavedAttack.created_at, SavedAttack.id)
+    )
+    return [
+        RegressionCaseOut(
+            id=case.id,
+            finding_id=case.finding_id,
+            broken_config_hash=case.broken_config_hash,
+            canary_type=case.canary_type,
+            attack=[FillIn(**fill) for fill in case.payload_json],
+            created_at=case.created_at,
+        )
+        for case in cases
+    ]
+
+
+async def _continuous_out(session: Transaction, cipher: Cipher, run: Any) -> ContinuousRunOut:
+    row = await session.get(TargetConfigRow, run.config_id)
+    results = continuous.results_of(cipher, run)
+    regressions = (
+        await continuous.regression_cases(session, run, cipher) if run.state == "done" else []
+    )
+    succeeded = sum(1 for result in results if result.get("tripped"))
+    return ContinuousRunOut(
+        id=run.id,
+        config_version=row.version if row is not None else 0,
+        config_hash=run.config_hash,
+        trigger=run.trigger,
+        state=run.state,
+        passed=continuous.passed(results) if run.state == "done" else None,
+        total=len(results),
+        succeeded=succeeded,
+        success_rate=(succeeded / len(results))
+        if results
+        else (0.0 if run.state == "done" else None),
+        covered_canary_types=sorted(
+            {CanaryType(result["canary_type"]) for result in results}, key=lambda item: item.value
+        ),
+        regressed=[ContinuousProbeOut(**item) for item in regressions],
+        created_at=run.created_at,
+        finished_at=run.finished_at,
+    )
+
+
+@router.get("/bounties/{bounty_id}/continuous")
+async def continuous_testing(
+    request: Request,
+    session: Transaction,
+    bounty: OwnBounty,
+    sponsor: SponsorDep,
+    cipher: CipherDep,
+    settings: SettingsDep,
+) -> ContinuousTestingOut:
+    """Version-by-version corpus outcomes. Results contain labels and verdicts, never attacks."""
+    runs = await continuous.history(session, bounty.id)
+    return ContinuousTestingOut(
+        plan=_plan_out(request, sponsor, settings),
+        runs=[await _continuous_out(session, cipher, run) for run in runs],
+    )
+
+
+@router.post("/bounties/{bounty_id}/continuous/gate", status_code=202)
+async def continuous_gate(
+    session: Transaction,
+    bounty: OwnBounty,
+    sponsor: SponsorDep,
+    settings: SettingsDep,
+    cipher: CipherDep,
+) -> ContinuousRunOut:
+    """Queue the CI regression gate for the newest version; poll the returned run at GET.
+
+    A completed run passes only when no saved attack succeeds. This deliberately exposes
+    only case identifiers and canary kinds, not corpus payloads.
+    """
+    plans.require(sponsor, settings, "continuous testing")
+    row = await bounty_service.latest_config(session, bounty.id)
+    if row is None:
+        raise ServiceError(409, "describe the agent before running the regression gate")
+    run = await continuous.request(session, bounty, row, trigger="ci")
+    return await _continuous_out(session, cipher, run)
+
+
 def _scan_out(cipher: Cipher, found: Scan | None, config_hash: str | None) -> ScanOut:
     results = scan.results_of(cipher, found) if found is not None else []
     return ScanOut(
@@ -927,6 +1153,7 @@ def _scan_out(cipher: Cipher, found: Scan | None, config_hash: str | None) -> Sc
         requested_at=found.created_at if found is not None else None,
         finished_at=found.finished_at if found is not None else None,
         with_library=found.with_library if found is not None else False,
+        corpus_type=found.corpus_type if found is not None else None,
     )
 
 
@@ -946,16 +1173,21 @@ async def start_scan(
     sponsor: SponsorDep,
     settings: SettingsDep,
     again: bool = False,
+    corpus_type: CanaryType | None = None,
 ) -> ScanOut:
     """Scan the current config: the baseline playbook's well-known attacks, each aimed at
     one of the agent's own canaries, then every attack this bounty has paid for and,
     with the Watch plan, the shared library. Each is replayed once. There is one scan
     per config; `again` runs a finished one afresh, which the plan also covers."""
-    if again:
+    if again and corpus_type is None:
         plans.require(sponsor, settings, "scanning an unchanged agent again")
     # Where no plan is sold everyone may draw on the library; where one is, its holders.
     found = await scan.request(
-        session, bounty, again=again, with_library=plans.active(sponsor, settings)
+        session,
+        bounty,
+        again=again or corpus_type is not None,
+        with_library=plans.active(sponsor, settings) or corpus_type is not None,
+        corpus_type=corpus_type,
     )
     await session.refresh(found)
     return _scan_out(cipher, found, found.config_hash)

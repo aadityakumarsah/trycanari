@@ -4,7 +4,15 @@ import type { Currency } from "./money.ts";
 // the fields are named *_zatoshi whichever currency that is.
 
 export type BountyState = "draft" | "awaiting_deposit" | "live" | "paused" | "closed";
-export type CanaryType = "secret_leak" | "forbidden_tool";
+export type CanaryType =
+  | "secret_leak"
+  | "system_prompt_leak"
+  | "forbidden_tool"
+  | "unauthorized_action"
+  | "data_exfiltration"
+  | "phishing_link_injection"
+  | "malicious_code_injection"
+  | "policy_violation";
 export type EntryPoint = "user_message" | "document" | "tool_result";
 export type Verdict = "verified" | "not_verified" | "not_counted";
 
@@ -330,6 +338,9 @@ export interface AdminCode {
 export interface ReferralCode {
   code: string;
   used: boolean;
+  max_uses: number;
+  uses: number;
+  users: { email: string; name: string | null; joined_at: string }[];
   created_at: string;
 }
 
@@ -496,6 +507,35 @@ export interface Scan {
   requested_at: string | null;
   finished_at?: string | null;
   with_library?: boolean;
+  corpus_type?: CanaryType | null;
+}
+
+export interface ContinuousProbe {
+  case_id: string;
+  canary_type: CanaryType;
+  source: "past_break" | "corpus";
+  tripped: boolean;
+}
+
+export interface ContinuousRun {
+  id: string;
+  config_version: number;
+  config_hash: string;
+  trigger: "version" | "ci" | "schedule" | "model_update";
+  state: "queued" | "running" | "done" | "error";
+  passed: boolean | null;
+  total: number;
+  succeeded: number;
+  success_rate: number | null;
+  covered_canary_types: CanaryType[];
+  regressed: ContinuousProbe[];
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface ContinuousTesting {
+  plan: Plan;
+  runs: ContinuousRun[];
 }
 
 /** An entry of one of OWASP's lists, and how the bounty's testing stands against it. */

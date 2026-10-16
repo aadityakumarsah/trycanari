@@ -17,7 +17,13 @@ class BountyState(enum.StrEnum):
 
 class CanaryType(enum.StrEnum):
     SECRET_LEAK = "secret_leak"  # noqa: S105 - a canary type, not a credential
+    SYSTEM_PROMPT_LEAK = "system_prompt_leak"
     FORBIDDEN_TOOL = "forbidden_tool"
+    UNAUTHORIZED_ACTION = "unauthorized_action"
+    DATA_EXFILTRATION = "data_exfiltration"
+    PHISHING_LINK_INJECTION = "phishing_link_injection"
+    MALICIOUS_CODE_INJECTION = "malicious_code_injection"
+    POLICY_VIOLATION = "policy_violation"
 
 
 class AttemptState(enum.StrEnum):

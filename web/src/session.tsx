@@ -20,9 +20,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
-    api<Session>("GET", "/v1/session")
-      .then(setSession)
-      .catch(() => setSession(SIGNED_OUT));
+    const controller = new AbortController();
+    let active = true;
+
+    const check = async () => {
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          const found = await api<Session>("GET", "/v1/session", { signal: controller.signal });
+          if (active) setSession(found);
+          return;
+        } catch {
+          if (!active || controller.signal.aborted) return;
+          if (attempt === 3) {
+            setSession(SIGNED_OUT);
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+        }
+      }
+    };
+    void check();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, []);
 
   const signIn = useCallback(async (apiKey: string) => {

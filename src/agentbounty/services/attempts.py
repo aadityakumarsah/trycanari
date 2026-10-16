@@ -27,6 +27,7 @@ from agentbounty.models import (
     FindingState,
     Payout,
     Run,
+    SavedAttack,
     Sponsor,
 )
 from agentbounty.models import TargetConfig as TargetConfigRow
@@ -39,6 +40,8 @@ from agentbounty.services.harness import (
     EntryPoint,
     RunResult,
     SlotFill,
+    fills_to_json,
+    scaffold_from_json,
     validate_fills,
 )
 from agentbounty.services.wallet import AddressRule, Network, as_rule
@@ -139,7 +142,12 @@ async def submit_attempt(
         raise ServiceError(422, f"payout_address is not a {as_rule(network).kind} address")
     config = await session.get_one(TargetConfigRow, bounty.live_config_id)
     try:
-        validate_fills([EntryPoint(slot) for slot in config.entry_points_json], fills)
+        validate_fills(
+            [EntryPoint(slot) for slot in config.entry_points_json],
+            fills,
+            scaffold_from_json(config.scaffold_json),
+            task=config.task or "",
+        )
     except AttemptError as exc:
         raise ServiceError(422, str(exc)) from exc
     await _enforce_limits(session, bounty, payout_address, limits or SubmissionLimits())
@@ -149,7 +157,7 @@ async def submit_attempt(
         bounty_id=bounty.id,
         # Bound here, for good: the attempt counts only against this exact config.
         config_hash=config.config_hash,
-        payload_json=[{"slot": fill.slot.value, "content": fill.content} for fill in fills],
+        payload_json=fills_to_json(fills),
         payout_address=payout_address,
         status_token=hash_token(token),
         account_id=account_id,
@@ -189,9 +197,11 @@ async def claim_next(session: AsyncSession) -> Claim | None:
             ),
         ),
     )
+    now = datetime.now(UTC)
+    ready = or_(Attempt.started_at.is_(None), Attempt.started_at <= now)
     attempt = await session.scalar(
         select(Attempt)
-        .where(Attempt.state == AttemptState.QUEUED, ~ahead)
+        .where(Attempt.state == AttemptState.QUEUED, ready, ~ahead)
         .order_by(Attempt.submitted_at, Attempt.id)
         .limit(1)
         .with_for_update(skip_locked=True)
@@ -241,6 +251,23 @@ async def release(session: AsyncSession, claim: Claim, *, max_tries: int) -> Non
         attempt.state = AttemptState.QUEUED if attempt.tries < max_tries else AttemptState.ERROR
 
 
+async def defer_for_capacity(
+    session: AsyncSession, claim: Claim, *, retry_after: timedelta
+) -> None:
+    """Return an attempt to the queue when the provider, not the attack, is unavailable.
+
+    Provider capacity does not consume a failure try. While queued, a future
+    ``started_at`` is the earliest time this attempt may be claimed again.
+    """
+    attempt = await _held(session, claim)
+    if attempt is None:
+        return
+    attempt.tries = max(0, attempt.tries - 1)
+    attempt.runs_done = 0
+    attempt.state = AttemptState.QUEUED
+    attempt.started_at = datetime.now(UTC) + retry_after
+
+
 async def requeue_stale(session: AsyncSession, *, older_than: timedelta, max_tries: int) -> int:
     """Recover attempts whose worker died mid-replay. Returns how many were touched.
 
@@ -272,11 +299,7 @@ class Judgement:
 
 
 def _detect(canary: LoadedCanary, transcript: judge.Transcript) -> judge.Detection:
-    definition = canary.definition
-    if definition.secret is not None:
-        return judge.detect_secret_leak(transcript, definition.secret)
-    assert definition.rule is not None  # noqa: S101 - a definition has a secret or a rule
-    return judge.detect_forbidden_tool(transcript, definition.rule)
+    return judge.detect_canary(transcript, canary.definition.parameters)
 
 
 def tripped_in(target: LoadedTarget, result: RunResult) -> list[LoadedCanary]:
@@ -306,6 +329,7 @@ def judge_runs(target: LoadedTarget, results: Sequence[RunResult]) -> Judgement:
                         "location": detection.location,
                         "representation": detection.representation,
                         "arguments": detection.arguments,
+                        "matched_text": detection.matched_text,
                     }
                 )
         verdict = judge.decide(detections)
@@ -423,6 +447,16 @@ async def record_result(
         # activates a patched config.
         bounty.state = BountyState.PAUSED
         await session.flush()
+        canary = await session.get_one(Canary, judgement.broken_canary)
+        session.add(
+            SavedAttack(
+                finding_id=finding.id,
+                bounty_id=bounty.id,
+                broken_config_hash=attempt.config_hash,
+                canary_type=canary.type,
+                payload_json=attempt.payload_json,
+            )
+        )
         # In this transaction, so both sides are told exactly when the break exists.
         await notify.on_break(session, bounty, attempt, finding)
     await session.flush()
@@ -463,6 +497,35 @@ class AttemptStatus:
     # Once done: each replay, and how many of them each canary of the config tripped in.
     runs: tuple[RunSummary, ...] = ()
     canaries: tuple[tuple[Canary, int], ...] = ()
+
+
+def why_not_verified(status: AttemptStatus) -> tuple[str, ...]:
+    """Explain a failed attempt using only facts stored from its replays."""
+    if status.verdict == "verified" or status.verdict is None:
+        return ()
+    if status.verdict == "not_counted":
+        return ("The replays did not count because the bounty had already moved to another state.",)
+    lines: list[str] = []
+    for canary, count in status.canaries:
+        if count == 0:
+            lines.append(f"{canary.public_label} stayed untripped in all completed replays.")
+        else:
+            lines.append(
+                f"{canary.public_label} tripped in {count} of {status.total_runs or 0} replays; "
+                f"verification needs {judge.TRIP_THRESHOLD}."
+            )
+    if not status.replies:
+        lines.append("The shown replay contains no agent reply.")
+    for reply in status.replies:
+        content = str(reply.get("content", "")).strip()
+        if content:
+            excerpt = content[:240] + ("…" if len(content) > 240 else "")
+            lines.append(f"In the shown replay, the agent replied: {excerpt}")
+        calls = reply.get("tool_calls", ())
+        names = [str(call.get("name")) for call in calls if isinstance(call, dict)]
+        if names:
+            lines.append("In the shown replay, the agent called: " + ", ".join(names) + ".")
+    return tuple(lines)
 
 
 async def attempt_status(

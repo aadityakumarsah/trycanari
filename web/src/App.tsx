@@ -434,11 +434,12 @@ export function App() {
   // every sentence about money is right from the first paint.
   const providers = useProviders();
   if (providers) setCurrency(providers.currency);
-  // The app is ready once it knows whether someone is signed in: until then the bar
-  // cannot be drawn correctly, and a signed-in page would flash its signed-out form.
+  // The app is ready once it knows whether someone is signed in. Provider settings
+  // are useful enhancement data, but an unavailable API must not keep the whole
+  // site behind the splash screen forever: each page has its own retry/error UI.
   useEffect(() => {
-    if (session !== null && providers !== null) dismissSplash();
-  }, [session, providers]);
+    if (session !== null) dismissSplash();
+  }, [session]);
   // Following any link in the page chrome goes back to the pages people read.
   const human = () => setMode("human");
   const { pathname } = useLocation();

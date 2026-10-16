@@ -75,19 +75,31 @@ async def totals(session: AsyncSession, account_id: uuid.UUID) -> Totals:
     return Totals(row[0], row[1], int(row[2]), int(row[3]), int(row[4]))
 
 
-async def listing(session: AsyncSession, account_id: uuid.UUID) -> list[Hunt]:
-    """The account's attempts, newest first. Three queries however many there are."""
-    rows = (
-        await session.execute(
-            select(Attempt, Bounty, Finding, Payout)
-            .join(Bounty, Bounty.id == Attempt.bounty_id)
-            .outerjoin(Finding, Finding.attempt_id == Attempt.id)
-            .outerjoin(Payout, Payout.finding_id == Finding.id)
-            .where(Attempt.account_id == account_id)
-            .order_by(Attempt.submitted_at.desc(), Attempt.id)
-            .limit(SHOWN)
-        )
-    ).all()
+async def listing(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    *,
+    bounty_id: uuid.UUID | None = None,
+    limit: int | None = SHOWN,
+) -> list[Hunt]:
+    """The account's attempts, newest first. Three queries however many there are.
+
+    Account pages use the recent limit. A bounty studio asks for every attempt on that
+    bounty, so its complete server-side history remains forkable.
+    """
+    query = (
+        select(Attempt, Bounty, Finding, Payout)
+        .join(Bounty, Bounty.id == Attempt.bounty_id)
+        .outerjoin(Finding, Finding.attempt_id == Attempt.id)
+        .outerjoin(Payout, Payout.finding_id == Finding.id)
+        .where(Attempt.account_id == account_id)
+        .order_by(Attempt.submitted_at.desc(), Attempt.id)
+    )
+    if bounty_id is not None:
+        query = query.where(Attempt.bounty_id == bounty_id)
+    if limit is not None:
+        query = query.limit(limit)
+    rows = (await session.execute(query)).all()
     ids = [attempt.id for attempt, _, _, _ in rows]
     # Which canaries each run tripped is not secret, so no transcript is decrypted here.
     trips: dict[uuid.UUID, list[list[str]]] = {}

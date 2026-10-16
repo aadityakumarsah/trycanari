@@ -184,13 +184,13 @@ async def test_a_code_made_for_several_people_admits_that_many_and_no_more(
     # Joining with it counts as a use too.
     assert (await join(club, "f@example.com", code)).status_code == 403
 
-    # An ambassador's codes are for one person each.
+    # An ambassador may also make one bounded team link.
     async with club.sessions() as session:
         ambassador = await session.scalar(select(Sponsor).where(Sponsor.email == "a@example.com"))
         assert ambassador is not None
         ambassador.is_ambassador = True
-        with pytest.raises(ServiceError, match="only an admin"):
-            await credits.create_codes(session, ambassador, 1, max_uses=2)
+        shared = await credits.create_codes(session, ambassador, 1, max_uses=2)
+        assert shared[0].max_uses == 2
 
 
 async def test_without_invite_only_nothing_changes(platform: Platform) -> None:
@@ -340,7 +340,7 @@ async def test_only_ambassadors_make_referral_codes_and_only_so_many(club: Platf
     refused = await club.client.post("/v1/referral-codes", json={"count": 2}, headers=someone)
     assert (refused.status_code, refused.json()["detail"]) == (
         403,
-        "only ambassadors can make referral codes",
+        "only sponsors and ambassadors can make referral codes",
     )
     assert (await club.client.get("/v1/referral-codes")).status_code == 401
 
@@ -356,7 +356,7 @@ async def test_only_ambassadors_make_referral_codes_and_only_so_many(club: Platf
         len(code) == 9 and item["used"] is False
         for code, item in zip(codes, made.json(), strict=True)
     )
-    for bad in ({"count": 0}, {"count": 11}, {"max_uses": 5}):
+    for bad in ({"count": 0}, {"count": 11}, {"count": 2, "max_uses": 5}):
         assert (
             await club.client.post("/v1/referral-codes", json=bad, headers=someone)
         ).status_code == 422
@@ -384,6 +384,37 @@ async def test_only_ambassadors_make_referral_codes_and_only_so_many(club: Platf
     assert (
         await club.client.post("/v1/referral-codes", json={"count": 1}, headers=someone)
     ).status_code == 201
+
+
+async def test_a_sponsor_can_share_one_link_and_see_everyone_who_joined(
+    club: Platform,
+) -> None:
+    sponsor = await member(club, "sponsor@example.com", await sponsor_code(club))
+    made = await club.client.post("/v1/referral-codes", json={"max_uses": 3}, headers=sponsor)
+    assert made.status_code == 201
+    code = made.json()[0]["code"]
+    assert made.json()[0] | {"created_at": None} == {
+        "code": code,
+        "used": False,
+        "max_uses": 3,
+        "uses": 0,
+        "users": [],
+        "created_at": None,
+    }
+
+    for name in ("one", "two"):
+        await member(club, f"{name}@example.com", code)
+    listed = (await club.client.get("/v1/referral-codes", headers=sponsor)).json()[0]
+    assert (listed["uses"], listed["max_uses"], listed["used"]) == (2, 3, False)
+    assert [user["email"] for user in listed["users"]] == [
+        "one@example.com",
+        "two@example.com",
+    ]
+
+    await member(club, "three@example.com", code)
+    full = (await club.client.get("/v1/referral-codes", headers=sponsor)).json()[0]
+    assert (full["uses"], full["used"]) == (3, True)
+    assert (await join(club, "four@example.com", code)).status_code == 403
 
 
 async def test_google_sign_in_lets_anyone_join_and_redeems_a_code_they_arrived_with(

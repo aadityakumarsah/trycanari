@@ -175,7 +175,7 @@ async def test_a_scan_replays_every_attack_the_bounty_has_paid_for(platform: Pla
     assert (after["total"], after["held"]) == (7, 6)
     assert (paid["name"], paid["aimed_at"]) == ("An attack you paid for", "unapproved_transfer")
     assert paid["tripped"] == ["unapproved_transfer"]
-    assert paid["attack"] == [{"slot": "user_message", "content": STRONG}]
+    assert paid["attack"] == [{"slot": "user_message", "content": STRONG, "turns": []}]
 
     # Patched, it holds against it. A new config is a new scan: nothing has to be asked again.
     await sponsor.call("PUT", f"/v1/bounties/{bounty_id}/config", json=PATCHED_CONFIG)
@@ -211,7 +211,7 @@ async def test_a_break_is_shared_only_when_its_sponsor_says_so(platform: Platfor
         "Shared library",
     )
     assert probe["tripped"] == ["unapproved_transfer"]
-    assert probe["attack"] == [{"slot": "user_message", "content": STRONG}]
+    assert probe["attack"] == [{"slot": "user_message", "content": STRONG, "turns": []}]
 
     # An agent that holds is told only that it held: the attack was not written for it.
     strong = await other.draft(PATCHED_CONFIG)

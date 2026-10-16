@@ -14,6 +14,8 @@ from agentbounty.models import Base
 from .conftest import alembic_config, scratch_database
 
 TABLES = {
+    "continuous_runs",
+    "saved_attacks",
     "house_hunts",
     "notifications",
     "platform_settings",
@@ -135,9 +137,9 @@ def test_a_bounty_already_live_is_not_handed_to_the_house_hunter() -> None:
         asyncio.run(_run(url, *broken))
         command.downgrade(config, "0024")
         assert asyncio.run(_run(url, "SELECT state::text FROM findings")) == [("paid",)]
-        assert asyncio.run(_names(url, PUBLIC_TABLES)) == (TABLES - {"house_hunts"}) | {
-            "alembic_version"
-        }
+        assert asyncio.run(_names(url, PUBLIC_TABLES)) == (
+            TABLES - {"house_hunts", "saved_attacks", "continuous_runs"}
+        ) | {"alembic_version"}
 
 
 async def test_every_table_has_row_level_security(session: AsyncSession) -> None:

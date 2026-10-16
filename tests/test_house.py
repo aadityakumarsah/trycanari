@@ -145,7 +145,11 @@ async def test_a_break_the_house_finds_is_the_sponsors_and_is_never_paid_for(
     (report,) = await sponsor.call("GET", f"{base}/findings")
     assert (report["state"], report["payout"]) == ("waived", None)
     assert report["attack"] == [
-        {"slot": "user_message", "content": STEAL["fills"]["user_message"]}  # type: ignore[index]
+        {
+            "slot": "user_message",
+            "content": STEAL["fills"]["user_message"],  # type: ignore[index]
+            "turns": [],
+        }
     ]
     assert len(report["runs"]) == 5
     assert report["hunter"]["name"] == house.NAME

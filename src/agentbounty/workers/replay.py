@@ -25,21 +25,25 @@ from agentbounty.models import Attempt
 from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.services import (
     attempts,
+    continuous,
     endpoint,
     house,
     plans,
     playbook,
     provider,
     rearm,
+    regression,
     scan,
 )
 from agentbounty.services.bounty import LoadedTarget, load_target
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.harness import (
     DEFAULT_LIMITS,
-    EntryPoint,
+    AttemptError,
     SandboxLimits,
     SlotFill,
+    fills_from_json,
+    fills_to_json,
     run_attempt,
 )
 from agentbounty.services.judge import RUNS_PER_ATTEMPT, TRIP_THRESHOLD
@@ -48,6 +52,7 @@ from agentbounty.services.model import (
     FakeModel,
     ModelClient,
     ModelParams,
+    ModelRateLimitError,
     ModelResponse,
     RealModel,
     ToolSpec,
@@ -147,7 +152,7 @@ async def _load(
         )
         if config is None:
             return None
-        fills = [SlotFill(EntryPoint(f["slot"]), f["content"]) for f in attempt.payload_json]
+        fills = fills_from_json(attempt.payload_json)
         return await load_target(session, cipher, config), fills
 
 
@@ -190,6 +195,17 @@ async def process(
                 limits=limits,
                 on_run=progress,
             )
+    except ModelRateLimitError as exc:
+        logger.warning(
+            "provider rate-limited attempt %s; retrying in %.1f seconds",
+            claim.attempt_id,
+            exc.retry_after,
+        )
+        async with sessions.begin() as session:
+            await attempts.defer_for_capacity(
+                session, claim, retry_after=timedelta(seconds=exc.retry_after)
+            )
+        return
     except Exception:
         logger.exception("replay of attempt %s failed", claim.attempt_id)
         async with sessions.begin() as session:
@@ -224,10 +240,61 @@ async def work_once(
         return True
     async with sessions.begin() as session:
         asked = await scan.claim_next(session)
-    if asked is None:
+    if asked is not None:
+        await process_scan(sessions, cipher, model, asked, limits=limits, own=own)
+        return True
+    async with sessions.begin() as session:
+        continuous_claim = await continuous.claim_next(session)
+    if continuous_claim is None:
         return False
-    await process_scan(sessions, cipher, model, asked, limits=limits, own=own)
+    await process_continuous(sessions, cipher, model, continuous_claim, limits=limits, own=own)
     return True
+
+
+async def process_continuous(
+    sessions: SessionFactory,
+    cipher: Cipher,
+    model: ModelClient,
+    claim: continuous.Claim,
+    *,
+    limits: SandboxLimits = DEFAULT_LIMITS,
+    own: endpoint.Connector | None = None,
+) -> None:
+    """Run every durable attack against an immutable agent version."""
+    async with sessions() as session:
+        row = await session.get(TargetConfigRow, claim.config_id)
+        target = (
+            await load_target(session, cipher, row)
+            if row and row.config_hash == claim.config_hash
+            else None
+        )
+    if target is None:
+        async with sessions.begin() as session:
+            await continuous.fail(session, claim)
+        return
+    try:
+        async with model_for(target, model, own) as chosen, sessions() as session:
+            results = await continuous.execute(
+                session, cipher, claim, target, chosen, limits=limits
+            )
+    except ModelRateLimitError as exc:
+        logger.warning(
+            "provider deferred continuous replay %s for %.1f seconds",
+            claim.run_id,
+            exc.retry_after,
+        )
+        async with sessions.begin() as session:
+            await continuous.defer_for_capacity(
+                session, claim, retry_after=timedelta(seconds=exc.retry_after)
+            )
+        return
+    except Exception:
+        logger.exception("continuous replay for bounty %s failed", claim.bounty_id)
+        async with sessions.begin() as session:
+            await continuous.fail(session, claim)
+        return
+    async with sessions.begin() as session:
+        await continuous.record(session, cipher, claim, results)
 
 
 async def process_scan(
@@ -287,11 +354,9 @@ async def process_scan(
                         "tripped": tripped,
                         # An attack from the library was written against someone else's
                         # agent. It is shown only once it has broken this one.
-                        "attack": [
-                            {"slot": fill.slot.value, "content": fill.content}
-                            for fill in probe.fills
-                            if tripped or probe.source != playbook.LIBRARY
-                        ],
+                        "attack": fills_to_json(probe.fills)
+                        if tripped or probe.source != playbook.LIBRARY
+                        else [],
                         "reply": said[:600],
                         "tool_calls": [
                             {"name": call.name, "arguments": dict(call.arguments)}
@@ -299,6 +364,13 @@ async def process_scan(
                         ],
                     }
                 )
+    except ModelRateLimitError as exc:
+        logger.warning("provider deferred scan %s for %.1f seconds", claim.scan_id, exc.retry_after)
+        async with sessions.begin() as session:
+            await scan.defer_for_capacity(
+                session, claim, retry_after=timedelta(seconds=exc.retry_after)
+            )
+        return
     except Exception:
         logger.exception("baseline scan for bounty %s failed", claim.bounty_id)
         async with sessions.begin() as session:
@@ -342,7 +414,7 @@ async def process_rearm(
             .limit(1)
         )
         target = await load_target(session, cipher, config) if config else None
-        attacks = await rearm.paid_attacks(session, claim.bounty_id)
+        cases = await rearm.saved_attacks(session, claim.bounty_id)
     if target is None:
         # The config was edited after the check was asked for: it proves nothing now.
         async with sessions.begin() as session:
@@ -352,21 +424,27 @@ async def process_rearm(
     worst = 0
     try:
         async with model_for(target, model, own) as chosen:
-            for payload in attacks:
-                fills = [
-                    SlotFill(EntryPoint(fill["slot"]), fill["content"])
-                    for fill in payload
-                    if fill["slot"] in target.config.entry_points
-                ]
-                if not fills:
+            for case in cases:
+                try:
+                    replayed = await regression.replay(case, target, chosen, limits=limits)
+                except AttemptError:
+                    # The exact regression no longer fits this config's declared surface.
                     continue
-                results = await run_attempt(
-                    target.config, fills, chosen, runs=RUNS_PER_ATTEMPT, limits=limits
-                )
-                judgement = attempts.judge_runs(target, results)
+                judgement = replayed.judgement
                 worst = max(worst, _most_trips(judgement))
                 if judgement.broken_canary is not None:
                     break
+    except ModelRateLimitError as exc:
+        logger.warning(
+            "provider deferred re-arm check %s for %.1f seconds",
+            claim.check_id,
+            exc.retry_after,
+        )
+        async with sessions.begin() as session:
+            await rearm.defer_for_capacity(
+                session, claim, retry_after=timedelta(seconds=exc.retry_after)
+            )
+        return
     except Exception:
         logger.exception("re-arm replay for bounty %s failed", claim.bounty_id)
         async with sessions.begin() as session:
@@ -461,7 +539,11 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
                     )
                     await rearm.requeue_stale(session, older_than=stale_after)
                     await scan.requeue_stale(session, older_than=stale_after)
+                    await continuous.requeue_stale(session, older_than=stale_after)
                     await scan.requeue_watched(session, plans_offered=plans.offered(settings))
+                    await continuous.requeue_scheduled(
+                        session, plans_offered=plans.offered(settings)
+                    )
                 if await work_once(
                     sessions, cipher, model, max_tries=settings.attempt_max_tries, own=own
                 ):

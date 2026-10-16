@@ -3,7 +3,7 @@
 A scan answers "would what is already known to work, work?". It replays the
 baseline playbook, every attack this bounty has paid for and, where the
 sponsor may draw on it, the shared library: attacks that broke other
-sponsors' agents, whose sponsors chose to share them. Each probe is replayed
+sponsors' agents. Each probe is replayed
 once, which is cheap and enough to show a weakness; it is not the five-replay
 standard a paid break is held to, and the results say so.
 
@@ -26,7 +26,9 @@ from agentbounty.models import (
     Bounty,
     BountyState,
     Canary,
+    CanaryType,
     Finding,
+    SavedAttack,
     Scan,
     Sponsor,
 )
@@ -57,7 +59,12 @@ async def latest(session: AsyncSession, bounty: Bounty) -> tuple[Scan | None, st
 
 
 async def request(
-    session: AsyncSession, bounty: Bounty, *, again: bool = False, with_library: bool = False
+    session: AsyncSession,
+    bounty: Bounty,
+    *,
+    again: bool = False,
+    with_library: bool = False,
+    corpus_type: CanaryType | None = None,
 ) -> Scan:
     """Queue a scan of the bounty's current config. Asking again returns the same one,
     unless `again` asks for a finished scan to be run afresh."""
@@ -75,9 +82,15 @@ async def request(
             found.state = "queued"
             found.started_at = None
             found.with_library = with_library
+            found.corpus_type = corpus_type
             await session.flush()
         return found
-    made = Scan(bounty_id=bounty.id, config_hash=row.config_hash, with_library=with_library)
+    made = Scan(
+        bounty_id=bounty.id,
+        config_hash=row.config_hash,
+        with_library=with_library,
+        corpus_type=corpus_type,
+    )
     session.add(made)
     await session.flush()
     return made
@@ -89,13 +102,17 @@ class ScanClaim:
     bounty_id: uuid.UUID
     config_hash: str
     with_library: bool = False
+    corpus_type: CanaryType | None = None
 
 
 async def claim_next(session: AsyncSession) -> ScanClaim | None:
     """Take the oldest queued scan, so that only one worker runs it."""
     found = await session.scalar(
         select(Scan)
-        .where(Scan.state == "queued")
+        .where(
+            Scan.state == "queued",
+            or_(Scan.started_at.is_(None), Scan.started_at <= datetime.now(UTC)),
+        )
         .order_by(Scan.created_at, Scan.id)
         .limit(1)
         .with_for_update(skip_locked=True)
@@ -104,7 +121,9 @@ async def claim_next(session: AsyncSession) -> ScanClaim | None:
         return None
     found.state = "running"
     found.started_at = datetime.now(UTC)
-    return ScanClaim(found.id, found.bounty_id, found.config_hash, found.with_library)
+    return ScanClaim(
+        found.id, found.bounty_id, found.config_hash, found.with_library, found.corpus_type
+    )
 
 
 async def probes(
@@ -137,20 +156,24 @@ async def probes(
                 )
             )
     if claim.with_library:
-        shared = await session.execute(
-            select(Finding.id, Attempt.payload_json)
-            .join(Attempt, Attempt.id == Finding.attempt_id)
-            .join(Bounty, Bounty.id == Finding.bounty_id)
-            .where(Bounty.shares_breaks.is_(True), Finding.bounty_id != claim.bounty_id)
-            .order_by(Finding.verified_at.desc(), Finding.id)
-            .limit(LIBRARY_PER_SCAN)
+        query = (
+            select(SavedAttack)
+            .join(Bounty, Bounty.id == SavedAttack.bounty_id)
+            .where(SavedAttack.bounty_id != claim.bounty_id)
         )
-        for finding_id, payload in shared:
-            fills = playbook.refit(payload, entry_points)
+        if claim.corpus_type is None:
+            query = query.where(Bounty.shares_breaks.is_(True))
+        else:
+            query = query.where(SavedAttack.canary_type == claim.corpus_type)
+        shared = await session.scalars(
+            query.order_by(SavedAttack.created_at.desc(), SavedAttack.id).limit(LIBRARY_PER_SCAN)
+        )
+        for saved in shared:
+            fills = playbook.refit(saved.payload_json, entry_points)
             if fills:
                 built.append(
                     playbook.Probe(
-                        f"library:{finding_id}",
+                        f"library:{saved.id}",
                         "An attack that broke another agent",
                         "Shared library",
                         fills,
@@ -177,6 +200,16 @@ async def record(
 
 async def fail(session: AsyncSession, claim: ScanClaim) -> None:
     await session.execute(update(Scan).where(Scan.id == claim.scan_id).values(state="error"))
+
+
+async def defer_for_capacity(
+    session: AsyncSession, claim: ScanClaim, *, retry_after: timedelta
+) -> None:
+    await session.execute(
+        update(Scan)
+        .where(Scan.id == claim.scan_id, Scan.state == "running")
+        .values(state="queued", started_at=datetime.now(UTC) + retry_after)
+    )
 
 
 async def requeue_stale(session: AsyncSession, *, older_than: timedelta) -> None:

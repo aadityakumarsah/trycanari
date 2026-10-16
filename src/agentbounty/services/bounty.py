@@ -34,7 +34,13 @@ from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.services import judge
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
-from agentbounty.services.harness import EntryPoint, MockTool, TargetConfig
+from agentbounty.services.harness import (
+    EntryPoint,
+    MockTool,
+    TargetConfig,
+    scaffold_from_json,
+    scaffold_to_json,
+)
 from agentbounty.services.ledger import bounty_balance
 from agentbounty.services.payment import go_live_if_funded, required_balance
 from agentbounty.services.wallet import AddressRule, Network, as_rule
@@ -123,22 +129,66 @@ async def sponsor_for_google(
 
 @dataclass(frozen=True)
 class CanaryDefinition:
-    """A canary in the clear: exactly one of `secret` and `rule` is set."""
+    """A canary in the clear, with parameters validated by the pure judge."""
 
     type: CanaryType
     public_label: str
     secret: str | None = None
     rule: judge.ToolRule | None = None
+    exfiltration: judge.DataExfiltration | None = None
+    policy: judge.PolicyViolation | None = None
 
     def __post_init__(self) -> None:
         if not self.public_label:
             raise ValueError("a canary needs a public label")
-        if self.type is CanaryType.SECRET_LEAK:
-            if self.secret is None or self.rule is not None:
-                raise ValueError("a secret_leak canary needs a secret and no rule")
-            judge.validate_secret(self.secret)
-        elif self.rule is None or self.secret is not None:
-            raise ValueError("a forbidden_tool canary needs a rule and no secret")
+        value_only = {
+            CanaryType.SECRET_LEAK,
+            CanaryType.SYSTEM_PROMPT_LEAK,
+            CanaryType.PHISHING_LINK_INJECTION,
+            CanaryType.MALICIOUS_CODE_INJECTION,
+        }
+        tool_rules = {CanaryType.FORBIDDEN_TOOL, CanaryType.UNAUTHORIZED_ACTION}
+        if self.type in value_only:
+            if self.secret is None or any((self.rule, self.exfiltration, self.policy)):
+                raise ValueError(f"a {self.type} canary needs only its planted value")
+        elif self.type in tool_rules:
+            if self.rule is None or any((self.secret, self.exfiltration, self.policy)):
+                raise ValueError(f"a {self.type} canary needs only a tool rule")
+        elif self.type is CanaryType.DATA_EXFILTRATION:
+            if self.exfiltration is None or any((self.rule, self.policy)):
+                raise ValueError("a data_exfiltration canary needs outbound sink parameters")
+            if self.secret != self.exfiltration.value:
+                raise ValueError("data_exfiltration's planted value does not match its rule")
+        elif self.type is CanaryType.POLICY_VIOLATION:
+            if self.policy is None or any((self.secret, self.rule, self.exfiltration)):
+                raise ValueError("a policy_violation canary needs only a pattern")
+        else:
+            raise ValueError(f"unsupported canary type: {self.type}")
+        # Construction performs each type's deterministic parameter validation.
+        parameters = self.parameters
+        del parameters
+
+    @property
+    def parameters(self) -> judge.CanaryParameters:
+        match self.type:
+            case CanaryType.SECRET_LEAK:
+                return judge.SecretLeak(self.secret or "")
+            case CanaryType.SYSTEM_PROMPT_LEAK:
+                return judge.SystemPromptLeak(self.secret or "")
+            case CanaryType.FORBIDDEN_TOOL:
+                return judge.ForbiddenToolCall(self.rule or judge.ToolRule(""))
+            case CanaryType.UNAUTHORIZED_ACTION:
+                return judge.UnauthorizedAction(self.rule or judge.ToolRule(""))
+            case CanaryType.DATA_EXFILTRATION:
+                assert self.exfiltration is not None  # noqa: S101 - validated above
+                return self.exfiltration
+            case CanaryType.PHISHING_LINK_INJECTION:
+                return judge.PhishingLinkInjection(self.secret or "")
+            case CanaryType.MALICIOUS_CODE_INJECTION:
+                return judge.MaliciousCodeInjection(self.secret or "")
+            case CanaryType.POLICY_VIOLATION:
+                assert self.policy is not None  # noqa: S101 - validated above
+                return self.policy
 
 
 @dataclass(frozen=True)
@@ -173,13 +223,55 @@ def rule_from_json(data: Mapping[str, Any]) -> judge.ToolRule:
     )
 
 
+def structured_parameters(definition: CanaryDefinition) -> dict[str, Any] | None:
+    if definition.rule is not None:
+        return rule_to_json(definition.rule)
+    if definition.exfiltration is not None:
+        return {
+            "sink_tools": list(definition.exfiltration.sink_tools),
+            "sink_arguments": list(definition.exfiltration.sink_arguments),
+        }
+    if definition.policy is not None:
+        return {
+            "pattern": definition.policy.pattern,
+            "mode": definition.policy.mode.value,
+            "case_sensitive": definition.policy.case_sensitive,
+            "test_text": definition.policy.test_text,
+        }
+    return None
+
+
 def _definition(row: Canary, cipher: Cipher) -> CanaryDefinition:
-    if row.type is CanaryType.SECRET_LEAK:
-        assert row.secret_enc is not None  # noqa: S101 - guaranteed by a check constraint
-        secret = cipher.decrypt(row.secret_enc, purpose=CANARY_SECRET).decode()
-        return CanaryDefinition(row.type, row.public_label, secret=secret)
-    assert row.rule_json is not None  # noqa: S101 - guaranteed by a check constraint
-    return CanaryDefinition(row.type, row.public_label, rule=rule_from_json(row.rule_json))
+    secret = (
+        cipher.decrypt(row.secret_enc, purpose=CANARY_SECRET).decode()
+        if row.secret_enc is not None
+        else None
+    )
+    if row.type in (CanaryType.FORBIDDEN_TOOL, CanaryType.UNAUTHORIZED_ACTION):
+        assert row.rule_json is not None  # noqa: S101 - guaranteed by a check constraint
+        return CanaryDefinition(row.type, row.public_label, rule=rule_from_json(row.rule_json))
+    if row.type is CanaryType.DATA_EXFILTRATION:
+        assert secret is not None  # noqa: S101 - guaranteed by a check constraint
+        assert row.rule_json is not None  # noqa: S101 - guaranteed by a check constraint
+        exfiltration = judge.DataExfiltration(
+            secret,
+            tuple(row.rule_json["sink_tools"]),
+            tuple(row.rule_json["sink_arguments"]),
+        )
+        return CanaryDefinition(
+            row.type, row.public_label, secret=secret, exfiltration=exfiltration
+        )
+    if row.type is CanaryType.POLICY_VIOLATION:
+        assert row.rule_json is not None  # noqa: S101
+        policy = judge.PolicyViolation(
+            pattern=row.rule_json["pattern"],
+            mode=judge.PatternMode(row.rule_json["mode"]),
+            case_sensitive=bool(row.rule_json.get("case_sensitive", False)),
+            test_text=row.rule_json.get("test_text", ""),
+        )
+        return CanaryDefinition(row.type, row.public_label, policy=policy)
+    assert secret is not None  # noqa: S101 - guaranteed by a check constraint
+    return CanaryDefinition(row.type, row.public_label, secret=secret)
 
 
 async def canary_rows(session: AsyncSession, config_id: uuid.UUID) -> list[Canary]:
@@ -214,9 +306,15 @@ def config_hash(config: TargetConfig, canaries: Sequence[CanaryDefinition]) -> s
         "entry_points": sorted(config.entry_points),
         "canaries": sorted(
             (
-                {"type": c.type.value, "secret": c.secret}
-                if c.rule is None
-                else {"type": c.type.value, "rule": rule_to_json(c.rule)}
+                {
+                    "type": c.type.value,
+                    **({"secret": c.secret} if c.secret is not None else {}),
+                    **(
+                        {"parameters": structured_parameters(c)}
+                        if structured_parameters(c) is not None
+                        else {}
+                    ),
+                }
                 for c in canaries
             ),
             key=lambda item: json.dumps(item, sort_keys=True),
@@ -227,6 +325,11 @@ def config_hash(config: TargetConfig, canaries: Sequence[CanaryDefinition]) -> s
         canonical["endpoint"] = config.endpoint
     if config.task:
         canonical["task"] = config.task
+    scaffold = scaffold_to_json(config.scaffold)
+    if scaffold:
+        # Same reason: where a sponsor framed nothing, the hash is unchanged. The frame is
+        # part of the agent, so changing it is a new config and a new version.
+        canonical["scaffold"] = scaffold
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(encoded.encode()).hexdigest()
 
@@ -269,6 +372,7 @@ async def load_target(session: AsyncSession, cipher: Cipher, row: TargetConfigRo
         entry_points=tuple(EntryPoint(slot) for slot in row.entry_points_json),
         endpoint=row.endpoint_base,
         task=row.task or "",
+        scaffold=scaffold_from_json(row.scaffold_json),
     )
     canaries = tuple(
         LoadedCanary(canary.id, _definition(canary, cipher))
@@ -313,6 +417,7 @@ def _write_config(
     row.model = config.model
     row.params_json = dict(config.params)
     row.entry_points_json = sorted(config.entry_points)
+    row.scaffold_json = scaffold_to_json(config.scaffold) or None
     row.task = config.task or None
 
 
@@ -340,6 +445,7 @@ async def _new_version(
         model=previous.model if previous else "",
         params_json=dict(previous.params_json) if previous else {},
         entry_points_json=list(previous.entry_points_json) if previous else [],
+        scaffold_json=dict(previous.scaffold_json) if previous and previous.scaffold_json else None,
         task=previous.task if previous else None,
         endpoint_base=previous.endpoint_base if previous else None,
         endpoint_key_enc=previous.endpoint_key_enc if previous else None,
@@ -405,7 +511,7 @@ async def add_canary(
         secret_enc=None
         if definition.secret is None
         else cipher.encrypt(definition.secret.encode(), purpose=CANARY_SECRET),
-        rule_json=None if definition.rule is None else rule_to_json(definition.rule),
+        rule_json=structured_parameters(definition),
     )
     session.add(canary)
     return canary, await _rehash(session, cipher, row)

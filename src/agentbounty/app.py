@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
@@ -14,18 +15,22 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agentbounty.api import (
     admin,
     agent_guide,
     chain,
+    evidence,
     google,
     health,
+    hunter,
     public,
     session,
     spa,
     sponsor,
+    studio,
 )
 from agentbounty.api.ratelimit import RateLimiter
 from agentbounty.db import create_engine, create_session_factory
@@ -121,6 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.models_listed = None
     # Public answers kept for a few seconds (see api/public.py).
     app.state.public_cache = {}
+    app.state.public_cache_locks = {}
 
     # Pages, scripts and API answers go out compressed: the app's script is a third the size.
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
@@ -142,20 +148,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers.setdefault("X-Robots-Tag", "noindex")
         if settings.app_env == "production":
             headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        if request.method not in {"GET", "HEAD", "OPTIONS"} and response.status_code < 400:
+            # A successful state change is visible on public pages immediately in this
+            # process; edge caches retain it for at most five seconds.
+            app.state.public_cache.clear()
         return response
 
     @app.exception_handler(ServiceError)
     async def service_error(_: Request, exc: ServiceError) -> JSONResponse:
         return JSONResponse(status_code=exc.status, content={"detail": exc.message})
 
+    @app.exception_handler(SQLAlchemyError)
+    async def database_error(_: Request, exc: SQLAlchemyError) -> JSONResponse:
+        incident = uuid.uuid4().hex[:12]
+        logger.exception("database request failed", extra={"incident": incident})
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "The data service is reconnecting. This page will retry automatically.",
+                "incident": incident,
+            },
+            headers={"Retry-After": "2"},
+        )
+
     app.include_router(health.router)
     app.include_router(sponsor.router)
     app.include_router(public.router)
+    app.include_router(hunter.router)
     app.include_router(session.router)
     app.include_router(google.router)
     app.include_router(admin.router)
     app.include_router(chain.router)
     app.include_router(agent_guide.router)
+    app.include_router(evidence.router)
+    app.include_router(studio.router)
     # Last: it answers every path the routes above did not claim.
     spa.install(app)
     return app

@@ -1,0 +1,27 @@
+:root { color-scheme: dark; --bg:#0b0d0c; --surface:#121613; --text:#eef4ef; --muted:#9ca8a0; --line:#2b352e; --accent:#69e6a6; --bad:#ff766d; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 system-ui,sans-serif; }
+main,.toolbar { width:min(1000px,calc(100% - 40px)); margin:auto; }
+.toolbar { display:flex; gap:12px; align-items:center; padding:18px 0; }
+.toolbar a { color:var(--accent); text-decoration:none; }
+.toolbar button { margin-left:auto; padding:9px 14px; border:1px solid var(--line); border-radius:7px; background:var(--surface); color:var(--text); cursor:pointer; }
+header { padding:38px 0 20px; border-bottom:1px solid var(--line); }
+h1 { margin:0; font-size:38px; } h2 { margin-top:38px; } h3 { margin:0 0 10px; }
+.eyebrow { color:var(--accent); font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+code,pre { font-family:ui-monospace,SFMono-Regular,monospace; }
+pre { overflow:auto; padding:14px; border:1px solid var(--line); border-radius:7px; background:var(--surface); white-space:pre-wrap; overflow-wrap:anywhere; }
+.summary dl { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.summary dl div,.fill,.run { padding:16px; border:1px solid var(--line); border-radius:9px; background:var(--surface); }
+dt { color:var(--muted); font-size:12px; } dd { margin:5px 0 0; } dd small { display:block; color:var(--muted); }
+.fill,.run { margin:12px 0; } .transcript { padding:0; list-style:none; }
+.message { margin:10px 0; padding:13px 15px; border-left:3px solid var(--line); background:var(--bg); break-inside:avoid; }
+.message.highlight { border-color:var(--bad); background:color-mix(in srgb,var(--bad) 9%,var(--bg)); }
+.message p { white-space:pre-wrap; overflow-wrap:anywhere; }
+.message aside { color:var(--bad); font-weight:700; }
+.trip,.held { float:right; font-size:12px; } .trip { color:var(--bad); } .held { color:var(--accent); }
+@media(max-width:700px){ .summary dl{grid-template-columns:1fr;} }
+@media print {
+  :root { color-scheme:light; --bg:#fff; --surface:#fff; --text:#000; --muted:#444; --line:#bbb; --accent:#075f3c; --bad:#a31515; }
+  .toolbar { display:none; } main { width:auto; } body { font-size:11pt; }
+  header { padding-top:0; } .run,.fill,.message { break-inside:avoid; }
+}

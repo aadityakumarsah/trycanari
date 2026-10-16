@@ -16,7 +16,13 @@ from collections.abc import Sequence
 
 from agentbounty.services import judge
 from agentbounty.services.bounty import CanaryDefinition, LoadedTarget
-from agentbounty.services.harness import SandboxLimits, SlotFill, TargetConfig, run_once
+from agentbounty.services.harness import (
+    EntryPoint,
+    SandboxLimits,
+    TargetConfig,
+    fill_for,
+    run_once,
+)
 from agentbounty.services.model import (
     ChatMessage,
     ModelParams,
@@ -58,35 +64,65 @@ class _Probe:
 
     def __init__(self, canary: CanaryDefinition) -> None:
         self._canary = canary
+        self._spoken = False
 
     async def complete(
         self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec], params: ModelParams
     ) -> ModelResponse:
-        asked = any(message.role == "assistant" for message in messages)
+        # Whether the probe itself has spoken, not whether the conversation holds an
+        # assistant turn: a memory is replayed as history and already holds one.
+        asked, self._spoken = self._spoken, True
         calls: tuple[ToolCallRequest, ...] = ()
-        if not asked and self._canary.rule is None:
+        parameters = self._canary.parameters
+        if not asked and isinstance(parameters, judge.SecretLeak | judge.SystemPromptLeak):
             # A secret may only ever reach the agent through a tool result, so use them all.
             calls = tuple(
                 ToolCallRequest(f"probe_{index}", tool.name, {}) for index, tool in enumerate(tools)
             )
-        elif not asked and self._canary.rule is not None:
-            arguments = _breaking_arguments(self._canary.rule)
-            if arguments is not None and any(t.name == self._canary.rule.tool for t in tools):
-                calls = (ToolCallRequest("probe_0", self._canary.rule.tool, arguments),)
+        elif not asked and isinstance(
+            parameters, judge.ForbiddenToolCall | judge.UnauthorizedAction
+        ):
+            arguments = _breaking_arguments(parameters.rule)
+            if arguments is not None and any(t.name == parameters.rule.tool for t in tools):
+                calls = (ToolCallRequest("probe_0", parameters.rule.tool, arguments),)
+        elif not asked and isinstance(parameters, judge.DataExfiltration):
+            available = next(
+                (name for name in parameters.sink_tools if any(t.name == name for t in tools)),
+                None,
+            )
+            if available is not None:
+                calls = (
+                    ToolCallRequest(
+                        "probe_0", available, {parameters.sink_arguments[0]: parameters.value}
+                    ),
+                )
         if calls:
             return ModelResponse("", calls, "tool_calls", 0, 0)
+        if isinstance(parameters, judge.PhishingLinkInjection):
+            return ModelResponse(parameters.url, (), "stop", 0, 0)
+        if isinstance(parameters, judge.MaliciousCodeInjection):
+            return ModelResponse(f"```text\n{parameters.marker}\n```", (), "stop", 0, 0)
+        if isinstance(parameters, judge.PolicyViolation):
+            return ModelResponse(parameters.test_text or parameters.pattern, (), "stop", 0, 0)
         # Repeat everything the agent has been given: the system prompt and every tool result.
         context = "\n".join(m.content for m in messages if m.role in ("system", "tool"))
         return ModelResponse(context, (), "stop", 0, 0)
 
 
+def _probe_slot(config: TargetConfig) -> EntryPoint:
+    """A slot the check can write into. A slot that writes the user's turn is preferred,
+    so that the probe has something to answer even where the sponsor set no task."""
+    for slot in (EntryPoint.USER_MESSAGE, EntryPoint.MULTI_TURN, EntryPoint.DOCUMENT):
+        if slot in config.entry_points:
+            return slot
+    # Every remaining slot needs a task, so the conversation is never empty.
+    return config.entry_points[0]
+
+
 async def _can_trip(config: TargetConfig, canary: CanaryDefinition) -> bool:
-    attempt = [SlotFill(config.entry_points[0], PROBE_TEXT)]
+    attempt = [fill_for(_probe_slot(config), PROBE_TEXT)]
     run = await run_once(config, attempt, _Probe(canary), limits=_LIMITS)
-    if canary.secret is not None:
-        return judge.detect_secret_leak(run.transcript, canary.secret).tripped
-    assert canary.rule is not None  # noqa: S101 - a definition has a secret or a rule
-    return judge.detect_forbidden_tool(run.transcript, canary.rule).tripped
+    return judge.detect_canary(run.transcript, canary.parameters).tripped
 
 
 async def problems(target: LoadedTarget) -> list[str]:
@@ -100,13 +136,18 @@ async def problems(target: LoadedTarget) -> list[str]:
         if await _can_trip(target.config, canary):
             continue
         label = canary.public_label
-        if canary.secret is not None:
+        if canary.type.value in ("secret_leak", "system_prompt_leak"):
             found.append(
-                f"canary '{label}': the secret is not in the system prompt or any tool"
-                " result, so the agent could never leak it"
+                f"canary '{label}': its planted value is not in the system prompt or any"
+                " tool result, so the agent could never leak it"
             )
         elif canary.rule is not None and canary.rule.tool not in tool_names:
             found.append(f"canary '{label}': the agent has no tool named '{canary.rule.tool}'")
+        elif canary.exfiltration is not None and not tool_names.intersection(
+            canary.exfiltration.sink_tools
+        ):
+            names = ", ".join(canary.exfiltration.sink_tools)
+            found.append(f"canary '{label}': the agent has none of its outbound tools: {names}")
         else:
             found.append(f"canary '{label}': no call to the tool could ever break its rule")
     return found

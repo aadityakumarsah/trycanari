@@ -94,7 +94,7 @@ async def test_a_sponsor_sees_how_their_bounty_is_being_attacked(platform: Platf
     assert (await platform.client.get(path)).status_code == 401
 
 
-async def test_public_answers_are_served_from_memory_for_a_few_seconds(
+async def test_public_answers_are_fresh_after_successful_changes(
     service_settings: Settings,
 ) -> None:
     settings = service_settings.model_copy(update={"public_cache_seconds": 30.0})
@@ -103,16 +103,15 @@ async def test_public_answers_are_served_from_memory_for_a_few_seconds(
         assert (await client.get("/v1/bounties")).json() == []
         sponsor = await platform.sponsor()
         bounty_id = await sponsor.live()
-        # The listing is a few seconds old; the bounty's own page was never cached.
-        assert (await client.get("/v1/bounties")).json() == []
+        # Successful mutations invalidate this process's public snapshots immediately.
+        assert (await client.get("/v1/bounties")).json()[0]["id"] == bounty_id
         assert (await client.get(f"/v1/bounties/{bounty_id}")).json()["state"] == "live"
         assert (await client.get(f"/v1/bounties/{bounty_id}/x")).status_code == 404
 
         # A miss is not remembered, and the cache never decides what may be attacked.
         await sponsor.call("POST", f"/v1/bounties/{bounty_id}/pause")
-        assert (await client.get(f"/v1/bounties/{bounty_id}")).json()["state"] == "live"
+        assert (await client.get(f"/v1/bounties/{bounty_id}")).json()["state"] == "paused"
         await platform.submit(bounty_id, WEAK, expect=409)
-        platform.app.state.public_cache.clear()
         assert (await client.get(f"/v1/bounties/{bounty_id}")).json()["state"] == "paused"
 
 
