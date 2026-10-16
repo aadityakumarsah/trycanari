@@ -186,9 +186,9 @@ async def test_studio_uses_a_fingerprinted_stylesheet(platform: Platform) -> Non
     bounty_id = await hunter.live()
 
     page = await platform.client.get(f"/studio/{bounty_id}", headers=hunter.headers)
-    assert "/studio-assets/studio-b1ff1df70.css" in page.text
+    assert "/studio-assets/studio-b1ff1df70-v2.css" in page.text
 
-    stylesheet = await platform.client.get("/studio-assets/studio-b1ff1df70.css")
+    stylesheet = await platform.client.get("/studio-assets/studio-b1ff1df70-v2.css")
     assert stylesheet.status_code == 200
     assert stylesheet.headers["content-type"].startswith("text/css")
     assert stylesheet.headers["cache-control"] == "public, max-age=31536000, immutable"

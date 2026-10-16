@@ -27,6 +27,13 @@ export function isOriginRoute(pathname) {
   return ORIGIN_PATHS.has(pathname) || ORIGIN_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+export function isCacheableStudioAsset(method, pathname, response) {
+  return method === "GET" &&
+    pathname.startsWith("/studio-assets/") &&
+    response.ok &&
+    (response.headers.get("content-type") ?? "").toLowerCase().startsWith("text/css");
+}
+
 function proxy(request, env, url) {
   if (!env.API_ORIGIN) {
     return Response.json({ detail: "The API is not connected to this site yet." }, { status: 503 });
@@ -48,12 +55,13 @@ function proxy(request, env, url) {
       statusText: response.statusText,
       headers: response.headers,
     });
-    const studioAsset = request.method === "GET" &&
-      url.pathname.startsWith("/studio-assets/");
+    const studioAsset = request.method === "GET" && url.pathname.startsWith("/studio-assets/");
     const publicData = request.method === "GET" &&
       (url.pathname === "/v1/providers" || url.pathname.startsWith("/v1/public/"));
     const authenticatedData = url.pathname.startsWith("/v1/account") || url.pathname.startsWith("/v1/sponsor");
-    if (studioAsset && response.ok) forwarded.headers.set("cache-control", "public, max-age=31536000, immutable");
+    if (isCacheableStudioAsset(request.method, url.pathname, response)) {
+      forwarded.headers.set("cache-control", "public, max-age=31536000, immutable");
+    } else if (studioAsset) forwarded.headers.set("cache-control", "no-store");
     else if (publicData && response.ok) forwarded.headers.set("cache-control", "public, max-age=30, stale-while-revalidate=60");
     else if (authenticatedData) forwarded.headers.set("cache-control", "no-store, no-cache, must-revalidate");
     else if (response.ok) forwarded.headers.set("cache-control", "private, max-age=5");

@@ -30,7 +30,7 @@ from agentbounty.services.wallet import address_rule
 PACKAGE = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=PACKAGE / "templates")
 CSS = PACKAGE / "static" / "studio.css"
-STYLESHEET_PATH = "/studio-assets/studio-b1ff1df70.css"
+STYLESHEET_PATH = "/studio-assets/studio-b1ff1df70-v2.css"
 
 router = APIRouter(tags=["studio"], include_in_schema=False)
 
