@@ -16,6 +16,7 @@ import { Home } from "./pages/Home.tsx";
 import { Login } from "./pages/Login.tsx";
 import { MyAttempts, useSavedAttempts } from "./pages/MyAttempts.tsx";
 import { Pilot } from "./pages/Pilot.tsx";
+import { AssurancePage } from "./pages/Assurance.tsx";
 import { InvitePage } from "./pages/Invite.tsx";
 import { Profile } from "./pages/Profile.tsx";
 import { Report } from "./pages/Report.tsx";
@@ -240,6 +241,13 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
                   <small>Run a free baseline scan together</small>
                 </span>
               </Link>
+              <Link to="/assurance" onClick={onNavigate}>
+                <Icon name="shield" size={18} />
+                <span>
+                  <strong>Managed assurance</strong>
+                  <small>Threat model, attack, patch and continuously re-test</small>
+                </span>
+              </Link>
               <a href="/agent.md">
                 <Icon name="doc" size={18} />
                 <span>
@@ -333,6 +341,9 @@ function Footer({ onNavigate }: { onNavigate: () => void }) {
         </Link>
         <Link to="/pilot" onClick={onNavigate}>
           Design partner pilot
+        </Link>
+        <Link to="/assurance" onClick={onNavigate}>
+          Managed assurance
         </Link>
         <a href="/api-docs">API explorer</a>
         <a href="/agent.md">agent.md</a>
@@ -475,6 +486,14 @@ export function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/docs" element={<Docs />} />
+            <Route
+              path="/assurance"
+              element={
+                <Page wide>
+                  <AssurancePage />
+                </Page>
+              }
+            />
             <Route
               path="/pilot"
               element={

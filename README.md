@@ -5,9 +5,9 @@
 <h1 align="center">trycanari</h1>
 
 <p align="center">
-  <b>Bug bounties for AI agents.</b><br />
-  Sponsors plant canaries in their agents and lock a reward. Hunters attack.<br />
-  A break that is proven five times over is paid automatically, in SOL on Solana.
+  <b>Managed security assurance and continuous regression for AI agents.</b><br />
+  Threat-model consequential workflows, prove boundaries with deterministic evidence,<br />
+  and replay every confirmed failure after prompt, model or tool changes.
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="721 tests" src="https://img.shields.io/badge/tests-721%20passing-6ee7b7" />
+  <img alt="811 tests" src="https://img.shields.io/badge/tests-811%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -37,7 +37,7 @@
 
 | | |
 |---|---|
-| **What it is** | A marketplace where an AI agent's owner pays only for attacks that provably work |
+| **What it is** | A managed agent-security assessment with continuous regression, backed by a bug-bounty testing network |
 | **Type** | Web application: JSON API, two background workers, single-page app |
 | **Backend** | Python 3.12 · FastAPI · SQLAlchemy 2 (async) · Alembic · Pydantic v2 |
 | **Frontend** | React 19 · TypeScript (strict) · Bun |
@@ -49,16 +49,17 @@
 
 | Number | |
 |---:|---|
-| **51** | API endpoints |
-| **25** | database migrations |
-| **573** | Python tests |
-| **148** | web tests |
+| **65** | API operations |
+| **31** | database migrations |
+| **657** | Python tests |
+| **154** | web tests |
 | **~9,700** | lines of Python |
 | **~7,900** | lines of TypeScript |
 
 ## Contents
 
 - [Design partner pilot](#design-partner-pilot)
+- [Managed assurance](#managed-assurance)
 - [How it works](#how-it-works)
 - [Features](#features)
 - [Architecture](#architecture)
@@ -77,7 +78,13 @@
 
 ## Design partner pilot
 
-The current company milestone is real usage: 5–10 design partners, 2–3 paid pilots and agents tested every week. The public application is at `/pilot`; admins track applications through real signup, scan, bounty and payment activity in the **Pilots** tab. The offer, qualification criteria, target-account list, outreach copy and four-week cadence are in [`docs/DESIGN_PARTNER_PLAYBOOK.md`](docs/DESIGN_PARTNER_PLAYBOOK.md).
+The current company milestone is real usage: 5–10 design partners, 2–3 paid assessment sprints and agents tested every week. The public application is at `/pilot`; admins track applications through real signup, scan, bounty and payment activity in the **Pilots** tab. The offer, qualification criteria, target-account list, outreach copy and four-week cadence are in [`docs/DESIGN_PARTNER_PLAYBOOK.md`](docs/DESIGN_PARTNER_PLAYBOOK.md).
+
+## Managed assurance
+
+The founding offer is a **$2,500 fixed assessment sprint** for one agent and one consequential workflow. The product now captures an encrypted threat-model scope, readiness, service/deployment choice, price and delivery lifecycle; gives operators a private assessment queue; adds the scope and limitations to customer evidence; and continuously replays six baseline techniques plus retained confirmed breaks against versioned configurations.
+
+The exact acceptance criteria, test procedure, data handling, evidence package, status definitions and research basis are in [`docs/ASSURANCE_PLAYBOOK.md`](docs/ASSURANCE_PLAYBOOK.md). The result is evidence for the tested version and declared scope—not certification or a guarantee of safety.
 
 ## How it works
 
@@ -134,6 +141,9 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 
 **For sponsors**
 
+- A managed assessment workspace for workflow, identity, authorization, data, actions and human-control scope
+- A private delivery lifecycle from request through remediation, re-test and completion
+- Version-bound continuous gates with baseline probes even before the first saved break
 - A house hunter: the platform's own attacker agent goes at every agent the day it is
   listed, and again on every patch. It is never paid; a break it finds costs nothing
 - An agent form: pick a model, build tools by filling in boxes
@@ -477,7 +487,7 @@ web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
 ├── src/components/   Flow · Transcript · AttemptStatus · ReferralGate · shared pieces
 └── cloudflare/       The Pages worker that proxies API paths
-migrations/versions/  0001 … 0025
+migrations/versions/  0001 … 0031
 tests/                One file per area; a scratch database per test
 docs/REFERENCE.md     The long version of everything on this page
 ```
@@ -486,8 +496,8 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 573 Python tests, each on its own scratch database
-make web-test     # 148 web tests
+make test         # 657 Python tests, each on its own scratch database
+make web-test     # 154 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
 make e2e          # the definition of done, as one test

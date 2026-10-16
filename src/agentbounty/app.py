@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from agentbounty.api import (
     admin,
     agent_guide,
+    assurance,
     chain,
     evidence,
     google,
@@ -103,7 +104,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="trycanari API",
-        description="Bug bounties for AI agents. The guide is at /docs; this is the reference.",
+        description=(
+            "Managed assurance, continuous regression and bug bounties for AI agents. "
+            "The guide is at /docs; this is the reference."
+        ),
         lifespan=lifespan,
         # /docs belongs to the web app's documentation; the interactive reference lives here.
         docs_url="/api-docs",
@@ -179,8 +183,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(session.router)
     app.include_router(google.router)
     app.include_router(pilot.public)
+    app.include_router(assurance.sponsor)
     app.include_router(admin.router)
     app.include_router(pilot.admin)
+    app.include_router(assurance.admin)
     app.include_router(chain.router)
     app.include_router(agent_guide.router)
     app.include_router(evidence.router)

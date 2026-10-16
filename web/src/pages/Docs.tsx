@@ -42,6 +42,7 @@ export const CONTENTS: Group[] = [
     title: "For sponsors",
     entries: [
       { id: "sponsors", title: "Quickstart for sponsors" },
+      { id: "assurance", title: "Managed assurance" },
       { id: "rearm", title: "Patching and re-arming" },
       { id: "editor", title: "Scanning from your editor" },
       { id: "house", title: "The house hunter" },
@@ -614,6 +615,34 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
           </p>
         </Section>
 
+        <Section id="assurance" title="Managed assurance">
+          <p>
+            The managed assessment is for a tool-using agent with a concrete business consequence. The founding
+            sprint is <strong>$2,500 fixed</strong> for one agent and one consequential workflow. It includes a
+            threat model, deterministic boundaries, adversarial testing, reproducible evidence, one remediation
+            review and one patch re-test. Private-cloud and on-premises runners are scoped separately.
+          </p>
+          <ol className="steps-list">
+            <li>Describe the workflow, untrusted inputs, sensitive data, consequential actions, agent identity and human approval path.</li>
+            <li>Save the private scope in the bounty's <strong>Assurance</strong> tab and request the sprint.</li>
+            <li>The operator confirms scope and price, tests the versioned agent, records limitations and moves the engagement through testing, remediation and re-test.</li>
+            <li>Run the continuous gate after prompt, tool or model changes. It replays six baseline techniques plus every retained confirmed break.</li>
+          </ol>
+          <p>
+            Scope text, operator notes and limitations are encrypted at rest. The customer report separates
+            customer-declared controls from tested evidence and binds regression runs to a configuration
+            fingerprint. A completed assessment is not a certification, a guarantee of safety or a substitute for
+            production access control and monitoring.
+          </p>
+          <p>
+            From a script, use <Endpoint method="GET" path="/v1/bounties/{id}/assurance" />, {" "}
+            <Endpoint method="PUT" path="/v1/bounties/{id}/assurance" /> and {" "}
+            <Endpoint method="POST" path="/v1/bounties/{id}/assurance/request" />. The continuous history is at {" "}
+            <Endpoint method="GET" path="/v1/bounties/{id}/continuous" /> and a release gate is queued with {" "}
+            <Endpoint method="POST" path="/v1/bounties/{id}/continuous/gate" />.
+          </p>
+        </Section>
+
         <Section id="rearm" title="Patching and re-arming">
           <p>
             A verified break pauses the bounty. The broken config can never go live again. To reopen:
@@ -959,6 +988,11 @@ curl ${origin}/skill.md -o .claude/skills/trycanari/SKILL.md`}</Code>
               [<Endpoint method="POST" path="/v1/bounties/{id}/scan" />, "Queue a baseline scan of the current config: six well-known attacks, each replayed once."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/scan" />, "The latest scan: each probe, what it was aimed at, what the agent did and whether it held."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/compliance" />, "The audit mapping: the testing set against OWASP's risks, the EU AI Act and ISO/IEC 42001, with where the evidence stands."],
+              [<Endpoint method="GET" path="/v1/bounties/{id}/assurance" />, "The private managed-assessment scope, readiness and delivery status."],
+              [<Endpoint method="PUT" path="/v1/bounties/{id}/assurance" />, "Create or update the managed-assessment scope."],
+              [<Endpoint method="POST" path="/v1/bounties/{id}/assurance/request" />, "Send a saved scope to the managed delivery queue."],
+              [<Endpoint method="GET" path="/v1/bounties/{id}/continuous" />, "Version-bound baseline and retained-attack regression history."],
+              [<Endpoint method="POST" path="/v1/bounties/{id}/continuous/gate" />, "Queue a regression gate for the current version."],
             ]}
           />
           <h3>Browser session</h3>

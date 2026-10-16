@@ -47,6 +47,57 @@
   --pad: 40px;
 }
 
+/* Managed agent assurance ------------------------------------------------------------ */
+.assurance-page { display: grid; gap: 1rem; }
+.assurance-hero { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, .7fr); gap: 3rem; align-items: center; padding: 5rem 4rem; border: 1px solid var(--border); border-radius: 24px; overflow: hidden; }
+.assurance-hero h1 { max-width: 780px; margin: .35rem 0 1rem; font-size: clamp(2.8rem, 7vw, 5.8rem); line-height: .95; letter-spacing: -.065em; }
+.assurance-price { padding: 2rem; background: color-mix(in srgb, var(--surface) 92%, var(--accent)); border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 24px 80px color-mix(in srgb, #000 22%, transparent); }
+.assurance-amount { margin: .4rem 0; font-size: 4rem; line-height: 1; font-weight: 800; letter-spacing: -.05em; }
+.assurance-amount sup { font-size: 1.2rem; vertical-align: top; }
+.assurance-price ul { display: grid; gap: .75rem; padding: 1rem 0 0; list-style: none; }
+.assurance-price li { display: flex; gap: .55rem; align-items: center; }
+.assurance-fit-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+.assurance-fit-grid article { padding: 1.5rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+.assurance-fit-grid h3 { margin: 1rem 0 .35rem; }
+.assurance-fit-grid p, .assurance-delivery p { color: var(--muted); }
+.assurance-delivery ol { display: grid; gap: .8rem; padding: 0; list-style: none; counter-reset: assurance; }
+.assurance-delivery li { display: grid; grid-template-columns: 42px 1fr; gap: 1rem; align-items: start; padding: 1.2rem; border: 1px solid var(--border); border-radius: 14px; }
+.assurance-delivery li > span, .assurance-progress li > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: var(--on-solid); font-weight: 800; }
+.assurance-delivery h3 { margin: 0 0 .25rem; }
+.assurance-delivery p { margin: 0; }
+.assurance-truth { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; padding: 2.5rem; border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--border)); border-radius: 18px; }
+.assurance-truth h2, .assurance-truth p { margin: 0; }
+.assurance-workspace-head { display: flex; justify-content: space-between; align-items: start; gap: 2rem; }
+.assurance-progress { display: grid; grid-template-columns: repeat(6, 1fr); gap: .55rem; margin: 1.5rem 0; padding: 0; list-style: none; }
+.assurance-progress li { display: flex; align-items: center; gap: .45rem; padding: .7rem; border: 1px solid var(--border); border-radius: 12px; color: var(--muted); font-size: .82rem; }
+.assurance-progress li > span { width: 24px; height: 24px; background: var(--border); color: var(--muted); font-size: .75rem; }
+.assurance-progress li.done { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--foreground); }
+.assurance-progress li.done > span { background: var(--accent); color: var(--on-solid); }
+.assurance-readiness { display: flex; flex-wrap: wrap; gap: .55rem; margin: 1rem 0 1.5rem; }
+.assurance-readiness h3 { width: 100%; margin-bottom: .2rem; }
+.assurance-readiness span { display: flex; align-items: center; gap: .35rem; padding: .45rem .65rem; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: .82rem; }
+.assurance-readiness span.done { color: var(--foreground); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.assurance-checks { display: flex; flex-wrap: wrap; gap: .55rem; }
+.assurance-checks label { display: flex; flex-direction: row; align-items: center; gap: .4rem; width: auto; padding: .55rem .7rem; border: 1px solid var(--border); border-radius: 10px; font-weight: 500; }
+.assurance-checks input { width: auto; margin: 0; }
+.assurance-workspace fieldset { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 12px; }
+.assurance-workspace legend { padding: 0 .35rem; font-weight: 700; }
+.assurance-request { display: flex; justify-content: space-between; gap: 1rem; align-items: center; margin-top: 1.5rem; padding: 1.2rem; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 14px; background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.assurance-request p { margin: 0; }
+.assessment-admin-fields { display: grid !important; grid-template-columns: 160px 140px 1fr 1fr auto; align-items: end; }
+.assessment-admin-fields textarea { min-height: 80px; }
+
+@media (max-width: 900px) {
+  .assurance-hero, .assurance-truth { grid-template-columns: 1fr; padding: 2rem 1.25rem; }
+  .assurance-fit-grid { grid-template-columns: repeat(2, 1fr); }
+  .assurance-progress { grid-template-columns: repeat(2, 1fr); }
+  .assessment-admin-fields { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 560px) {
+  .assurance-fit-grid { grid-template-columns: 1fr; }
+  .assurance-request { align-items: stretch; flex-direction: column; }
+}
+
 /* The light theme: the same tokens, for a white page. Chosen with the switch in the bar. */
 :root[data-theme="light"] {
   color-scheme: light;

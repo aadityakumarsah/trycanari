@@ -447,6 +447,64 @@ export interface SponsorBountyDetail extends SponsorBounty {
   house_hunt?: HouseHunt | null;
 }
 
+export type AssuranceStatus =
+  | "draft"
+  | "requested"
+  | "scoping"
+  | "testing"
+  | "remediation"
+  | "retest"
+  | "complete"
+  | "cancelled";
+export type AssuranceInput = "user_message" | "document" | "tool_result" | "web_page" | "memory" | "sub_agent";
+export type AssuranceData = "personal" | "financial" | "health" | "credentials" | "confidential" | "regulated";
+export type AssuranceAction = "read" | "write" | "send" | "approve" | "delete" | "execute" | "move_money";
+
+export interface Assurance {
+  id: string;
+  bounty_id: string;
+  service: "sprint" | "continuous";
+  status: AssuranceStatus;
+  stage: "prototype" | "beta" | "production";
+  deployment: "managed" | "private_cloud" | "on_prem";
+  untrusted_inputs: AssuranceInput[];
+  sensitive_data: AssuranceData[];
+  consequential_actions: AssuranceAction[];
+  workflow: string;
+  feared_failure: string;
+  identity_controls: string;
+  human_approval: string;
+  limitations: string;
+  quoted_price_cents: number;
+  tested_config_hash: string | null;
+  tested_config_version: number | null;
+  readiness: {
+    agent_configured: boolean;
+    boundaries_defined: boolean;
+    attack_surface_declared: boolean;
+    consequence_documented: boolean;
+    identity_documented: boolean;
+    approval_documented: boolean;
+    ready: boolean;
+  };
+  requested_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminAssurance extends Assurance {
+  sponsor_email: string;
+  bounty_title: string;
+  operator_notes: string;
+}
+
+export interface AdminAssurancePage {
+  items: AdminAssurance[];
+  total: number;
+}
+
 export interface Plan {
   offered: boolean;
   active: boolean;
@@ -524,7 +582,7 @@ export interface Scan {
 export interface ContinuousProbe {
   case_id: string;
   canary_type: CanaryType;
-  source: "past_break" | "corpus";
+  source: "baseline" | "past_break" | "corpus";
   tripped: boolean;
 }
 
@@ -538,6 +596,8 @@ export interface ContinuousRun {
   total: number;
   succeeded: number;
   success_rate: number | null;
+  failures: number;
+  attack_success_rate: number | null;
   covered_canary_types: CanaryType[];
   regressed: ContinuousProbe[];
   created_at: string;

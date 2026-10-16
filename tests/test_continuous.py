@@ -29,7 +29,7 @@ async def test_versions_and_ci_gate_report_regressions(platform: Platform) -> No
     sponsor, bounty_id = await broken_then_patched(platform)
     first = await sponsor.call("GET", f"/v1/bounties/{bounty_id}/continuous")
     completed = [run for run in first["runs"] if run["state"] == "done"]
-    assert any(run["passed"] is True and run["total"] == 1 for run in completed)
+    assert any(run["passed"] is True and run["total"] == 7 for run in completed)
 
     # The weaker version removes the guard. Its stored past attack newly succeeds.
     prompt = PATCHED_CONFIG["system_prompt"]
@@ -43,6 +43,23 @@ async def test_versions_and_ci_gate_report_regressions(platform: Platform) -> No
     assert ci["passed"] is False
     assert [item["canary_type"] for item in ci["regressed"]] == ["forbidden_tool"]
     assert ci["succeeded"] == 1
+    assert ci["failures"] == 1
+    assert ci["attack_success_rate"] == 1 / 7
+
+
+async def test_first_ci_gate_has_a_baseline_before_any_saved_break(platform: Platform) -> None:
+    sponsor = await platform.sponsor("new-assurance@example.com")
+    bounty_id = await sponsor.draft(PATCHED_CONFIG)
+
+    gate = await sponsor.call("POST", f"/v1/bounties/{bounty_id}/continuous/gate", 202)
+    await platform.work()
+    report = await sponsor.call("GET", f"/v1/bounties/{bounty_id}/continuous")
+    completed = next(run for run in report["runs"] if run["id"] == gate["id"])
+
+    assert completed["passed"] is True
+    assert completed["total"] == 6
+    assert completed["failures"] == 0
+    assert {probe["source"] for probe in completed["regressed"]} == set()
 
 
 async def test_schedule_queues_a_fresh_corpus_retest(platform: Platform) -> None:

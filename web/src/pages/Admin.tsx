@@ -11,6 +11,8 @@ import { useToast } from "../toast.tsx";
 import { useConfirm } from "../confirm.tsx";
 import type {
   AdminAction,
+  AdminAssurance,
+  AdminAssurancePage,
   AdminCode,
   AdminPilot,
   AdminPilotsPage,
@@ -20,6 +22,7 @@ import type {
   PilotStatus,
   ProviderSetting,
   ProviderTest,
+  AssuranceStatus,
 } from "../types.ts";
 
 const PAGE = 25;
@@ -683,6 +686,7 @@ const WHAT: Record<string, string> = {
   "banned=false": "no longer banned",
   credits_reset: "given a full token allowance again",
   plan_ended: "taken off the Watch plan",
+  assurance_updated: "given a managed-assessment update",
 };
 
 /** What admins have done. It is written once and cannot be changed by anyone. */
@@ -751,6 +755,67 @@ function Activity() {
 }
 
 const PILOT_STATUSES: PilotStatus[] = ["new", "contacted", "qualified", "pilot", "paid", "closed"];
+
+const ASSURANCE_STATUSES: AssuranceStatus[] = ["draft", "requested", "scoping", "testing", "remediation", "retest", "complete", "cancelled"];
+
+function AssessmentCard({ assessment, onSaved }: { assessment: AdminAssurance; onSaved: () => Promise<void> }) {
+  const [status, setStatus] = useState<AssuranceStatus>(assessment.status);
+  const [price, setPrice] = useState(assessment.quoted_price_cents ? String(assessment.quoted_price_cents / 100) : "");
+  const [notes, setNotes] = useState(assessment.operator_notes);
+  const [limitations, setLimitations] = useState(assessment.limitations);
+  const saving = useAction();
+  useEffect(() => {
+    setStatus(assessment.status);
+    setPrice(assessment.quoted_price_cents ? String(assessment.quoted_price_cents / 100) : "");
+    setNotes(assessment.operator_notes);
+    setLimitations(assessment.limitations);
+  }, [assessment]);
+
+  async function save() {
+    const dollars = price.trim() ? Number(price) : 0;
+    if (!Number.isFinite(dollars) || dollars < 0) return;
+    const ok = await saving.run(async () => {
+      await api<AdminAssurance>("PATCH", `/v1/admin/assessments/${assessment.id}`, {
+        body: { status, quoted_price_cents: Math.round(dollars * 100), operator_notes: notes, limitations },
+      });
+    });
+    if (ok) await onSaved();
+  }
+
+  return (
+    <article className="pilot-lead assessment-card">
+      <header><div><span className={`badge badge-${assessment.status}`}>{assessment.status}</span><h3>{assessment.bounty_title}</h3><p><a href={`mailto:${assessment.sponsor_email}`}>{assessment.sponsor_email}</a> · {assessment.service} · {assessment.stage} · {assessment.deployment.replaceAll("_", " ")}</p></div><span className="pilot-lead-date">Requested {assessment.requested_at ? <Ago iso={assessment.requested_at} /> : "not yet"}</span></header>
+      <div className="pilot-lead-body">
+        <div><p className="label">Consequential workflow</p><p>{assessment.workflow}</p><p className="label">Feared failure</p><p>{assessment.feared_failure}</p><div className="pilot-lead-tags">{assessment.untrusted_inputs.map((value) => <span key={value}>{value.replaceAll("_", " ")}</span>)}{assessment.consequential_actions.map((value) => <span key={value}>{value.replaceAll("_", " ")}</span>)}</div></div>
+        <div><p className="label">Readiness</p><dl className="pilot-outcomes">{Object.entries(assessment.readiness).filter(([name]) => name !== "ready").map(([name, done]) => <div key={name} className={done ? "done" : undefined}><dt>{name.replaceAll("_", " ")}</dt><dd>{done ? "yes" : "—"}</dd></div>)}</dl><p className="label">Identity</p><p>{assessment.identity_controls}</p><p className="label">Human control</p><p>{assessment.human_approval}</p></div>
+      </div>
+      <footer className="assessment-admin-fields">
+        <label>Status<select value={status} onChange={(event) => setStatus(event.target.value as AssuranceStatus)}>{ASSURANCE_STATUSES.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+        <label>Quoted USD<input type="number" min="0" step="1" value={price} onChange={(event) => setPrice(event.target.value)} /></label>
+        <label className="pilot-notes">Private delivery notes<textarea rows={3} maxLength={20000} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+        <label className="pilot-notes">Customer-visible limitations<textarea rows={3} maxLength={10000} value={limitations} onChange={(event) => setLimitations(event.target.value)} /></label>
+        <button type="button" disabled={saving.busy} onClick={() => void save()}>{saving.busy ? "Saving…" : "Save"}</button>
+      </footer>
+      <ErrorNote>{saving.error}</ErrorNote>
+    </article>
+  );
+}
+
+function Assessments() {
+  const [offset, setOffset] = useState(0);
+  const address = `/v1/admin/assessments?limit=${PAGE}&offset=${offset}`;
+  const list = useLoad((signal) => api<AdminAssurancePage>("GET", address, { signal }), address);
+  return (
+    <section className="pilots-admin">
+      <div className="pilots-admin-head"><div><h2>Managed assessment delivery</h2><p>Encrypted customer scope, delivery stage, commercial quote, limitations and readiness in one queue.</p></div><span className="muted count-note">{list.data?.total ?? 0} assessments</span></div>
+      <ErrorNote>{list.error}</ErrorNote>
+      {!list.data && !list.error && <Skeleton block lines={5} />}
+      {list.data?.total === 0 && <p className="empty">No managed assessment has been requested yet.</p>}
+      <div className="pilot-leads">{list.data?.items.map((item) => <AssessmentCard key={item.id} assessment={item} onSaved={list.reload} />)}</div>
+      <Pager offset={offset} total={list.data?.total ?? 0} onMove={setOffset} />
+    </section>
+  );
+}
 
 function PilotLead({ pilot, onSaved }: { pilot: AdminPilot; onSaved: () => Promise<void> }) {
   const [status, setStatus] = useState<PilotStatus>(pilot.status);
@@ -1150,8 +1215,8 @@ function Provider() {
   );
 }
 
-const TABS = ["people", "pilots", "codes", "activity", "model"] as const;
-const TAB_NAMES = { people: "People", pilots: "Pilots", codes: "Invites", activity: "Activity", model: "Model" } as const;
+const TABS = ["people", "assessments", "pilots", "codes", "activity", "model"] as const;
+const TAB_NAMES = { people: "People", assessments: "Assessments", pilots: "Pilots", codes: "Invites", activity: "Activity", model: "Model" } as const;
 
 /** The admin area. It is loaded only for an admin: nobody else's browser is sent this code. */
 export default function Admin() {
@@ -1192,6 +1257,7 @@ export default function Admin() {
       </div>
       <div role="tabpanel">
         {tab === "people" && <People />}
+        {tab === "assessments" && <Assessments />}
         {tab === "pilots" && <Pilots />}
         {tab === "codes" && <Codes />}
         {tab === "activity" && <Activity />}

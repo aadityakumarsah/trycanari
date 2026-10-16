@@ -21,16 +21,16 @@ The admin **Pilots** tab is the live funnel. Signup, listed agents, completed sc
 
 Use one offer for every first conversation:
 
-> Bring one real tool-using agent. We will run a free baseline attack scan, help scope safe mock tools and deterministic canaries, and review the evidence with you. If we find a break, it becomes a regression test. In return, meet weekly for four weeks, patch what is actionable and give direct product feedback.
+> Bring one real tool-using agent and one consequential workflow. The $2,500 founding sprint includes a threat model, adversarial testing, reproducible evidence, one remediation review and one patch re-test. If we confirm a break, it becomes a permanent regression test. Private deployment is scoped separately.
 
 Do not promise a certification, perfect security or immunity from prompt injection. The deliverable is reproducible evidence: what was tested, what broke, what held and whether a patch survived the same attack.
 
-Convert only after value is visible:
+Qualify before offering unpaid work. A short scoping call and product walkthrough can be free; the delivery sprint is paid:
 
-1. Free baseline scan.
-2. Evidence review with one concrete risk and patch path.
-3. Re-test the patch.
-4. Offer continuous Watch testing or a funded bounty.
+1. Confirm one consequential workflow, an owner who can patch it and safe mock tools.
+2. Agree the tested version, exclusions, evidence handling and fixed price.
+3. Deliver the sprint and patch re-test.
+4. Offer continuous regression or a funded bounty only when the team changes the agent often enough to need it.
 
 ## Ideal first customer
 
@@ -79,7 +79,7 @@ Hi {name} — {one sentence showing the exact agent/tool boundary you understood
 
 I’m building Canari: deterministic bug bounties and regression tests for AI agents. Instead of an LLM grading another LLM, we replay attacks five times and check exact canaries such as unauthorized tool calls, sensitive-data exfiltration and policy patterns.
 
-I’m looking for 5 design partners. I’ll baseline one real agent for free, help mock the dangerous tools, and turn any verified break into a test your team can rerun after each prompt/model change.
+I’m looking for 5 founding customers. The fixed $2,500 sprint covers one real workflow: threat model, attacks, reproducible evidence, remediation review and one patch re-test. I’ll help mock dangerous tools, and every verified break becomes a test your team can rerun after each prompt/model change.
 
 Would a 25-minute setup call next week be useful? The goal is to show one real result, not give you a platform demo.
 ```
@@ -95,7 +95,7 @@ If it is irrelevant, tell me and I will close the loop. If it is real, I can set
 Final follow-up after seven business days:
 
 ```text
-Closing the loop. I’m keeping this cohort to teams that can test and patch weekly. If agent security becomes urgent later, the free baseline application is here: {public_url}/pilot?source={campaign}.
+Closing the loop. I’m keeping this cohort to teams that can test and patch weekly. If agent security becomes urgent later, the assessment scope is here: {public_url}/assurance.
 ```
 
 ## Discovery call

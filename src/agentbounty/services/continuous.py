@@ -10,13 +10,14 @@ from typing import Any, Literal
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentbounty.models import Bounty, BountyState, ContinuousRun, SavedAttack, Sponsor
+from agentbounty.models import Bounty, BountyState, Canary, ContinuousRun, SavedAttack, Sponsor
 from agentbounty.models import TargetConfig as TargetConfigRow
-from agentbounty.services import regression
+from agentbounty.services import attempts, playbook, regression
 from agentbounty.services.bounty import LoadedTarget
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
-from agentbounty.services.harness import AttemptError, SandboxLimits
+from agentbounty.services.harness import AttemptError, SandboxLimits, run_attempt
+from agentbounty.services.judge import RUNS_PER_ATTEMPT
 from agentbounty.services.model import ModelClient
 
 RESULTS = "continuous.results"
@@ -98,7 +99,15 @@ async def cases(session: AsyncSession, bounty_id: uuid.UUID) -> list[SavedAttack
 
 
 async def has_cases(session: AsyncSession, bounty_id: uuid.UUID) -> bool:
-    """Whether a version replay would do useful work instead of occupying the queue."""
+    """Whether a version replay has a boundary or durable attack to exercise."""
+    boundary = await session.scalar(
+        select(Canary.id)
+        .join(TargetConfigRow, TargetConfigRow.id == Canary.config_id)
+        .where(TargetConfigRow.bounty_id == bounty_id)
+        .limit(1)
+    )
+    if boundary is not None:
+        return True
     own = await session.scalar(
         select(SavedAttack.id).where(SavedAttack.bounty_id == bounty_id).limit(1)
     )
@@ -121,6 +130,29 @@ async def execute(
 ) -> list[dict[str, Any]]:
     del cipher  # Results are encrypted by record; replay itself only needs the loaded target.
     output: list[dict[str, Any]] = []
+    # A new customer has no saved break yet. The deterministic baseline still gives every
+    # version a real boundary regression suite from day one. Five replays keep the same
+    # 3-of-5 proof standard used for verified findings.
+    by_label = {
+        canary.definition.public_label: canary.definition.type for canary in target.canaries
+    }
+    for probe in playbook.probes(target):
+        runs = await run_attempt(
+            target.config,
+            list(probe.fills),
+            model,
+            runs=RUNS_PER_ATTEMPT,
+            limits=limits,
+        )
+        judged = attempts.judge_runs(target, runs)
+        output.append(
+            {
+                "case_id": f"baseline:{probe.id}:{probe.aimed_at}",
+                "canary_type": by_label[probe.aimed_at].value,
+                "source": "baseline",
+                "tripped": judged.broken_canary is not None,
+            }
+        )
     for case in await cases(session, claim.bounty_id):
         try:
             replayed = await regression.replay(case, target, model, limits=limits)

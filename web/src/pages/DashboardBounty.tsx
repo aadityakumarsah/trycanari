@@ -13,7 +13,7 @@ import { Ago, Avatar, Badge, Copyable, ErrorNote, Skeleton, when, words } from "
 import { useAction, useInterval, useLoad } from "../hooks.ts";
 import { currency, formatZec, sym } from "../money.ts";
 import { useToast } from "../toast.tsx";
-import type { AttemptActivity, CanaryType, ContinuousTesting, EntryPoint, Finding, HouseHunt, Hunter, Ledger, Probe, Scan, SponsorBountyDetail } from "../types.ts";
+import type { Assurance, AssuranceAction, AssuranceData, AssuranceInput, AttemptActivity, CanaryType, ContinuousTesting, EntryPoint, Finding, HouseHunt, Hunter, Ledger, Probe, Scan, SponsorBountyDetail } from "../types.ts";
 
 interface Everything {
   bounty: SponsorBountyDetail;
@@ -887,21 +887,124 @@ function ContinuousTab({ bountyId }: { bountyId: string }) {
       {latest && (
         <dl className="facts">
           <div><dt>Latest result</dt><dd>{latest.passed === null ? latest.state : latest.passed ? "pass" : "fail"}</dd></div>
-          <div><dt>Attack success rate</dt><dd>{latest.success_rate === null ? "—" : `${Math.round(latest.success_rate * 100)}%`}</dd></div>
+          <div><dt>Attack success rate</dt><dd>{latest.attack_success_rate === null ? "—" : `${Math.round(latest.attack_success_rate * 100)}%`}</dd></div>
           <div><dt>Canary coverage</dt><dd>{latest.covered_canary_types.length}</dd></div>
           <div><dt>New regressions</dt><dd>{latest.regressed.length}</dd></div>
         </dl>
       )}
       {report.data.runs.length === 0 ? <p className="empty">Save a version to start continuous testing.</p> : (
         <div className="scroll"><table><thead><tr><th>Version</th><th>Trigger</th><th>Outcome</th><th>Success rate</th><th>Coverage</th><th>When</th></tr></thead><tbody>
-          {report.data.runs.map((run) => <tr key={run.id}><td>v{run.config_version}</td><td>{words(run.trigger)}</td><td>{run.passed === null ? run.state : run.passed ? "pass" : `fail (${run.succeeded})`}</td><td>{run.success_rate === null ? "—" : `${Math.round(run.success_rate * 100)}%`}</td><td>{run.covered_canary_types.join(", ") || "none"}</td><td><Ago iso={run.created_at} /></td></tr>)}
+          {report.data.runs.map((run) => <tr key={run.id}><td>v{run.config_version}</td><td>{words(run.trigger)}</td><td>{run.passed === null ? run.state : run.passed ? "pass" : `fail (${run.failures})`}</td><td>{run.attack_success_rate === null ? "—" : `${Math.round(run.attack_success_rate * 100)}%`}</td><td>{run.covered_canary_types.join(", ") || "none"}</td><td><Ago iso={run.created_at} /></td></tr>)}
         </tbody></table></div>
       )}
     </section>
   );
 }
 
-export const TABS = ["overview", "agent", "canaries", "scan", "continuous", "funding", "activity", "findings", "ledger"] as const;
+const ASSURANCE_INPUTS: AssuranceInput[] = ["user_message", "document", "tool_result", "web_page", "memory", "sub_agent"];
+const ASSURANCE_DATA: AssuranceData[] = ["personal", "financial", "health", "credentials", "confidential", "regulated"];
+const ASSURANCE_ACTIONS: AssuranceAction[] = ["read", "write", "send", "approve", "delete", "execute", "move_money"];
+const ASSURANCE_STAGES = ["requested", "scoping", "testing", "remediation", "retest", "complete"] as const;
+
+function Checks({ name, values, selected, disabled = false }: { name: string; values: string[]; selected: string[]; disabled?: boolean }) {
+  return (
+    <div className="assurance-checks">
+      {values.map((value) => <label key={value}><input type="checkbox" name={name} value={value} disabled={disabled} defaultChecked={selected.includes(value)} />{words(value)}</label>)}
+    </div>
+  );
+}
+
+function AssuranceTab({ bountyId }: { bountyId: string }) {
+  const path = `/v1/bounties/${bountyId}/assurance`;
+  const state = useLoad(
+    (signal) => api<{ engagement: Assurance | null }>("GET", path, { signal }),
+    bountyId,
+    `assurance:${bountyId}`,
+  );
+  const saving = useAction();
+  const requesting = useAction();
+  if (!state.data) return state.error ? <ErrorNote>{state.error}</ErrorNote> : <Skeleton lines={5} />;
+  const engagement = state.data.engagement;
+  const locked = engagement !== null && ["testing", "remediation", "retest", "complete", "cancelled"].includes(engagement.status);
+  const selected = (name: string, form: FormData) => form.getAll(name).map(String);
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const ok = await saving.run(async () => {
+      await api<Assurance>("PUT", path, {
+        body: {
+          service: form.get("service"), stage: form.get("stage"), deployment: form.get("deployment"),
+          untrusted_inputs: selected("untrusted_inputs", form),
+          sensitive_data: selected("sensitive_data", form),
+          consequential_actions: selected("consequential_actions", form),
+          workflow: form.get("workflow"), feared_failure: form.get("feared_failure"),
+          identity_controls: form.get("identity_controls"), human_approval: form.get("human_approval"),
+        },
+      });
+    });
+    if (ok) await state.reload();
+  }
+
+  async function request() {
+    const ok = await requesting.run(async () => { await api<Assurance>("POST", `${path}/request`); });
+    if (ok) await state.reload();
+  }
+
+  const readiness = engagement?.readiness;
+  const readyItems = readiness ? [
+    ["Agent configuration", readiness.agent_configured],
+    ["Deterministic boundaries", readiness.boundaries_defined],
+    ["Untrusted inputs", readiness.attack_surface_declared],
+    ["Business consequence", readiness.consequence_documented],
+    ["Identity and authorization", readiness.identity_documented],
+    ["Human approval", readiness.approval_documented],
+  ] as const : [];
+
+  return (
+    <section className="assurance-workspace">
+      <div className="assurance-workspace-head">
+        <div><p className="eyebrow">Managed agent assurance</p><h2>Assessment scope</h2><p className="muted">Private threat model, adversarial testing, remediation review and a version-bound re-test.</p></div>
+        <span className={`badge badge-${engagement?.status ?? "draft"}`}>{words(engagement?.status ?? "draft")}</span>
+      </div>
+      {engagement && engagement.status !== "draft" && engagement.status !== "cancelled" && (
+        <ol className="assurance-progress" aria-label="Assessment progress">
+          {ASSURANCE_STAGES.map((stage, index) => {
+            const current = ASSURANCE_STAGES.indexOf(engagement.status as typeof ASSURANCE_STAGES[number]);
+            return <li key={stage} className={index <= current ? "done" : undefined}><span>{index + 1}</span>{words(stage)}</li>;
+          })}
+        </ol>
+      )}
+      {engagement?.quoted_price_cents ? <p className="notice"><b>Approved scope:</b> ${(engagement.quoted_price_cents / 100).toLocaleString()} fixed fee.</p> : null}
+      {engagement?.tested_config_hash && <p className="muted small"><b>Version under test:</b> v{engagement.tested_config_version} · <code>{engagement.tested_config_hash}</code></p>}
+      {engagement?.limitations && <p className="report-note"><b>Recorded limitations:</b> {engagement.limitations}</p>}
+      {readiness && <div className="assurance-readiness"><h3>Scope readiness</h3>{readyItems.map(([label, done]) => <span key={label} className={done ? "done" : undefined}><Icon name={done ? "check" : "clock"} size={14} />{label}</span>)}</div>}
+
+      <form key={engagement?.updated_at ?? "new"} onSubmit={(event) => void save(event)}>
+        <div className="pilot-fields">
+          <label>Service<select name="service" defaultValue={engagement?.service ?? "sprint"} disabled={locked}><option value="sprint">Assessment sprint</option><option value="continuous">Sprint + continuous assurance</option></select></label>
+          <label>Agent stage<select name="stage" defaultValue={engagement?.stage ?? "beta"} disabled={locked}><option value="prototype">Prototype</option><option value="beta">Beta</option><option value="production">Production</option></select></label>
+          <label>Data path<select name="deployment" defaultValue={engagement?.deployment ?? "managed"} disabled={locked}><option value="managed">Managed encrypted service</option><option value="private_cloud">Private cloud runner</option><option value="on_prem">On-premises runner</option></select></label>
+        </div>
+        <label>Consequential workflow<textarea name="workflow" required minLength={30} maxLength={4000} rows={4} disabled={locked} defaultValue={engagement?.workflow ?? ""} placeholder="Describe one end-to-end workflow, the tools it calls and the outcome it changes." /></label>
+        <label>Failure that would trigger an incident review<textarea name="feared_failure" required minLength={20} maxLength={2000} rows={3} disabled={locked} defaultValue={engagement?.feared_failure ?? ""} placeholder="Example: a customer causes a refund above $100 or reads another customer's account." /></label>
+        <fieldset><legend>Untrusted inputs</legend><Checks name="untrusted_inputs" values={ASSURANCE_INPUTS} selected={engagement?.untrusted_inputs ?? ["user_message"]} disabled={locked} /></fieldset>
+        <fieldset><legend>Sensitive data in scope</legend><Checks name="sensitive_data" values={ASSURANCE_DATA} selected={engagement?.sensitive_data ?? []} disabled={locked} /></fieldset>
+        <fieldset><legend>Consequential actions</legend><Checks name="consequential_actions" values={ASSURANCE_ACTIONS} selected={engagement?.consequential_actions ?? ["read", "write"]} disabled={locked} /></fieldset>
+        <label>Agent identity and authorization<textarea name="identity_controls" required minLength={10} maxLength={2000} rows={3} disabled={locked} defaultValue={engagement?.identity_controls ?? ""} placeholder="How the agent authenticates, whose authority it uses, and how permissions are scoped or revoked." /></label>
+        <label>Human approval and emergency stop<textarea name="human_approval" required minLength={10} maxLength={2000} rows={3} disabled={locked} defaultValue={engagement?.human_approval ?? ""} placeholder="Which actions require approval, who approves them, and how the agent can be stopped." /></label>
+        <ErrorNote>{saving.error}</ErrorNote>
+        {!locked && <button disabled={saving.busy}>{saving.busy ? "Saving…" : engagement ? "Save scope" : "Create assessment scope"}</button>}
+      </form>
+      {engagement && ["draft", "requested"].includes(engagement.status) && (
+        <div className="assurance-request"><p><b>Founding sprint: $2,500 fixed.</b> Final scope and any private-runner cost are confirmed before work starts.</p><button className="accent" type="button" disabled={requesting.busy || engagement.status === "requested"} onClick={() => void request()}>{engagement.status === "requested" ? "Assessment requested" : requesting.busy ? "Requesting…" : "Request managed assessment"}</button><ErrorNote>{requesting.error}</ErrorNote></div>
+      )}
+      <p className="muted small">A completed assessment records evidence for the tested version and declared scope. It is not a certification or a guarantee of safety.</p>
+    </section>
+  );
+}
+
+export const TABS = ["overview", "assurance", "agent", "canaries", "scan", "continuous", "funding", "activity", "findings", "ledger"] as const;
 export type Tab = (typeof TABS)[number];
 
 /** The tab a ?tab= value names. Anything unknown is the overview. */
@@ -1032,6 +1135,7 @@ export function DashboardBounty() {
           </>
         )}
         {tab === "agent" && <Config bounty={bounty} act={act} />}
+        {tab === "assurance" && <AssuranceTab bountyId={bounty.id} />}
         {tab === "canaries" && <CanarySection bounty={bounty} act={act} />}
         {tab === "scan" && <ScanTab bounty={bounty} reload={page.reload} />}
         {tab === "continuous" && <ContinuousTab bountyId={bounty.id} />}

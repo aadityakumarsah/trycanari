@@ -1,7 +1,7 @@
 [project]
 name = "agentbounty"
 version = "0.1.0"
-description = "Marketplace for canary-verified attacks on AI agents, paid in SOL on Solana"
+description = "Managed security assurance and continuous regression for tool-using AI agents"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
