@@ -19,6 +19,8 @@ await rm(site, { recursive: true, force: true });
 await cp(built, `${site}/app`, { recursive: true });
 await Bun.write(`${site}/index.html`, Bun.file(`${site}/app/index.html`));
 await rm(`${site}/app/index.html`);
+// Copy the Pages Functions middleware
+await cp("functions", `${site}/functions`, { recursive: true });
 // Use the current Wrangler release: older releases can upload the static site
 // while silently leaving a Pages Functions bundle inactive.
 await run(["bunx", "wrangler@4", "pages", "deploy", site, "--project-name", project, "--branch", "main", "--commit-dirty=true"]);
