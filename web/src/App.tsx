@@ -15,6 +15,7 @@ import { DashboardBounty } from "./pages/DashboardBounty.tsx";
 import { Home } from "./pages/Home.tsx";
 import { Login } from "./pages/Login.tsx";
 import { MyAttempts, useSavedAttempts } from "./pages/MyAttempts.tsx";
+import { Pilot } from "./pages/Pilot.tsx";
 import { InvitePage } from "./pages/Invite.tsx";
 import { Profile } from "./pages/Profile.tsx";
 import { Report } from "./pages/Report.tsx";
@@ -232,6 +233,13 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
                   <small>List an agent and lock a reward</small>
                 </span>
               </Link>
+              <Link to="/pilot" onClick={onNavigate}>
+                <Icon name="target" size={18} />
+                <span>
+                  <strong>Design partner pilot</strong>
+                  <small>Run a free baseline scan together</small>
+                </span>
+              </Link>
               <a href="/agent.md">
                 <Icon name="doc" size={18} />
                 <span>
@@ -322,6 +330,9 @@ function Footer({ onNavigate }: { onNavigate: () => void }) {
         ))}
         <Link to="/docs" onClick={onNavigate}>
           Docs
+        </Link>
+        <Link to="/pilot" onClick={onNavigate}>
+          Design partner pilot
         </Link>
         <a href="/api-docs">API explorer</a>
         <a href="/agent.md">agent.md</a>
@@ -464,6 +475,14 @@ export function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/docs" element={<Docs />} />
+            <Route
+              path="/pilot"
+              element={
+                <Page wide>
+                  <Pilot />
+                </Page>
+              }
+            />
             <Route
               path="/break/:breakId"
               element={

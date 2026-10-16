@@ -35,6 +35,7 @@ TABLES = {
     "refunds",
     "rearm_checks",
     "payment_audit",
+    "pilot_applications",
 }
 ENUM_TYPES = {
     "bounty_state",
@@ -138,7 +139,7 @@ def test_a_bounty_already_live_is_not_handed_to_the_house_hunter() -> None:
         command.downgrade(config, "0024")
         assert asyncio.run(_run(url, "SELECT state::text FROM findings")) == [("paid",)]
         assert asyncio.run(_names(url, PUBLIC_TABLES)) == (
-            TABLES - {"house_hunts", "saved_attacks", "continuous_runs"}
+            TABLES - {"house_hunts", "saved_attacks", "continuous_runs", "pilot_applications"}
         ) | {"alembic_version"}
 
 

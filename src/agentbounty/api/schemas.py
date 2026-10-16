@@ -217,6 +217,101 @@ class ActionsPage(BaseModel):
     total: int
 
 
+PilotStage = Literal["prototype", "beta", "production"]
+PilotStatus = Literal["new", "contacted", "qualified", "pilot", "paid", "closed"]
+PilotGoal = Literal["baseline", "bounty", "continuous", "audit"]
+
+
+class PilotApplicationIn(Body):
+    name: Annotated[Line, Field(min_length=2, max_length=80)]
+    work_email: str = Field(min_length=3, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    company: Annotated[Line, Field(min_length=2, max_length=120)]
+    company_website: str = Field(default="", max_length=300)
+    role: Annotated[Line, Field(max_length=100)] = ""
+    stage: PilotStage
+    use_case: str = Field(min_length=30, max_length=4_000)
+    goals: list[PilotGoal] = Field(min_length=1, max_length=4)
+    source: str = Field(default="direct", max_length=100)
+    # A hidden field. A real person never fills it; accepting it silently avoids teaching bots.
+    fax: str = Field(default="", max_length=200)
+
+    @field_validator("work_email")
+    @classmethod
+    def normalize_work_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+    @field_validator("company_website")
+    @classmethod
+    def validate_company_website(cls, value: str) -> str:
+        cleaned = value.strip()
+        if cleaned and not cleaned.startswith(("https://", "http://")):
+            raise ValueError("company website must start with https://")
+        return cleaned
+
+    @field_validator("use_case")
+    @classmethod
+    def normalize_use_case(cls, value: str) -> str:
+        return value.strip()
+
+
+class PilotApplicationAccepted(BaseModel):
+    id: uuid.UUID
+    message: str
+
+
+class AdminPilotUpdate(Body):
+    status: PilotStatus | None = None
+    notes: str | None = Field(default=None, max_length=10_000)
+
+
+class AdminPilotOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    work_email: str
+    company: str
+    company_website: str | None
+    role: str | None
+    stage: PilotStage
+    use_case: str
+    goals: list[PilotGoal]
+    source: str
+    status: PilotStatus
+    notes: str
+    created_at: datetime
+    updated_at: datetime
+    account_id: uuid.UUID | None = None
+    bounties: int = 0
+    launched_bounties: int = 0
+    scans_completed: int = 0
+    verified_breaks: int = 0
+    paid_plan: bool = False
+
+
+class PilotFunnelOut(BaseModel):
+    applications: int
+    signed_up: int
+    listed_agent: int
+    ran_scan: int
+    launched_bounty: int
+    paid: int
+    status_counts: dict[str, int]
+
+
+class PilotTractionOut(BaseModel):
+    tested_agents_7d: int
+    regressions_caught: int
+    median_patch_hours: float | None
+    active_pilots: int
+    paid_conversion_percent: float
+
+
+class AdminPilotsPage(BaseModel):
+    items: list[AdminPilotOut]
+    total: int
+    funnel: PilotFunnelOut
+    traction: PilotTractionOut
+
+
 class PeoplePage(BaseModel):
     items: list[PersonOut]
     total: int

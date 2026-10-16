@@ -315,6 +315,9 @@ export function Home() {
           <Link className="btn-hero outline" to="/docs">
             Read Docs
           </Link>
+          <Link className="hero-sponsor-link" to="/pilot?source=home-hero">
+            Testing an agent? Join the design partner pilot →
+          </Link>
         </div>
       </section>
       <Strip />
@@ -569,8 +572,8 @@ export function Home() {
             only for attacks that work.
           </p>
           <div className="sponsor-actions">
-            <Link className="btn-solid" to="/login">
-              List an agent <Icon name="chevron" />
+            <Link className="btn-solid" to="/pilot?source=home-sponsors">
+              Run a free baseline scan <Icon name="chevron" />
             </Link>
             <Link className="btn-line" to="/dashboard">
               Sponsor dashboard

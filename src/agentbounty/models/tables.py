@@ -146,6 +146,38 @@ class AdminAction(Base):
     created_at: Mapped[datetime] = created_now()
 
 
+class PilotApplication(Base):
+    """A company asking to become a design partner, kept private for the operator."""
+
+    __tablename__ = "pilot_applications"
+    __table_args__ = (
+        CheckConstraint("stage IN ('prototype', 'beta', 'production')", name="stage_known"),
+        CheckConstraint(
+            "status IN ('new', 'contacted', 'qualified', 'pilot', 'paid', 'closed')",
+            name="status_known",
+        ),
+        Index("ix_pilot_applications_created_at", "created_at"),
+        Index("ix_pilot_applications_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    work_email: Mapped[str] = mapped_column(Text, unique=True)
+    name: Mapped[str] = mapped_column(Text)
+    company: Mapped[str] = mapped_column(Text)
+    company_website: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[str | None] = mapped_column(Text)
+    stage: Mapped[str] = mapped_column(Text)
+    use_case: Mapped[str] = mapped_column(Text)
+    goals_json: Mapped[list[str]] = mapped_column(JSONB)
+    source: Mapped[str] = mapped_column(Text, default="direct", server_default="direct")
+    status: Mapped[str] = mapped_column(Text, default="new", server_default="new")
+    notes: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = created_now()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
+    )
+
+
 class PlatformSetting(Base):
     """A setting the owner changes while the service runs. The value is ciphertext."""
 

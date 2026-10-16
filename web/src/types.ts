@@ -655,6 +655,61 @@ export interface AdminAction {
   created_at: string;
 }
 
+export type PilotStage = "prototype" | "beta" | "production";
+export type PilotStatus = "new" | "contacted" | "qualified" | "pilot" | "paid" | "closed";
+export type PilotGoal = "baseline" | "bounty" | "continuous" | "audit";
+
+export interface PilotApplicationAccepted {
+  id: string;
+  message: string;
+}
+
+export interface AdminPilot {
+  id: string;
+  name: string;
+  work_email: string;
+  company: string;
+  company_website: string | null;
+  role: string | null;
+  stage: PilotStage;
+  use_case: string;
+  goals: PilotGoal[];
+  source: string;
+  status: PilotStatus;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  account_id: string | null;
+  bounties: number;
+  launched_bounties: number;
+  scans_completed: number;
+  verified_breaks: number;
+  paid_plan: boolean;
+}
+
+export interface PilotFunnel {
+  applications: number;
+  signed_up: number;
+  listed_agent: number;
+  ran_scan: number;
+  launched_bounty: number;
+  paid: number;
+  status_counts: Record<string, number>;
+}
+
+export interface AdminPilotsPage {
+  items: AdminPilot[];
+  total: number;
+  funnel: PilotFunnel;
+  traction: {
+    tested_agents_7d: number;
+    regressions_caught: number;
+    median_patch_hours: number | null;
+    active_pilots: number;
+    paid_conversion_percent: number;
+  };
+}
+
 export interface Finding {
   id: string;
   /** "waived": the house hunter found it, and nothing is paid for it. */

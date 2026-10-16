@@ -58,6 +58,7 @@
 
 ## Contents
 
+- [Design partner pilot](#design-partner-pilot)
 - [How it works](#how-it-works)
 - [Features](#features)
 - [Architecture](#architecture)
@@ -73,6 +74,10 @@
 - [Deployment](#deployment)
 - [Security](#security)
 - [What is not done](#what-is-not-done)
+
+## Design partner pilot
+
+The current company milestone is real usage: 5–10 design partners, 2–3 paid pilots and agents tested every week. The public application is at `/pilot`; admins track applications through real signup, scan, bounty and payment activity in the **Pilots** tab. The offer, qualification criteria, target-account list, outreach copy and four-week cadence are in [`docs/DESIGN_PARTNER_PLAYBOOK.md`](docs/DESIGN_PARTNER_PLAYBOOK.md).
 
 ## How it works
 

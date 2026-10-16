@@ -9,7 +9,18 @@ import { Ago, Avatar, ErrorNote, Skeleton } from "../components/ui.tsx";
 import { useAction, useLoad } from "../hooks.ts";
 import { useToast } from "../toast.tsx";
 import { useConfirm } from "../confirm.tsx";
-import type { AdminAction, AdminCode, CodeKind, Page, Person, ProviderSetting, ProviderTest } from "../types.ts";
+import type {
+  AdminAction,
+  AdminCode,
+  AdminPilot,
+  AdminPilotsPage,
+  CodeKind,
+  Page,
+  Person,
+  PilotStatus,
+  ProviderSetting,
+  ProviderTest,
+} from "../types.ts";
 
 const PAGE = 25;
 
@@ -739,6 +750,132 @@ function Activity() {
   );
 }
 
+const PILOT_STATUSES: PilotStatus[] = ["new", "contacted", "qualified", "pilot", "paid", "closed"];
+
+function PilotLead({ pilot, onSaved }: { pilot: AdminPilot; onSaved: () => Promise<void> }) {
+  const [status, setStatus] = useState<PilotStatus>(pilot.status);
+  const [notes, setNotes] = useState(pilot.notes);
+  const saving = useAction();
+  const changed = status !== pilot.status || notes !== pilot.notes;
+
+  useEffect(() => {
+    setStatus(pilot.status);
+    setNotes(pilot.notes);
+  }, [pilot]);
+
+  async function save() {
+    const ok = await saving.run(async () => {
+      await api<AdminPilot>("PATCH", `/v1/admin/pilots/${pilot.id}`, { body: { status, notes } });
+    });
+    if (ok) await onSaved();
+  }
+
+  return (
+    <article className="pilot-lead">
+      <header>
+        <div>
+          <span className={`badge badge-${pilot.status}`}>{pilot.status}</span>
+          <h3>{pilot.company}</h3>
+          <p>
+            <b>{pilot.name}</b> · <a href={`mailto:${pilot.work_email}`}>{pilot.work_email}</a>
+            {pilot.role ? ` · ${pilot.role}` : ""}
+          </p>
+        </div>
+        <span className="pilot-lead-date">Applied <Ago iso={pilot.created_at} /></span>
+      </header>
+      <div className="pilot-lead-body">
+        <div>
+          <p className="label">Agent</p>
+          <p>{pilot.use_case}</p>
+          <div className="pilot-lead-tags">
+            <span>{pilot.stage}</span>
+            {pilot.goals.map((goal) => <span key={goal}>{goal}</span>)}
+            <span>via {pilot.source}</span>
+          </div>
+          {pilot.company_website && <a className="pilot-site" href={pilot.company_website} target="_blank" rel="noreferrer">Open company site ↗</a>}
+        </div>
+        <div>
+          <p className="label">Measured product activity</p>
+          <dl className="pilot-outcomes">
+            <div className={pilot.account_id ? "done" : undefined}><dt>Account</dt><dd>{pilot.account_id ? "yes" : "—"}</dd></div>
+            <div className={pilot.bounties > 0 ? "done" : undefined}><dt>Agents listed</dt><dd>{pilot.bounties}</dd></div>
+            <div className={pilot.scans_completed > 0 ? "done" : undefined}><dt>Scans run</dt><dd>{pilot.scans_completed}</dd></div>
+            <div className={pilot.launched_bounties > 0 ? "done" : undefined}><dt>Bounties launched</dt><dd>{pilot.launched_bounties}</dd></div>
+            <div className={pilot.verified_breaks > 0 ? "done" : undefined}><dt>Breaks found</dt><dd>{pilot.verified_breaks}</dd></div>
+            <div className={pilot.paid_plan ? "done" : undefined}><dt>Paid Watch plan</dt><dd>{pilot.paid_plan ? "yes" : "—"}</dd></div>
+          </dl>
+        </div>
+      </div>
+      <footer>
+        <label>
+          Funnel stage
+          <select value={status} onChange={(event) => setStatus(event.target.value as PilotStatus)}>
+            {PILOT_STATUSES.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <label className="pilot-notes">
+          Private notes
+          <textarea value={notes} rows={2} maxLength={10000} onChange={(event) => setNotes(event.target.value)} placeholder="Next step, owner, objections or call notes" />
+        </label>
+        <button type="button" disabled={!changed || saving.busy} onClick={() => void save()}>{saving.busy ? "Saving…" : "Save"}</button>
+      </footer>
+      <ErrorNote>{saving.error}</ErrorNote>
+    </article>
+  );
+}
+
+function Pilots() {
+  const [offset, setOffset] = useState(0);
+  const address = `/v1/admin/pilots?limit=${PAGE}&offset=${offset}`;
+  const pilots = useLoad((signal) => api<AdminPilotsPage>("GET", address, { signal }), address);
+  const funnel = pilots.data?.funnel;
+  const traction = pilots.data?.traction;
+  const steps = funnel ? [
+    ["Applied", funnel.applications],
+    ["Signed up", funnel.signed_up],
+    ["Listed an agent", funnel.listed_agent],
+    ["Ran a scan", funnel.ran_scan],
+    ["Launched", funnel.launched_bounty],
+    ["Paid", funnel.paid],
+  ] as const : [];
+
+  return (
+    <section className="pilots-admin">
+      {traction && (
+        <div className="traction-cards" aria-label="Pilot traction">
+          <div><small>Agents tested</small><b>{traction.tested_agents_7d}</b><span>last 7 days</span></div>
+          <div><small>Regressions caught</small><b>{traction.regressions_caught}</b><span>paid attacks still worked</span></div>
+          <div><small>Median patch time</small><b>{traction.median_patch_hours === null ? "—" : `${traction.median_patch_hours}h`}</b><span>finding to passed re-test</span></div>
+          <div><small>Paid conversion</small><b>{traction.paid_conversion_percent}%</b><span>{funnel?.paid ?? 0} of {traction.active_pilots} active pilots</span></div>
+        </div>
+      )}
+      <div className="pilot-funnel" aria-label="Design partner funnel">
+        {steps.map(([label, value], index) => (
+          <div key={label}>
+            <small>{index + 1}. {label}</small>
+            <b>{value}</b>
+            {index > 0 && funnel && <span>{funnel.applications ? Math.round((value / funnel.applications) * 100) : 0}% of applications</span>}
+          </div>
+        ))}
+      </div>
+      <div className="pilots-admin-head">
+        <div>
+          <h2>Design partner pipeline</h2>
+          <p>Operator notes are manual. Signup, listing, scans, launches, breaks and payments come from real product activity.</p>
+        </div>
+        <span className="muted count-note">{pilots.data?.total ?? 0} applications</span>
+      </div>
+      <ErrorNote>{pilots.error}</ErrorNote>
+      {!pilots.data && !pilots.error && <Skeleton block lines={5} />}
+      {pilots.data?.total === 0 && <p className="empty">No design partner has applied yet.</p>}
+      <div className="pilot-leads">
+        {pilots.data?.items.map((pilot) => <PilotLead key={pilot.id} pilot={pilot} onSaved={pilots.reload} />)}
+      </div>
+      <Pager offset={offset} total={pilots.data?.total ?? 0} onMove={setOffset} />
+    </section>
+  );
+}
+
 /** Providers that speak the OpenAI chat API, with the address each one uses. */
 const PROVIDERS: [string, string][] = [
   ["Groq", "https://api.groq.com/openai/v1"],
@@ -1013,8 +1150,8 @@ function Provider() {
   );
 }
 
-const TABS = ["people", "codes", "activity", "model"] as const;
-const TAB_NAMES = { people: "People", codes: "Invites", activity: "Activity", model: "Model" } as const;
+const TABS = ["people", "pilots", "codes", "activity", "model"] as const;
+const TAB_NAMES = { people: "People", pilots: "Pilots", codes: "Invites", activity: "Activity", model: "Model" } as const;
 
 /** The admin area. It is loaded only for an admin: nobody else's browser is sent this code. */
 export default function Admin() {
@@ -1055,6 +1192,7 @@ export default function Admin() {
       </div>
       <div role="tabpanel">
         {tab === "people" && <People />}
+        {tab === "pilots" && <Pilots />}
         {tab === "codes" && <Codes />}
         {tab === "activity" && <Activity />}
         {tab === "model" && <Provider />}
