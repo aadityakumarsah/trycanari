@@ -1,29 +1,29 @@
 <section id="attempt-{{ attempt.id }}" class="result" {% if status.state.value in ('queued', 'running') %}hx-get="/studio/{{ bounty_id }}/attempts/{{ attempt.id }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
   <div class="section-head">
-    <div><p class="eyebrow">Attempt {{ attempt.id|string|truncate(13, True, '') }}</p><h2>{% if status.verdict %}{{ status.verdict.replace('_', ' ')|title }}{% else %}{{ status.state.value|title }}{% endif %}</h2></div>
-    <a href="/studio/{{ bounty_id }}?fork={{ attempt.id }}">Fork this attack</a>
+    <div><p class="eyebrow">03 · Run · Attempt {{ attempt.id|string|truncate(13, True, '') }}</p><h2>{% if status.verdict %}{{ status.verdict.replace('_', ' ')|title }}{% else %}{{ status.state.value|title }}{% endif %}</h2><p class="section-copy">Five independent replays, each starting with a clean conversation.</p></div>
+    <a class="fork-link" href="/studio/{{ bounty_id }}?fork={{ attempt.id }}">Fork this attack <span aria-hidden="true">↗</span></a>
   </div>
 
   <div class="replay-track">
     {% for index in range(5) %}
       {% set finished = status.state.value == 'done' or index < status.runs_done %}
-      <div class="replay {% if finished %}finished{% elif index == status.runs_done and status.state.value == 'running' %}active{% endif %}"><b>{{ index + 1 }}</b><span>{% if finished %}complete{% elif index == status.runs_done and status.state.value == 'running' %}running{% else %}waiting{% endif %}</span></div>
+      <div class="replay {% if finished %}finished{% elif index == status.runs_done and status.state.value == 'running' %}active{% endif %}"><span class="replay-dot">{% if finished %}✓{% else %}{{ index + 1 }}{% endif %}</span><div><b>Replay {{ index + 1 }}</b><span>{% if finished %}complete{% elif index == status.runs_done and status.state.value == 'running' %}running{% else %}waiting{% endif %}</span></div></div>
     {% endfor %}
   </div>
-  {% if status.state.value == 'queued' %}<p class="quiet">Queued{% if status.queue_ahead %} behind {{ status.queue_ahead }} attempt{% if status.queue_ahead != 1 %}s{% endif %}{% endif %}.</p>{% endif %}
+  {% if status.state.value == 'queued' %}<p class="queue-note"><i aria-hidden="true"></i>Queued{% if status.queue_ahead %} behind {{ status.queue_ahead }} attempt{% if status.queue_ahead != 1 %}s{% endif %}{% endif %}. This page updates automatically.</p>{% endif %}
 
   {% if status.runs %}
   <div class="run-table-wrap"><table class="run-table"><thead><tr><th>Replay</th>{% for canary, count in status.canaries %}<th>{{ canary.public_label }}</th>{% endfor %}<th>Agent</th><th>Tokens</th></tr></thead>
-    <tbody>{% for run in status.runs %}<tr><th>{{ run.run_index + 1 }}</th>{% for canary, count in status.canaries %}<td class="{% if canary.public_label in run.tripped %}trip-true{% else %}trip-false{% endif %}">{% if canary.public_label in run.tripped %}tripped{% else %}held{% endif %}</td>{% endfor %}<td>{{ run.replies }} replies{% if run.tool_calls %} · {{ run.tool_calls|join(', ') }}{% endif %}</td><td>{{ run.tokens }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for run in status.runs %}<tr><th><span class="table-replay">{{ run.run_index + 1 }}</span></th>{% for canary, count in status.canaries %}<td class="{% if canary.public_label in run.tripped %}trip-true{% else %}trip-false{% endif %}"><i aria-hidden="true"></i>{% if canary.public_label in run.tripped %}tripped{% else %}held{% endif %}</td>{% endfor %}<td>{{ run.replies }} replies{% if run.tool_calls %} · {{ run.tool_calls|join(', ') }}{% endif %}</td><td class="token-cell">{{ run.tokens }}</td></tr>{% endfor %}</tbody>
   </table></div>
   {% endif %}
 
-  {% if status.verdict == 'verified' %}<div class="verdict verified"><b>Verified break</b><span>{{ status.canary.public_label }} tripped in {{ status.tripped_runs }} of {{ status.total_runs }} replays.</span></div>
-  {% elif status.verdict %}<div class="why"><h3>Why it didn't break</h3><ul>{% for line in why %}<li>{{ line }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if status.verdict == 'verified' %}<div class="verdict verified"><span class="verdict-icon" aria-hidden="true">✓</span><div><b>Verified break</b><span>{{ status.canary.public_label }} tripped in {{ status.tripped_runs }} of {{ status.total_runs }} replays.</span></div></div>
+  {% elif status.verdict %}<div class="why"><div class="insight-head"><span aria-hidden="true">i</span><div><p class="eyebrow">Replay evidence</p><h3>Why it didn't break</h3></div></div><ul>{% for line in why %}<li>{{ line }}</li>{% endfor %}</ul></div>{% endif %}
 
   {% if status.replies %}
-  <div class="replies"><h3>Actual agent replies from one replay</h3>
-    {% for reply in status.replies %}<article><pre>{{ reply.content }}</pre>{% if reply.tool_calls %}<details><summary>{{ reply.tool_calls|length }} tool call{% if reply.tool_calls|length != 1 %}s{% endif %}</summary>{% for call in reply.tool_calls %}<code>{{ call.name }}({{ call.arguments }})</code>{% endfor %}</details>{% endif %}</article>{% endfor %}
+  <div class="replies"><div class="replies-head"><div><p class="eyebrow">Transcript sample</p><h3>Actual agent replies from one replay</h3></div><span>Recorded, not generated</span></div>
+    {% for reply in status.replies %}<article><div class="reply-role"><i aria-hidden="true"></i>assistant</div><pre>{{ reply.content }}</pre>{% if reply.tool_calls %}<details><summary>{{ reply.tool_calls|length }} tool call{% if reply.tool_calls|length != 1 %}s{% endif %}</summary>{% for call in reply.tool_calls %}<code>{{ call.name }}({{ call.arguments }})</code>{% endfor %}</details>{% endif %}</article>{% endfor %}
   </div>
   {% endif %}
 </section>
