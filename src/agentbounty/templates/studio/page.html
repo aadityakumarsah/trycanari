@@ -2,74 +2,89 @@
 {% block title %}Attack Studio · {{ bounty.title }}{% endblock %}
 {% block body %}
 <header class="topbar">
-  <a href="/bounties/{{ bounty.id }}" class="brand">trycanari</a>
-  <span class="crumb">/ Attack Studio / {{ bounty.title }}</span>
-  <span class="allowance"><b>{{ allowance.balance }}</b> / {{ allowance.cap }} attempts tokens · {{ allowance.tier }}</span>
+  <a href="/" class="brand" aria-label="Canari home">trycanari</a>
+  <span class="topbar-rule" aria-hidden="true"></span>
+  <div class="crumb"><span>Attack Studio</span><span aria-hidden="true">/</span><strong>{{ bounty.title }}</strong></div>
+  <div class="topbar-actions">
+    <a href="/b/{{ bounty.id }}" class="back-link">Back to bounty</a>
+    <span class="allowance"><i aria-hidden="true"></i><b>{{ allowance.balance }}</b> / {{ allowance.cap }} attempts tokens <em>{{ allowance.tier }}</em></span>
+  </div>
 </header>
 
-<main>
+<main id="studio-content">
   <section class="hero">
-    <div>
+    <div class="hero-copy">
       <p class="eyebrow">Hunter workspace</p>
       <h1>{{ bounty.title }}</h1>
       <p>Build the attack in the agent's declared entry points, inspect the assembled context, then spend an attempt.</p>
     </div>
-    <div class="rules">
-      <span>5 fresh replays</span><span>3 matching trips verify</span>
-      {% if allowance.next_tier %}<span>First break unlocks {{ allowance.next_cap }} tokens</span>{% endif %}
+    <div class="run-policy" aria-label="Verification policy">
+      <div><b>5</b><span>fresh replays</span></div>
+      <div><b>3</b><span>matching trips verify</span></div>
+      {% if allowance.next_tier %}<div><b>{{ allowance.next_cap }}</b><span>tokens after first break</span></div>{% endif %}
     </div>
   </section>
 
+  <nav class="workflow" aria-label="Attack workflow">
+    <a href="#compose"><span>01</span><b>Compose</b><small>Fill attack slots</small></a>
+    <a href="#inspect"><span>02</span><b>Inspect</b><small>Verify the context</small></a>
+    <a href="#run"><span>03</span><b>Run</b><small>Watch five replays</small></a>
+  </nav>
+
   {% if not accepting %}
-  <aside class="notice">This bounty is not accepting new attempts. You can still reopen and inspect your history.</aside>
+  <aside class="notice" role="status"><b>Attempts paused.</b> This bounty is not accepting new attempts. You can still reopen and inspect your history.</aside>
   {% endif %}
 
   <form id="attack-form" hx-post="/studio/{{ bounty.id }}/attempts" hx-target="#run-result" hx-swap="innerHTML">
     <div class="studio-grid">
-      <section class="workbench">
-        <div class="section-head"><div><p class="eyebrow">01 · Compose</p><h2>Attack slots</h2></div><span>Only in-scope slots are editable</span></div>
+      <section class="workbench panel" id="compose">
+        <div class="section-head"><div><p class="eyebrow">01 · Compose</p><h2>Attack slots</h2><p class="section-copy">Write only inside the entry points the sponsor exposed.</p></div><span class="scope-note"><i aria-hidden="true"></i> Only in-scope slots are editable</span></div>
         {% include "studio/_editor.html" %}
       </section>
 
-      <aside class="preview-panel">
-        <div class="section-head"><div><p class="eyebrow">02 · Inspect</p><h2>Agent context</h2></div><span><i class="legend"></i> your injection</span></div>
+      <aside class="preview-panel panel" id="inspect">
+        <div class="section-head"><div><p class="eyebrow">02 · Inspect</p><h2>Agent context</h2><p class="section-copy">Exactly what the harness sends to the agent.</p></div><span class="injection-key"><i class="legend" aria-hidden="true"></i> your injection</span></div>
         <div id="preview">{% include "studio/_preview.html" %}</div>
       </aside>
     </div>
 
-    <section class="palette">
-      <div class="section-head"><div><p class="eyebrow">Technique palette</p><h2>Start from a scaffold</h2></div><span>Inserted text remains fully editable</span></div>
-      <label class="target-slot">Insert into
-        <select name="technique_slot">
-          {% for slot in config.entry_points %}<option value="{{ slot.value }}">{{ slot_names[slot] }}</option>{% endfor %}
-        </select>
-      </label>
+    <section class="palette panel">
+      <div class="palette-head">
+        <div class="section-head"><div><p class="eyebrow">Technique palette</p><h2>Start from a scaffold</h2><p class="section-copy">Insert a proven attack pattern, then make it your own.</p></div></div>
+        <label class="target-slot"><span>Insert into</span>
+          <select name="technique_slot" aria-label="Technique destination slot">
+            {% for slot in config.entry_points %}<option value="{{ slot.value }}">{{ slot_names[slot] }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
       <div class="techniques">
         {% for technique in techniques %}
         <button type="button" class="technique" hx-post="/studio/{{ bounty.id }}/techniques/{{ technique.key }}" hx-include="#attack-form" hx-target="#slot-editor" hx-swap="outerHTML">
-          <b>{{ technique.name }}</b><span>{{ technique.explanation }}</span>
+          <span class="technique-add" aria-hidden="true">+</span><b>{{ technique.name }}</b><span>{{ technique.explanation }}</span>
         </button>
         {% endfor %}
       </div>
     </section>
 
-    <section class="launch">
-      <label>Payout address<input name="payout_address" required autocomplete="off" spellcheck="false" value="{{ payout_address }}" placeholder="Address controlled by you"></label>
-      <div><p>Attempts are charged from your rolling 24-hour allowance. Failed platform replays do not count.</p><button {% if not accepting %}disabled{% endif %}>Run five replays</button></div>
+    <section class="launch panel">
+      <div class="launch-copy"><p class="eyebrow">Ready to test?</p><h2>Run this attack</h2><p>Five clean replays run against the same assembled context. Failed platform replays do not count.</p></div>
+      <label class="payout-field"><span>Payout address</span><input name="payout_address" required autocomplete="off" spellcheck="false" value="{{ payout_address }}" placeholder="Address controlled by you"><small>Used only if this attack earns a payout.</small></label>
+      <button class="run-button" {% if not accepting %}disabled{% endif %}><span>Run five replays</span><i aria-hidden="true">→</i></button>
     </section>
   </form>
 
-  <section id="run-result" class="result-shell">
-    <div class="empty-result"><p class="eyebrow">03 · Run</p><h2>Replay results appear here</h2><p>Each replay starts from an empty conversation. Nothing from preview spends an attempt.</p></div>
+  <section id="run-result" class="result-shell panel" aria-live="polite" aria-busy="false">
+    <div class="empty-result" id="run"><span class="empty-icon" aria-hidden="true">05</span><div><p class="eyebrow">03 · Run</p><h2>Replay results appear here</h2><p>Each replay starts from an empty conversation. Previewing and editing never spend an attempt.</p></div></div>
   </section>
 
-  <section class="history">
-    <div class="section-head"><div><p class="eyebrow">Your work</p><h2>Attempt history</h2></div><span>Stored on the server</span></div>
+  <section class="history panel">
+    <div class="section-head"><div><p class="eyebrow">Your work</p><h2>Attempt history</h2><p class="section-copy">Reopen a result or fork an earlier attack into the editor.</p></div><span class="server-note"><i aria-hidden="true"></i> Stored on the server</span></div>
     {% if history %}
     <div class="history-list">
       {% for item in history %}
       <article>
-        <div><b>{{ item.attempt.submitted_at.strftime('%d %b %Y · %H:%M UTC') }}</b><span>{{ item.attempt.state.value }}{% if item.verdict %} · {{ item.verdict.replace('_', ' ') }}{% endif %}</span></div>
+        <div class="history-number">{{ loop.index }}</div>
+        <div class="history-summary"><b>{{ item.attempt.submitted_at.strftime('%d %b %Y · %H:%M UTC') }}</b><span class="history-state {{ item.attempt.state.value }}">{{ item.attempt.state.value }}{% if item.verdict %} · {{ item.verdict.replace('_', ' ') }}{% endif %}</span></div>
         <div class="history-actions">
           <a href="/studio/{{ bounty.id }}?fork={{ item.attempt.id }}">Fork in editor</a>
           <button type="button" hx-get="/studio/{{ bounty.id }}/attempts/{{ item.attempt.id }}" hx-target="#run-result">Open result</button>
@@ -77,7 +92,7 @@
       </article>
       {% endfor %}
     </div>
-    {% else %}<p class="quiet">No attempts on this bounty yet.</p>{% endif %}
+    {% else %}<div class="history-empty"><span aria-hidden="true">↳</span><p><b>No attempts on this bounty yet.</b><small>Your runs will stay here so you can reopen, compare, and fork them.</small></p></div>{% endif %}
   </section>
 </main>
 {% endblock %}
