@@ -344,6 +344,13 @@ export interface ReferralCode {
   created_at: string;
 }
 
+export interface ReferralCodesPage {
+  items: ReferralCode[];
+  total: number;
+  seat_limit: number;
+  available_seats: number;
+}
+
 export interface Session {
   signed_in: boolean;
   email: string | null;

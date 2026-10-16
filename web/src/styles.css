@@ -859,6 +859,10 @@ main.frame { min-height: calc(100vh - var(--nav) - 150px); }
 .page .inline-form label { margin: 0; }
 .page .inline-form select { min-width: 110px; }
 .codes { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.codes-window { max-height: min(520px, 62vh); padding-right: 4px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.codes-window:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+.page .list-more { display: block; width: fit-content; margin: 12px auto 0; }
+.codes li, .bounty-rows li, .hunt, .attempt-row, .agent-card { content-visibility: auto; contain-intrinsic-size: auto 76px; }
 .codes li { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--black); }
 .codes code { font: 600 15px/22px var(--mono); letter-spacing: 0.06em; color: var(--accent); }
 .codes .muted { flex: 1; font-size: 13px; }

@@ -401,6 +401,14 @@ async def test_a_sponsor_can_share_one_link_and_see_everyone_who_joined(
         "users": [],
         "created_at": None,
     }
+    page = (await club.client.get("/v1/referral-codes/page?limit=1", headers=sponsor)).json()
+    assert (page["total"], page["seat_limit"], page["available_seats"]) == (1, 25, 22)
+    assert [item["code"] for item in page["items"]] == [code]
+    empty = (
+        await club.client.get("/v1/referral-codes/page?limit=1&offset=1", headers=sponsor)
+    ).json()
+    assert empty["items"] == []
+    assert empty["total"] == 1
 
     for name in ("one", "two"):
         await member(club, f"{name}@example.com", code)
@@ -410,6 +418,8 @@ async def test_a_sponsor_can_share_one_link_and_see_everyone_who_joined(
         "one@example.com",
         "two@example.com",
     ]
+    page = (await club.client.get("/v1/referral-codes/page", headers=sponsor)).json()
+    assert page["available_seats"] == 24
 
     await member(club, "three@example.com", code)
     full = (await club.client.get("/v1/referral-codes", headers=sponsor)).json()[0]
