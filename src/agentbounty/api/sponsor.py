@@ -1126,6 +1126,10 @@ async def _continuous_out(session: Transaction, cipher: Cipher, run: Any) -> Con
         success_rate=(succeeded / len(results))
         if results
         else (0.0 if run.state == "done" else None),
+        failures=succeeded,
+        attack_success_rate=(succeeded / len(results))
+        if results
+        else (0.0 if run.state == "done" else None),
         covered_canary_types=sorted(
             {CanaryType(result["canary_type"]) for result in results}, key=lambda item: item.value
         ),

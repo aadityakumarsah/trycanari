@@ -8,9 +8,11 @@ import { useLoad } from "../hooks.ts";
 import { formatZec, sym } from "../money.ts";
 import type {
   AttemptActivity,
+  Assurance,
   Compliance,
   ComplianceControl,
   ComplianceRisk,
+  ContinuousTesting,
   Finding,
   Ledger,
   Scan,
@@ -24,6 +26,8 @@ interface Everything {
   ledger: Ledger;
   scan: Scan;
   compliance: Compliance;
+  assurance: Assurance | null;
+  continuous: ContinuousTesting;
 }
 
 /** How each standing is said on the page. Never "compliant": the report shows evidence. */
@@ -74,20 +78,22 @@ export function Report() {
   const { bountyId = "" } = useParams();
   const base = `/v1/bounties/${bountyId}`;
   const page = useLoad<Everything>(async (signal) => {
-    const [bounty, findings, activity, ledger, scan, compliance] = await Promise.all([
+    const [bounty, findings, activity, ledger, scan, compliance, assuranceState, continuous] = await Promise.all([
       api<SponsorBountyDetail>("GET", `/v1/sponsor/bounties/${bountyId}`, { signal }),
       api<Finding[]>("GET", `${base}/findings`, { signal }),
       api<AttemptActivity>("GET", `${base}/attempts`, { signal }),
       api<Ledger>("GET", `${base}/ledger`, { signal }),
       api<Scan>("GET", `${base}/scan`, { signal }),
       api<Compliance>("GET", `${base}/compliance`, { signal }),
+      api<{ engagement: Assurance | null }>("GET", `${base}/assurance`, { signal }),
+      api<ContinuousTesting>("GET", `${base}/continuous`, { signal }),
     ]);
-    return { bounty, findings, activity, ledger, scan, compliance };
+    return { bounty, findings, activity, ledger, scan, compliance, assurance: assuranceState.engagement, continuous };
   }, bountyId);
 
   if (page.status === 404 || page.status === 422) return <NotFound message="That bounty does not exist." />;
   if (!page.data) return page.error ? <ErrorNote>{page.error}</ErrorNote> : <Skeleton block lines={6} />;
-  const { bounty, findings, activity, ledger, scan, compliance } = page.data;
+  const { bounty, findings, activity, ledger, scan, compliance, assurance, continuous } = page.data;
   const mapped = new Map(compliance.findings.map((finding) => [finding.id, finding]));
   // The entries of OWASP's lists that a tripwire guards against.
   const guards = (label: string) =>
@@ -180,6 +186,48 @@ export function Report() {
             </tr>
           </tbody>
         </table>
+      </section>
+
+      {assurance && (
+        <section>
+          <h2>Managed assessment scope</h2>
+          <p>
+            Status <b>{words(assurance.status)}</b>. Service: {words(assurance.service)}. Agent stage: {assurance.stage}.
+            Data path: {words(assurance.deployment)}.
+          </p>
+          <table><tbody>
+            <tr><th>Version under test</th><td>{assurance.tested_config_hash ? <>v{assurance.tested_config_version} · <code>{assurance.tested_config_hash}</code></> : "Not fixed yet"}</td></tr>
+            <tr><th>Consequential workflow</th><td>{assurance.workflow}</td></tr>
+            <tr><th>Feared failure</th><td>{assurance.feared_failure}</td></tr>
+            <tr><th>Untrusted inputs</th><td>{assurance.untrusted_inputs.map(words).join(", ")}</td></tr>
+            <tr><th>Sensitive data</th><td>{assurance.sensitive_data.map(words).join(", ") || "None declared"}</td></tr>
+            <tr><th>Consequential actions</th><td>{assurance.consequential_actions.map(words).join(", ")}</td></tr>
+            <tr><th>Identity and authorization</th><td>{assurance.identity_controls} <small className="risk-ids">Customer-declared; verify against implementation evidence.</small></td></tr>
+            <tr><th>Human control</th><td>{assurance.human_approval} <small className="risk-ids">Customer-declared; verify during delivery.</small></td></tr>
+            <tr><th>Recorded limitations</th><td>{assurance.limitations || "No engagement-specific limitations recorded yet."}</td></tr>
+          </tbody></table>
+        </section>
+      )}
+
+      <section>
+        <h2>Continuous regression evidence</h2>
+        {continuous.runs.length === 0 ? (
+          <p className="muted">No version or release gate has completed yet.</p>
+        ) : (
+          <table>
+            <thead><tr><th>Version</th><th>Trigger</th><th>Cases</th><th>Result</th><th>Finished</th></tr></thead>
+            <tbody>{continuous.runs.slice(0, 10).map((run) => (
+              <tr key={run.id}>
+                <td>v{run.config_version}<br /><code>{run.config_hash.slice(0, 12)}…</code></td>
+                <td>{words(run.trigger)}</td>
+                <td>{run.total} ({run.covered_canary_types.map(words).join(", ") || "none"})</td>
+                <td>{run.state !== "done" ? words(run.state) : run.passed ? "Held" : `${run.failures} regression${run.failures === 1 ? "" : "s"}`}</td>
+                <td>{run.finished_at ? when(run.finished_at) : "—"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+        <p className="muted small">Each run is bound to the recorded configuration fingerprint. Baseline probes and retained confirmed breaks are replayed after changes.</p>
       </section>
 
       <section>

@@ -447,6 +447,64 @@ export interface SponsorBountyDetail extends SponsorBounty {
   house_hunt?: HouseHunt | null;
 }
 
+export type AssuranceStatus =
+  | "draft"
+  | "requested"
+  | "scoping"
+  | "testing"
+  | "remediation"
+  | "retest"
+  | "complete"
+  | "cancelled";
+export type AssuranceInput = "user_message" | "document" | "tool_result" | "web_page" | "memory" | "sub_agent";
+export type AssuranceData = "personal" | "financial" | "health" | "credentials" | "confidential" | "regulated";
+export type AssuranceAction = "read" | "write" | "send" | "approve" | "delete" | "execute" | "move_money";
+
+export interface Assurance {
+  id: string;
+  bounty_id: string;
+  service: "sprint" | "continuous";
+  status: AssuranceStatus;
+  stage: "prototype" | "beta" | "production";
+  deployment: "managed" | "private_cloud" | "on_prem";
+  untrusted_inputs: AssuranceInput[];
+  sensitive_data: AssuranceData[];
+  consequential_actions: AssuranceAction[];
+  workflow: string;
+  feared_failure: string;
+  identity_controls: string;
+  human_approval: string;
+  limitations: string;
+  quoted_price_cents: number;
+  tested_config_hash: string | null;
+  tested_config_version: number | null;
+  readiness: {
+    agent_configured: boolean;
+    boundaries_defined: boolean;
+    attack_surface_declared: boolean;
+    consequence_documented: boolean;
+    identity_documented: boolean;
+    approval_documented: boolean;
+    ready: boolean;
+  };
+  requested_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminAssurance extends Assurance {
+  sponsor_email: string;
+  bounty_title: string;
+  operator_notes: string;
+}
+
+export interface AdminAssurancePage {
+  items: AdminAssurance[];
+  total: number;
+}
+
 export interface Plan {
   offered: boolean;
   active: boolean;
@@ -524,7 +582,7 @@ export interface Scan {
 export interface ContinuousProbe {
   case_id: string;
   canary_type: CanaryType;
-  source: "past_break" | "corpus";
+  source: "baseline" | "past_break" | "corpus";
   tripped: boolean;
 }
 
@@ -538,6 +596,8 @@ export interface ContinuousRun {
   total: number;
   succeeded: number;
   success_rate: number | null;
+  failures: number;
+  attack_success_rate: number | null;
   covered_canary_types: CanaryType[];
   regressed: ContinuousProbe[];
   created_at: string;
@@ -653,6 +713,61 @@ export interface AdminAction {
   target_email: string | null;
   detail: string | null;
   created_at: string;
+}
+
+export type PilotStage = "prototype" | "beta" | "production";
+export type PilotStatus = "new" | "contacted" | "qualified" | "pilot" | "paid" | "closed";
+export type PilotGoal = "baseline" | "bounty" | "continuous" | "audit";
+
+export interface PilotApplicationAccepted {
+  id: string;
+  message: string;
+}
+
+export interface AdminPilot {
+  id: string;
+  name: string;
+  work_email: string;
+  company: string;
+  company_website: string | null;
+  role: string | null;
+  stage: PilotStage;
+  use_case: string;
+  goals: PilotGoal[];
+  source: string;
+  status: PilotStatus;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  account_id: string | null;
+  bounties: number;
+  launched_bounties: number;
+  scans_completed: number;
+  verified_breaks: number;
+  paid_plan: boolean;
+}
+
+export interface PilotFunnel {
+  applications: number;
+  signed_up: number;
+  listed_agent: number;
+  ran_scan: number;
+  launched_bounty: number;
+  paid: number;
+  status_counts: Record<string, number>;
+}
+
+export interface AdminPilotsPage {
+  items: AdminPilot[];
+  total: number;
+  funnel: PilotFunnel;
+  traction: {
+    tested_agents_7d: number;
+    regressions_caught: number;
+    median_patch_hours: number | null;
+    active_pilots: number;
+    paid_conversion_percent: number;
+  };
 }
 
 export interface Finding {

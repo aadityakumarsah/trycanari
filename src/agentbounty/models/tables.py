@@ -21,6 +21,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     Numeric,
+    String,
     Text,
     UniqueConstraint,
     Uuid,
@@ -144,6 +145,92 @@ class AdminAction(Base):
     target_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"))
     detail: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_now()
+
+
+class PilotApplication(Base):
+    """A company asking to become a design partner, kept private for the operator."""
+
+    __tablename__ = "pilot_applications"
+    __table_args__ = (
+        CheckConstraint("stage IN ('prototype', 'beta', 'production')", name="stage_known"),
+        CheckConstraint(
+            "status IN ('new', 'contacted', 'qualified', 'pilot', 'paid', 'closed')",
+            name="status_known",
+        ),
+        Index("ix_pilot_applications_created_at", "created_at"),
+        Index("ix_pilot_applications_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    work_email: Mapped[str] = mapped_column(Text, unique=True)
+    name: Mapped[str] = mapped_column(Text)
+    company: Mapped[str] = mapped_column(Text)
+    company_website: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[str | None] = mapped_column(Text)
+    stage: Mapped[str] = mapped_column(Text)
+    use_case: Mapped[str] = mapped_column(Text)
+    goals_json: Mapped[list[str]] = mapped_column(JSONB)
+    source: Mapped[str] = mapped_column(Text, default="direct", server_default="direct")
+    status: Mapped[str] = mapped_column(Text, default="new", server_default="new")
+    notes: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = created_now()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
+    )
+
+
+class AssuranceEngagement(Base):
+    """A private, managed assessment of one sponsor-owned agent.
+
+    The categorical scope is useful for reporting and stays queryable. Free-form
+    threat-model details and operator notes are encrypted because they can reveal
+    production architecture, controls, and failure modes.
+    """
+
+    __tablename__ = "assurance_engagements"
+    __table_args__ = (
+        UniqueConstraint("bounty_id"),
+        CheckConstraint(
+            "status IN ('draft', 'requested', 'scoping', 'testing', 'remediation',"
+            " 'retest', 'complete', 'cancelled')",
+            name="status_known",
+        ),
+        CheckConstraint("service IN ('sprint', 'continuous')", name="service_known"),
+        CheckConstraint("stage IN ('prototype', 'beta', 'production')", name="stage_known"),
+        CheckConstraint(
+            "deployment IN ('managed', 'private_cloud', 'on_prem')",
+            name="deployment_known",
+        ),
+        CheckConstraint("quoted_price_cents >= 0", name="quoted_price_not_negative"),
+        Index("ix_assurance_engagements_status", "status"),
+        Index("ix_assurance_engagements_created_at", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"), index=True)
+    service: Mapped[str] = mapped_column(Text, default="sprint", server_default="sprint")
+    status: Mapped[str] = mapped_column(Text, default="draft", server_default="draft")
+    stage: Mapped[str] = mapped_column(Text)
+    deployment: Mapped[str] = mapped_column(Text, default="managed", server_default="managed")
+    untrusted_inputs_json: Mapped[list[str]] = mapped_column(JSONB)
+    sensitive_data_json: Mapped[list[str]] = mapped_column(JSONB)
+    consequential_actions_json: Mapped[list[str]] = mapped_column(JSONB)
+    workflow_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    feared_failure_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    identity_controls_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    human_approval_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    operator_notes_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    limitations_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    quoted_price_cents: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    tested_config_hash: Mapped[str | None] = mapped_column(String(64))
+    tested_config_version: Mapped[int | None] = mapped_column(Integer)
+    requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_now()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
+    )
 
 
 class PlatformSetting(Base):

@@ -47,6 +47,57 @@
   --pad: 40px;
 }
 
+/* Managed agent assurance ------------------------------------------------------------ */
+.assurance-page { display: grid; gap: 1rem; }
+.assurance-hero { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, .7fr); gap: 3rem; align-items: center; padding: 5rem 4rem; border: 1px solid var(--border); border-radius: 24px; overflow: hidden; }
+.assurance-hero h1 { max-width: 780px; margin: .35rem 0 1rem; font-size: clamp(2.8rem, 7vw, 5.8rem); line-height: .95; letter-spacing: -.065em; }
+.assurance-price { padding: 2rem; background: color-mix(in srgb, var(--surface) 92%, var(--accent)); border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 24px 80px color-mix(in srgb, #000 22%, transparent); }
+.assurance-amount { margin: .4rem 0; font-size: 4rem; line-height: 1; font-weight: 800; letter-spacing: -.05em; }
+.assurance-amount sup { font-size: 1.2rem; vertical-align: top; }
+.assurance-price ul { display: grid; gap: .75rem; padding: 1rem 0 0; list-style: none; }
+.assurance-price li { display: flex; gap: .55rem; align-items: center; }
+.assurance-fit-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+.assurance-fit-grid article { padding: 1.5rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+.assurance-fit-grid h3 { margin: 1rem 0 .35rem; }
+.assurance-fit-grid p, .assurance-delivery p { color: var(--muted); }
+.assurance-delivery ol { display: grid; gap: .8rem; padding: 0; list-style: none; counter-reset: assurance; }
+.assurance-delivery li { display: grid; grid-template-columns: 42px 1fr; gap: 1rem; align-items: start; padding: 1.2rem; border: 1px solid var(--border); border-radius: 14px; }
+.assurance-delivery li > span, .assurance-progress li > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: var(--on-solid); font-weight: 800; }
+.assurance-delivery h3 { margin: 0 0 .25rem; }
+.assurance-delivery p { margin: 0; }
+.assurance-truth { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; padding: 2.5rem; border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--border)); border-radius: 18px; }
+.assurance-truth h2, .assurance-truth p { margin: 0; }
+.assurance-workspace-head { display: flex; justify-content: space-between; align-items: start; gap: 2rem; }
+.assurance-progress { display: grid; grid-template-columns: repeat(6, 1fr); gap: .55rem; margin: 1.5rem 0; padding: 0; list-style: none; }
+.assurance-progress li { display: flex; align-items: center; gap: .45rem; padding: .7rem; border: 1px solid var(--border); border-radius: 12px; color: var(--muted); font-size: .82rem; }
+.assurance-progress li > span { width: 24px; height: 24px; background: var(--border); color: var(--muted); font-size: .75rem; }
+.assurance-progress li.done { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--foreground); }
+.assurance-progress li.done > span { background: var(--accent); color: var(--on-solid); }
+.assurance-readiness { display: flex; flex-wrap: wrap; gap: .55rem; margin: 1rem 0 1.5rem; }
+.assurance-readiness h3 { width: 100%; margin-bottom: .2rem; }
+.assurance-readiness span { display: flex; align-items: center; gap: .35rem; padding: .45rem .65rem; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: .82rem; }
+.assurance-readiness span.done { color: var(--foreground); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.assurance-checks { display: flex; flex-wrap: wrap; gap: .55rem; }
+.assurance-checks label { display: flex; flex-direction: row; align-items: center; gap: .4rem; width: auto; padding: .55rem .7rem; border: 1px solid var(--border); border-radius: 10px; font-weight: 500; }
+.assurance-checks input { width: auto; margin: 0; }
+.assurance-workspace fieldset { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 12px; }
+.assurance-workspace legend { padding: 0 .35rem; font-weight: 700; }
+.assurance-request { display: flex; justify-content: space-between; gap: 1rem; align-items: center; margin-top: 1.5rem; padding: 1.2rem; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 14px; background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.assurance-request p { margin: 0; }
+.assessment-admin-fields { display: grid !important; grid-template-columns: 160px 140px 1fr 1fr auto; align-items: end; }
+.assessment-admin-fields textarea { min-height: 80px; }
+
+@media (max-width: 900px) {
+  .assurance-hero, .assurance-truth { grid-template-columns: 1fr; padding: 2rem 1.25rem; }
+  .assurance-fit-grid { grid-template-columns: repeat(2, 1fr); }
+  .assurance-progress { grid-template-columns: repeat(2, 1fr); }
+  .assessment-admin-fields { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 560px) {
+  .assurance-fit-grid { grid-template-columns: 1fr; }
+  .assurance-request { align-items: stretch; flex-direction: column; }
+}
+
 /* The light theme: the same tokens, for a white page. Chosen with the switch in the bar. */
 :root[data-theme="light"] {
   color-scheme: light;
@@ -721,6 +772,114 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px soli
 main.frame { min-height: calc(100vh - var(--nav) - 150px); }
 .page label.check { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .page .composer > h2 { margin-bottom: 16px; }
+
+/* ============ design partner pilot and traction funnel ============ */
+.hero-sponsor-link { flex-basis: 100%; margin-top: 3px; color: var(--accent); font: 500 13px/20px var(--sans); text-decoration: none; }
+.hero-sponsor-link:hover { text-decoration: underline; text-underline-offset: 4px; }
+.pilot-page { display: grid; gap: 64px; }
+.pilot-hero { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr); gap: 54px; align-items: center; padding: 24px 0 16px; }
+.pilot-hero .eyebrow, .pilot-apply .eyebrow, .pilot-success .eyebrow { color: var(--accent); }
+.page .pilot-hero h1 { max-width: 720px; margin: 5px 0 18px; font-size: clamp(38px, 5vw, 64px); line-height: 1.05; letter-spacing: -0.04em; }
+.pilot-hero .lede { max-width: 690px; margin: 0; color: var(--muted); font-size: 18px; line-height: 29px; }
+.pilot-proof { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 24px; color: var(--soft); font-size: 13px; }
+.pilot-proof span { display: inline-flex; align-items: center; gap: 7px; }
+.pilot-proof svg { color: var(--accent); }
+.pilot-offer { padding: 24px; border: 1px solid var(--accent-edge); border-radius: 16px; background: radial-gradient(90% 80% at 100% 0%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%), var(--surface); box-shadow: 0 20px 60px var(--shadow); }
+.pilot-offer > .label, .pilot-lead .label { color: var(--dim); font: 600 10.5px/16px var(--mono); letter-spacing: 0.09em; text-transform: uppercase; }
+.pilot-offer ol { display: grid; gap: 18px; margin: 18px 0 20px; padding: 0; list-style: none; counter-reset: pilot; }
+.pilot-offer li { position: relative; display: flex; flex-direction: column; gap: 3px; padding-left: 38px; counter-increment: pilot; }
+.pilot-offer li::before { content: counter(pilot); position: absolute; top: 0; left: 0; display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; background: var(--accent-bg); color: var(--accent); font: 600 11px/1 var(--mono); }
+.pilot-offer li b { color: var(--foreground); font: 600 14px/20px var(--sans); }
+.pilot-offer li span, .pilot-commitment { color: var(--muted); font-size: 12.5px; line-height: 19px; }
+.pilot-commitment { margin: 0; padding-top: 16px; border-top: 1px solid var(--border); }
+.pilot-apply { display: grid; grid-template-columns: minmax(250px, 0.65fr) minmax(0, 1.35fr); gap: 54px; align-items: start; padding-top: 52px; border-top: 1px solid var(--border); }
+.page .pilot-apply h2 { margin: 5px 0 12px; font-size: 27px; line-height: 35px; }
+.pilot-apply-copy > p:not(.eyebrow) { color: var(--muted); font-size: 14px; line-height: 23px; }
+.pilot-fit { display: grid; gap: 10px; margin: 22px 0 0; padding: 0; list-style: none; }
+.pilot-fit li { display: flex; gap: 9px; color: var(--soft); font-size: 13px; line-height: 20px; }
+.pilot-fit svg { flex: none; margin-top: 3px; color: var(--accent); }
+.pilot-form { margin: 0; padding: 26px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+.pilot-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+.pilot-form label { color: var(--soft); }
+.pilot-form label > small { display: inline; margin-left: 4px; color: var(--dim); }
+.pilot-form textarea { min-height: 130px; font-family: var(--sans); }
+.pilot-goals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 14px; border-radius: 9px; }
+.pilot-goals legend { color: var(--soft); }
+.page .pilot-goals label { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--black); cursor: pointer; }
+.pilot-goals input { flex: none; width: 15px; height: 15px; min-height: 0; margin: 3px 0 0; accent-color: var(--accent); }
+.pilot-goals span { display: flex; flex-direction: column; gap: 2px; }
+.pilot-goals b { color: var(--foreground); font: 500 13px/19px var(--sans); }
+.pilot-goals small { color: var(--muted); font: 400 11.5px/17px var(--sans); }
+.pilot-honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.pilot-submit { display: flex; align-items: center; gap: 14px; }
+.pilot-submit small { color: var(--dim); font-size: 11.5px; line-height: 17px; }
+.pilot-success { max-width: 650px; margin: 60px auto 0; padding: 42px; border: 1px solid var(--accent-edge); border-radius: 18px; background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 65%), var(--surface); text-align: center; }
+.pilot-success-mark { display: grid; place-items: center; width: 58px; height: 58px; margin: 0 auto 18px; border-radius: 50%; background: var(--accent-bg); color: var(--accent); }
+.pilot-success .lede { margin: 0 0 12px; }
+.pilot-success > p:not(.eyebrow):not(.lede) { color: var(--muted); font-size: 14px; }
+.pilot-actions { display: flex; justify-content: center; gap: 10px; margin-top: 24px; }
+
+.pilots-admin { display: grid; gap: 20px; }
+.traction-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.traction-cards > div { display: flex; flex-direction: column; padding: 16px; border: 1px solid var(--accent-edge); border-radius: 10px; background: linear-gradient(145deg, var(--accent-bg), transparent 70%), var(--surface); }
+.traction-cards small { color: var(--accent); font: 600 10px/15px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
+.traction-cards b { margin: 5px 0 1px; font: 600 26px/33px var(--mono); }
+.traction-cards span { color: var(--muted); font-size: 10.5px; line-height: 16px; }
+.pilot-funnel { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.pilot-funnel > div { display: flex; flex-direction: column; min-width: 0; padding: 16px; }
+.pilot-funnel > div + div { border-left: 1px solid var(--border); }
+.pilot-funnel small { color: var(--dim); font: 500 10px/15px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; }
+.pilot-funnel b { margin: 5px 0 1px; font: 600 28px/34px var(--mono); }
+.pilot-funnel span { color: var(--muted); font-size: 10.5px; line-height: 16px; white-space: nowrap; }
+.pilots-admin-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.page .pilots-admin-head h2 { margin: 0 0 2px; }
+.pilots-admin-head p { color: var(--muted); font-size: 13px; }
+.pilot-leads { display: grid; gap: 12px; }
+.pilot-lead { padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.pilot-lead > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.pilot-lead header > div { min-width: 0; }
+.page .pilot-lead h3 { display: inline; margin: 0 0 0 9px; font-size: 17px; }
+.pilot-lead header p { margin-top: 5px; color: var(--muted); font-size: 12.5px; }
+.pilot-lead header p b { color: var(--soft); font-weight: 500; }
+.pilot-lead-date { flex: none; color: var(--dim); font-size: 11.5px; }
+.pilot-lead-body { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(330px, 0.75fr); gap: 28px; padding: 16px 0; }
+.pilot-lead-body > div > p:not(.label) { margin: 7px 0 12px; color: var(--soft); font-size: 13.5px; line-height: 21px; white-space: pre-wrap; }
+.pilot-lead-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.pilot-lead-tags span { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 10.5px; line-height: 16px; text-transform: capitalize; }
+.pilot-site { display: inline-block; margin-top: 10px; color: var(--accent); font-size: 12px; text-decoration: none; }
+.pilot-outcomes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 7px 0 0; }
+.pilot-outcomes div { display: flex; justify-content: space-between; gap: 8px; padding: 7px 9px; border-radius: 6px; background: var(--black); color: var(--dim); }
+.pilot-outcomes div.done { background: var(--accent-bg); color: var(--accent); }
+.pilot-outcomes dt, .pilot-outcomes dd { margin: 0; font-size: 11.5px; line-height: 17px; }
+.pilot-outcomes dd { font-family: var(--mono); font-weight: 600; }
+.pilot-lead > footer { display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; gap: 12px; align-items: end; padding-top: 14px; border-top: 1px solid var(--border); }
+.pilot-lead footer label { margin: 0; }
+.pilot-lead footer textarea { min-height: 62px; font-family: var(--sans); }
+.pilot-lead footer button { margin-bottom: 1px; }
+.badge-new, .badge-contacted { background: var(--surface-2); color: var(--muted); }
+.badge-qualified, .badge-pilot { background: var(--warn-bg); color: var(--warn); }
+
+@media (max-width: 900px) {
+  .pilot-hero, .pilot-apply { grid-template-columns: minmax(0, 1fr); gap: 30px; }
+  .pilot-funnel { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .traction-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pilot-funnel > div:nth-child(4) { border-left: 0; border-top: 1px solid var(--border); }
+  .pilot-funnel > div:nth-child(5), .pilot-funnel > div:nth-child(6) { border-top: 1px solid var(--border); }
+  .pilot-lead-body { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .pilot-page { gap: 42px; }
+  .page .pilot-hero h1 { font-size: 38px; }
+  .pilot-form, .pilot-success { padding: 22px 18px; }
+  .pilot-fields, .pilot-goals { grid-template-columns: minmax(0, 1fr); }
+  .pilot-submit, .pilot-actions { align-items: stretch; flex-direction: column; }
+  .pilot-funnel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .traction-cards { grid-template-columns: minmax(0, 1fr); }
+  .pilot-funnel > div:nth-child(odd) { border-left: 0; }
+  .pilot-funnel > div:nth-child(n + 3) { border-top: 1px solid var(--border); }
+  .pilot-lead > header, .pilots-admin-head { align-items: flex-start; flex-direction: column; }
+  .pilot-lead > footer { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* --- the flow: attacks in, proof out --- */
 .flow-sec .sec-head { padding: 0 var(--pad); }

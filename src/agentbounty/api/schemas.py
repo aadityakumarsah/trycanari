@@ -217,6 +217,101 @@ class ActionsPage(BaseModel):
     total: int
 
 
+PilotStage = Literal["prototype", "beta", "production"]
+PilotStatus = Literal["new", "contacted", "qualified", "pilot", "paid", "closed"]
+PilotGoal = Literal["baseline", "bounty", "continuous", "audit"]
+
+
+class PilotApplicationIn(Body):
+    name: Annotated[Line, Field(min_length=2, max_length=80)]
+    work_email: str = Field(min_length=3, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    company: Annotated[Line, Field(min_length=2, max_length=120)]
+    company_website: str = Field(default="", max_length=300)
+    role: Annotated[Line, Field(max_length=100)] = ""
+    stage: PilotStage
+    use_case: str = Field(min_length=30, max_length=4_000)
+    goals: list[PilotGoal] = Field(min_length=1, max_length=4)
+    source: str = Field(default="direct", max_length=100)
+    # A hidden field. A real person never fills it; accepting it silently avoids teaching bots.
+    fax: str = Field(default="", max_length=200)
+
+    @field_validator("work_email")
+    @classmethod
+    def normalize_work_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+    @field_validator("company_website")
+    @classmethod
+    def validate_company_website(cls, value: str) -> str:
+        cleaned = value.strip()
+        if cleaned and not cleaned.startswith(("https://", "http://")):
+            raise ValueError("company website must start with https://")
+        return cleaned
+
+    @field_validator("use_case")
+    @classmethod
+    def normalize_use_case(cls, value: str) -> str:
+        return value.strip()
+
+
+class PilotApplicationAccepted(BaseModel):
+    id: uuid.UUID
+    message: str
+
+
+class AdminPilotUpdate(Body):
+    status: PilotStatus | None = None
+    notes: str | None = Field(default=None, max_length=10_000)
+
+
+class AdminPilotOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    work_email: str
+    company: str
+    company_website: str | None
+    role: str | None
+    stage: PilotStage
+    use_case: str
+    goals: list[PilotGoal]
+    source: str
+    status: PilotStatus
+    notes: str
+    created_at: datetime
+    updated_at: datetime
+    account_id: uuid.UUID | None = None
+    bounties: int = 0
+    launched_bounties: int = 0
+    scans_completed: int = 0
+    verified_breaks: int = 0
+    paid_plan: bool = False
+
+
+class PilotFunnelOut(BaseModel):
+    applications: int
+    signed_up: int
+    listed_agent: int
+    ran_scan: int
+    launched_bounty: int
+    paid: int
+    status_counts: dict[str, int]
+
+
+class PilotTractionOut(BaseModel):
+    tested_agents_7d: int
+    regressions_caught: int
+    median_patch_hours: float | None
+    active_pilots: int
+    paid_conversion_percent: float
+
+
+class AdminPilotsPage(BaseModel):
+    items: list[AdminPilotOut]
+    total: int
+    funnel: PilotFunnelOut
+    traction: PilotTractionOut
+
+
 class PeoplePage(BaseModel):
     items: list[PersonOut]
     total: int
@@ -743,10 +838,101 @@ class BountySettingsOut(BaseModel):
     watch: bool
 
 
+AssuranceStatus = Literal[
+    "draft", "requested", "scoping", "testing", "remediation", "retest", "complete", "cancelled"
+]
+AssuranceService = Literal["sprint", "continuous"]
+AssuranceStage = Literal["prototype", "beta", "production"]
+AssuranceDeployment = Literal["managed", "private_cloud", "on_prem"]
+AssuranceInput = Literal[
+    "user_message", "document", "tool_result", "web_page", "memory", "sub_agent"
+]
+AssuranceData = Literal[
+    "personal", "financial", "health", "credentials", "confidential", "regulated"
+]
+AssuranceAction = Literal["read", "write", "send", "approve", "delete", "execute", "move_money"]
+
+
+class AssuranceIn(Body):
+    service: AssuranceService = "sprint"
+    stage: AssuranceStage
+    deployment: AssuranceDeployment = "managed"
+    untrusted_inputs: list[AssuranceInput] = Field(min_length=1, max_length=6)
+    sensitive_data: list[AssuranceData] = Field(default_factory=list, max_length=6)
+    consequential_actions: list[AssuranceAction] = Field(min_length=1, max_length=7)
+    workflow: str = Field(min_length=30, max_length=4_000)
+    feared_failure: str = Field(min_length=20, max_length=2_000)
+    identity_controls: str = Field(min_length=10, max_length=2_000)
+    human_approval: str = Field(min_length=10, max_length=2_000)
+
+    @field_validator("workflow", "feared_failure", "identity_controls", "human_approval")
+    @classmethod
+    def trim_assurance_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class AssuranceReadiness(BaseModel):
+    agent_configured: bool
+    boundaries_defined: bool
+    attack_surface_declared: bool
+    consequence_documented: bool
+    identity_documented: bool
+    approval_documented: bool
+    ready: bool
+
+
+class AssuranceOut(BaseModel):
+    id: uuid.UUID
+    bounty_id: uuid.UUID
+    service: AssuranceService
+    status: AssuranceStatus
+    stage: AssuranceStage
+    deployment: AssuranceDeployment
+    untrusted_inputs: list[AssuranceInput]
+    sensitive_data: list[AssuranceData]
+    consequential_actions: list[AssuranceAction]
+    workflow: str
+    feared_failure: str
+    identity_controls: str
+    human_approval: str
+    limitations: str
+    quoted_price_cents: int
+    tested_config_hash: str | None
+    tested_config_version: int | None
+    readiness: AssuranceReadiness
+    requested_at: datetime | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AssuranceStateOut(BaseModel):
+    engagement: AssuranceOut | None
+
+
+class AdminAssuranceUpdate(Body):
+    status: AssuranceStatus | None = None
+    quoted_price_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+    operator_notes: str | None = Field(default=None, max_length=20_000)
+    limitations: str | None = Field(default=None, max_length=10_000)
+
+
+class AdminAssuranceOut(AssuranceOut):
+    sponsor_email: str
+    bounty_title: str
+    operator_notes: str
+
+
+class AdminAssurancePage(BaseModel):
+    items: list[AdminAssuranceOut]
+    total: int
+
+
 class ContinuousProbeOut(BaseModel):
-    case_id: uuid.UUID
+    case_id: str
     canary_type: CanaryType
-    source: Literal["past_break", "corpus"]
+    source: Literal["baseline", "past_break", "corpus"]
     tripped: bool
 
 
@@ -760,6 +946,9 @@ class ContinuousRunOut(BaseModel):
     total: int
     succeeded: int
     success_rate: float | None
+    # Clear names for new clients. The two fields above remain for compatibility.
+    failures: int
+    attack_success_rate: float | None
     covered_canary_types: list[CanaryType]
     regressed: list[ContinuousProbeOut]
     created_at: datetime

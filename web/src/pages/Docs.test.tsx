@@ -18,7 +18,7 @@ describe("Docs", () => {
   test("every entry in the sidebar leads to a section on the page", () => {
     const view = page();
     const ids = CONTENTS.flatMap((group) => group.entries.map((entry) => entry.id));
-    expect(ids.length).toBe(22);
+    expect(ids.length).toBe(23);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) {
       expect(view.container.querySelector(`section#${id} h2`)).not.toBeNull();
@@ -44,6 +44,8 @@ describe("Docs", () => {
       "/v1/sponsor/bounties",
       "/v1/bounties/{id}/findings",
       "/v1/bounties/{id}/compliance",
+      "/v1/bounties/{id}/assurance",
+      "/v1/bounties/{id}/continuous",
       "/v1/bounties/{id}/ledger",
       "/v1/session",
       "/agent.md",

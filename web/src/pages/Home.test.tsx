@@ -58,5 +58,8 @@ describe("the home page", () => {
     expect(hrefs).toEqual(["/docs#editor", "/skill.md"]);
     const questions = [...view.container.querySelectorAll("#faq summary")].map((summary) => summary.textContent);
     expect(questions).toContain("Can my coding agent test my agent while I build it?");
+    expect(view.getByText("Run a free baseline scan").closest("a")?.getAttribute("href")).toBe(
+      "/pilot?source=home-sponsors",
+    );
   });
 });

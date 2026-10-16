@@ -26,6 +26,10 @@ const VERIFIED_BY: [IconName, string][] = [
 
 const FAQ: [string, string][] = [
   [
+    "What does the managed assessment include?",
+    "The founding sprint threat-models one consequential workflow, tests direct and indirect prompt injection, tool authorization and data boundaries, records reproducible evidence, and re-tests one patch. Every confirmed failure becomes a permanent regression case. The fixed founding price is $2,500; private-cloud or on-premises runners are scoped separately.",
+  ],
+  [
     "What is trycanari?",
     "A bug bounty platform for AI agents. A sponsor lists an agent, plants canaries in it and locks a reward in escrow. Hunters submit attacks. Each attack is replayed five times against a sandboxed copy of the agent, and if the same canary trips in three runs the reward is paid automatically.",
   ],
@@ -289,31 +293,34 @@ export function Home() {
   return (
     <>
       <section className="hero grid-bg">
-        <Link className="pill" to="/#bounties">
+        <Link className="pill" to="/assurance">
           <span className="pill-live">
             <i aria-hidden="true" />
-            {live.length > 0 ? `${live.length} live ${live.length === 1 ? "bounty" : "bounties"}` : "Live now"}
+            Managed assurance
           </span>
           <span className="pill-text">
-            Rewards paid in <b>{paidIn()}</b>
+            Founding sprint <b>$2,500</b>
           </span>
           <Icon name="chevron" size={14} />
         </Link>
         <h1>
-          <span className="mint">Break the Agent</span>
-          <span>{currency().private ? "Get Paid in Shielded ZEC" : `Get Paid in ${sym()}`}</span>
+          <span className="mint">Prove your agent's boundaries.</span>
+          <span>Keep proving them after every change.</span>
         </h1>
         <p className="sub">
-          Sponsors plant canaries in their AI agents and lock a reward in escrow. Trip the same canary in three of
-          five sandboxed replays and the payout is sent automatically.
+          We threat-model one consequential workflow, attack its tools and data paths, verify the patch, and turn
+          every confirmed failure into a release-blocking regression test.
         </p>
         <div className="cta">
           <WalkingMascot />
-          <Link className="btn-hero wide" to="/#bounties">
-            Start Hunting Today
+          <Link className="btn-hero wide" to="/pilot?source=home-hero">
+            Request an Assessment
           </Link>
-          <Link className="btn-hero outline" to="/docs">
-            Read Docs
+          <Link className="btn-hero outline" to="/assurance">
+            See Scope and Pricing
+          </Link>
+          <Link className="hero-sponsor-link" to="/#bounties">
+            Security researcher? Browse {live.length || "live"} bounties →
           </Link>
         </div>
       </section>
@@ -569,8 +576,8 @@ export function Home() {
             only for attacks that work.
           </p>
           <div className="sponsor-actions">
-            <Link className="btn-solid" to="/login">
-              List an agent <Icon name="chevron" />
+            <Link className="btn-solid" to="/pilot?source=home-sponsors">
+              Run a free baseline scan <Icon name="chevron" />
             </Link>
             <Link className="btn-line" to="/dashboard">
               Sponsor dashboard

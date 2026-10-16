@@ -110,6 +110,8 @@ const ANSWERS: Record<string, unknown> = {
   "/v1/bounties/b1/ledger": { balance_zatoshi: 0, entries: [] },
   "/v1/bounties/b1/scan": { state: "done", config_hash: HASH, probes: [], held: 5, total: 6, risks: { forbidden_tool: "Tool misuse and excessive agency" }, requested_at: null },
   "/v1/bounties/b1/compliance": COMPLIANCE,
+  "/v1/bounties/b1/assurance": { engagement: null },
+  "/v1/bounties/b1/continuous": { plan: { offered: false, active: true }, runs: [] },
 };
 
 async function page(answers = ANSWERS) {
