@@ -229,6 +229,8 @@ def status_out(status: attempt_service.AttemptStatus) -> AttemptStatusOut:
 
     return AttemptStatusOut(
         state=status.state,
+        tries=status.tries,
+        retry_at=status.retry_at,
         verdict=status.verdict,
         tripped_runs=status.tripped_runs,
         total_runs=status.total_runs,

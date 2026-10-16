@@ -192,13 +192,23 @@ mark { padding: 1px 2px; border-radius: 2px; background: var(--accent-bg); box-s
 .replay b, .replay div span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .replay b { color: var(--muted); font: 500 11.5px/16px var(--display); }
 .replay div span { font: 500 9.5px/14px var(--mono); text-transform: uppercase; }
-.replay.finished { background: var(--accent-surface); color: var(--accent); }
-.replay.finished .replay-dot { border-color: var(--accent-edge); background: var(--accent-bg); }
-.replay.finished b { color: var(--soft); }
+.replay.complete, .replay.held { background: var(--info-bg); color: var(--info); }
+.replay.complete .replay-dot, .replay.held .replay-dot { border-color: var(--info); background: var(--info-bg); }
+.replay.complete b, .replay.held b, .replay.tripped b, .replay.failed b { color: var(--soft); }
+.replay.tripped, .replay.failed { background: var(--bad-bg); color: var(--bad-soft); }
+.replay.tripped .replay-dot, .replay.failed .replay-dot { border-color: var(--bad); background: var(--bad-bg); }
+.replay.discarded { color: var(--dim); opacity: 0.72; }
+.replay.not-run { color: var(--dim); }
 .replay.active { background: var(--info-bg); color: var(--info); }
 .replay.active .replay-dot { border-color: var(--info); animation: pulse 1.2s ease-in-out infinite; }
 .queue-note { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--muted); font-size: 12px; }
 .queue-note i { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-bg); }
+.run-notice { display: flex; align-items: flex-start; gap: 11px; margin-top: 14px; padding: 13px 14px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface-2); }
+.run-notice > span { display: grid; flex: none; width: 26px; height: 26px; place-items: center; border: 1px solid currentColor; border-radius: 50%; font: 700 11px/1 var(--mono); }
+.run-notice b { display: block; color: var(--soft); font: 600 12.5px/18px var(--display); }
+.run-notice p { margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 18px; }
+.run-notice.cooldown { border-color: color-mix(in srgb, var(--warn) 40%, transparent); color: var(--warn); background: var(--warn-bg); }
+.run-notice.failed { border-color: color-mix(in srgb, var(--bad) 40%, transparent); color: var(--bad-soft); background: var(--bad-bg); }
 .run-table-wrap { margin-top: 18px; overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
 .run-table { width: 100%; border-collapse: collapse; background: var(--black); font-size: 12px; }
 .run-table th, .run-table td { padding: 11px 13px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
@@ -208,7 +218,7 @@ mark { padding: 1px 2px; border-radius: 2px; background: var(--accent-bg); box-s
 .trip-true, .trip-false { font-weight: 500; text-transform: capitalize; }
 .trip-true i, .trip-false i { display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: currentColor; }
 .trip-true { color: var(--bad-soft); }
-.trip-false { color: var(--accent); }
+.trip-false { color: var(--info); }
 .token-cell { color: var(--dim); font-family: var(--mono); }
 .verdict, .why, .replies { margin-top: 18px; border: 1px solid var(--border); border-radius: 6px; }
 .verdict { display: flex; align-items: center; gap: 12px; padding: 15px; }
@@ -217,6 +227,12 @@ mark { padding: 1px 2px; border-radius: 2px; background: var(--accent-bg); box-s
 .verdict b, .verdict span { display: block; }
 .verdict b { color: var(--accent); font: 600 14px/20px var(--display); }
 .verdict div span { color: var(--muted); font-size: 12.5px; }
+.not-verified { border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: var(--warn-bg); }
+.not-verified .verdict-icon { background: var(--warn); }
+.not-verified b { color: var(--warn); }
+.not-counted { background: var(--surface-2); }
+.not-counted .verdict-icon { border: 1px solid var(--border-strong); background: var(--black); color: var(--dim); }
+.not-counted b { color: var(--soft); }
 .why { padding: 17px; background: var(--surface-2); }
 .insight-head { display: flex; align-items: center; gap: 10px; }
 .insight-head > span { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--border-strong); border-radius: 50%; color: var(--info); font: 600 12px/1 var(--mono); }

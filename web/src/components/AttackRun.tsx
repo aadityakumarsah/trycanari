@@ -40,6 +40,11 @@ export function checksOf(status: AttemptStatus, withPayout = true): Check[] {
   const replayed = status.runs.length > 0;
   const best = bestTally(status);
   const ahead = status.queue_ahead ?? 0;
+  const retryAt = status.retry_at ? new Date(status.retry_at) : null;
+  const coolingDown = waiting && retryAt !== null && retryAt.getTime() > Date.now();
+  const retryTime = coolingDown
+    ? retryAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : null;
 
   const checks: Check[] = [
     {
@@ -53,11 +58,13 @@ export function checksOf(status: AttemptStatus, withPayout = true): Check[] {
       title: "Queue",
       state: waiting ? "running" : "passed",
       summary: waiting
-        ? ahead === 0
+        ? coolingDown
+          ? `The model provider limited capacity. Canari retries automatically around ${retryTime}; this does not consume an attempt token.`
+          : ahead === 0
           ? "Next in line. A worker picks it up in a moment."
           : `${plural(ahead, "attack")} on this bounty ${ahead === 1 ? "is" : "are"} replayed before yours. They run in the order they arrived.`
         : "Reached the front of the queue.",
-      meter: waiting && ahead > 0 ? `${ahead} ahead` : undefined,
+      meter: coolingDown ? "provider cooldown" : waiting && ahead > 0 ? `${ahead} ahead` : undefined,
     },
     {
       id: "replay",

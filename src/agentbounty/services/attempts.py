@@ -251,6 +251,13 @@ async def release(session: AsyncSession, claim: Claim, *, max_tries: int) -> Non
         attempt.state = AttemptState.QUEUED if attempt.tries < max_tries else AttemptState.ERROR
 
 
+async def fail_permanently(session: AsyncSession, claim: Claim) -> None:
+    """Stop retrying a model request the provider says is invalid as submitted."""
+    attempt = await _held(session, claim)
+    if attempt is not None:
+        attempt.state = AttemptState.ERROR
+
+
 async def defer_for_capacity(
     session: AsyncSession, claim: Claim, *, retry_after: timedelta
 ) -> None:
@@ -494,6 +501,9 @@ class AttemptStatus:
     queue_ahead: int | None = None
     # While running: replays finished so far.
     runs_done: int = 0
+    # Replay-worker tries so far, and a provider-capacity retry time when deferred.
+    tries: int = 0
+    retry_at: datetime | None = None
     # Once done: each replay, and how many of them each canary of the config tripped in.
     runs: tuple[RunSummary, ...] = ()
     canaries: tuple[tuple[Canary, int], ...] = ()
@@ -570,9 +580,19 @@ async def _queue_ahead(session: AsyncSession, attempt: Attempt) -> int:
 
 async def status_of(session: AsyncSession, cipher: Cipher, attempt: Attempt) -> AttemptStatus:
     if attempt.state is AttemptState.QUEUED:
-        return AttemptStatus(attempt.state, queue_ahead=await _queue_ahead(session, attempt))
+        retry_at = (
+            attempt.started_at
+            if attempt.started_at is not None and attempt.started_at > datetime.now(UTC)
+            else None
+        )
+        return AttemptStatus(
+            attempt.state,
+            queue_ahead=await _queue_ahead(session, attempt),
+            tries=attempt.tries,
+            retry_at=retry_at,
+        )
     if attempt.state is not AttemptState.DONE:
-        return AttemptStatus(attempt.state, runs_done=attempt.runs_done)
+        return AttemptStatus(attempt.state, runs_done=attempt.runs_done, tries=attempt.tries)
 
     runs = list(
         await session.scalars(
@@ -649,6 +669,7 @@ async def status_of(session: AsyncSession, cipher: Cipher, attempt: Attempt) -> 
         runs=tuple(summaries),
         canaries=tuple((canary, counts.get(str(canary.id), 0)) for canary in planted),
         state=attempt.state,
+        tries=attempt.tries,
         verdict=verdict,
         tripped_runs=tripped,
         total_runs=len(runs),

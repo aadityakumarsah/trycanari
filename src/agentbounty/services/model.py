@@ -81,6 +81,14 @@ class ModelRateLimitError(ModelError):
         self.retry_after = retry_after
 
 
+class ModelPermanentError(ModelError):
+    """The provider rejected a request that will not improve by replaying it unchanged."""
+
+    def __init__(self, message: str, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 class ModelClient(Protocol):
     async def complete(
         self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec], params: ModelParams
@@ -259,6 +267,7 @@ RATE_LIMIT_MAX_INLINE_WAIT_SECONDS = 20.0
 RATE_LIMIT_DEFAULT_RETRY_SECONDS = 60.0
 RATE_LIMIT_MAX_RETRY_SECONDS = 86_400.0
 TEMPORARY_PROVIDER_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+PERMANENT_PROVIDER_STATUSES = frozenset({400, 401, 403, 404, 422})
 
 _DURATION = re.compile(
     r"(?:(?P<hours>\d+(?:\.\d+)?)h)?\s*"
@@ -396,6 +405,12 @@ class RealModel:
                     retry_after or RATE_LIMIT_DEFAULT_RETRY_SECONDS,
                 )
             await self._sleep(retry_after)
+        if response.status_code in PERMANENT_PROVIDER_STATUSES:
+            raise ModelPermanentError(
+                f"model API rejected the request with {response.status_code}: "
+                f"{response.text[:300]}",
+                response.status_code,
+            )
         if response.status_code != httpx.codes.OK:
             raise ModelError(f"model API answered {response.status_code}: {response.text[:300]}")
         try:

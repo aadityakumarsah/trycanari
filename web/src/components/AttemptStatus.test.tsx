@@ -26,6 +26,8 @@ const TOOL = { type: "forbidden_tool" as const, public_label: "unapproved_transf
 
 const BASE: AttemptStatus = {
   state: "done",
+  tries: 1,
+  retry_at: null,
   verdict: "not_verified",
   tripped_runs: 0,
   total_runs: 5,
@@ -99,6 +101,18 @@ describe("the checks an attack goes through", () => {
     expect(queue?.summary).toContain("2 attacks on this bounty are replayed before yours");
     expect(queue?.meter).toBe("2 ahead");
     expect(checksOf({ ...WAITING, queue_ahead: 0 })[1]?.summary).toContain("Next in line");
+  });
+
+  test("a provider cooldown is explained and does not look like queue progress", () => {
+    const cooling = {
+      ...WAITING,
+      tries: 0,
+      retry_at: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const queue = checksOf(cooling).find((check) => check.id === "queue");
+    expect(queue?.summary).toContain("provider limited capacity");
+    expect(queue?.summary).toContain("does not consume an attempt token");
+    expect(queue?.meter).toBe("provider cooldown");
   });
 
   test("a running attack says which replay it is on", () => {

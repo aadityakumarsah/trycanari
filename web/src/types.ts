@@ -203,6 +203,10 @@ export interface CanaryTally {
 
 export interface AttemptStatus {
   state: "queued" | "running" | "done" | "error";
+  /** Worker tries so far. Provider-capacity deferrals do not increase this. */
+  tries: number;
+  /** ISO time when a provider-throttled attempt becomes eligible to retry. */
+  retry_at: string | null;
   verdict: Verdict | null;
   tripped_runs: number | null;
   total_runs: number | null;

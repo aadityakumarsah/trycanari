@@ -71,7 +71,16 @@ PATCHED_CONFIG = {**DEMO_CONFIG, "system_prompt": f"{SYSTEM_PROMPT}\n{GUARD_SENT
 
 
 # How far a replay has got and what each run did, which tests/test_progress.py is about.
-PROGRESS = ("queue_ahead", "runs_done", "runs_total", "threshold", "runs", "canaries")
+PROGRESS = (
+    "queue_ahead",
+    "runs_done",
+    "runs_total",
+    "threshold",
+    "runs",
+    "canaries",
+    "tries",
+    "retry_at",
+)
 
 
 def verdict_of(status: dict[str, Any]) -> dict[str, Any]:

@@ -30,7 +30,7 @@ from agentbounty.services.wallet import address_rule
 PACKAGE = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=PACKAGE / "templates")
 CSS = PACKAGE / "static" / "studio.css"
-STYLESHEET_PATH = "/studio-assets/studio-b313559.css"
+STYLESHEET_PATH = "/studio-assets/studio-b1ff1df70.css"
 
 router = APIRouter(tags=["studio"], include_in_schema=False)
 
@@ -100,6 +100,21 @@ def _editor_context(
         "fields": studio.fields_for(target.config, fills),
         "slot_names": studio.SLOT_NAMES,
         "slot_help": studio.SLOT_HELP,
+    }
+
+
+def _result_context(
+    bounty_id: uuid.UUID,
+    attempt: Attempt,
+    status: attempts.AttemptStatus,
+) -> dict[str, Any]:
+    return {
+        "bounty_id": bounty_id,
+        "attempt": attempt,
+        "status": status,
+        "replays": studio.replay_views(status),
+        "notice": studio.attempt_notice(attempt, status),
+        "why": studio.why_not_verified(status),
     }
 
 
@@ -218,7 +233,7 @@ async def submit(
         return _html(
             request,
             "studio/_result.html",
-            {"bounty_id": bounty_id, "attempt": attempt, "status": status, "why": ()},
+            _result_context(bounty_id, attempt, status),
             202,
         )
     except (studio.StudioInputError, ServiceError, ValueError) as exc:
@@ -245,10 +260,5 @@ async def result(
     return _html(
         request,
         "studio/_result.html",
-        {
-            "bounty_id": bounty_id,
-            "attempt": attempt,
-            "status": status,
-            "why": studio.why_not_verified(status),
-        },
+        _result_context(bounty_id, attempt, status),
     )
