@@ -4,8 +4,17 @@
 // API_ORIGIN and PROXY_SECRET are Pages production secrets. The latter is shared
 // with the API, allowing it to trust the forwarded client address.
 
-const API_PREFIXES = ["/v1/"];
-const API_PATHS = new Set(["/v1", "/health", "/agent.md", "/skill.md", "/api-docs", "/openapi.json"]);
+const ORIGIN_PREFIXES = ["/v1/", "/studio/", "/studio-assets/", "/evidence/"];
+const ORIGIN_PATHS = new Set([
+  "/v1",
+  "/studio",
+  "/evidence",
+  "/health",
+  "/agent.md",
+  "/skill.md",
+  "/api-docs",
+  "/openapi.json",
+]);
 
 const PAGE_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; img-src 'self' blob: https://*.googleusercontent.com https://github.com https://avatars.githubusercontent.com https://res.cloudinary.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
@@ -14,8 +23,8 @@ const PAGE_HEADERS = {
   "Cache-Control": "no-cache",
 };
 
-function isApi(pathname) {
-  return API_PATHS.has(pathname) || API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+export function isOriginRoute(pathname) {
+  return ORIGIN_PATHS.has(pathname) || ORIGIN_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
 function proxy(request, env, url) {
@@ -51,7 +60,7 @@ function proxy(request, env, url) {
 
 export async function onRequest(context) {
   const url = new URL(context.request.url);
-  if (isApi(url.pathname)) return proxy(context.request, context.env, url);
+  if (isOriginRoute(url.pathname)) return proxy(context.request, context.env, url);
 
   const response = await context.next();
   const page = new Response(response.body, {
