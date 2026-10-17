@@ -8,6 +8,7 @@ import { Code } from "../components/Code.tsx";
 import { BrokenBy } from "../components/BrokenBy.tsx";
 import { SponsoredBy } from "../components/SponsoredBy.tsx";
 import { AttackTimeline } from "../components/AttackTimeline.tsx";
+import { ControlLab } from "../components/ControlLab.tsx";
 import { Flow } from "../components/Flow.tsx";
 import { WalkingMascot } from "../components/WalkingMascot.tsx";
 import { Ago, Avatar, ErrorNote, Skeleton, words } from "../components/ui.tsx";
@@ -24,6 +25,17 @@ const VERIFIED_BY: [IconName, string][] = [
   ["coin", "Automatic payout"],
 ];
 
+const CAPABILITIES: [IconName, string, string, string[]][] = [
+  ["target", "Inspect model output", "Declare groundedness, content, schema and length invariants; get evidence, controls, principles and targeted edge cases.", ["behavior checks", "control plans"]],
+  ["code", "Scan while you build", "Run the baseline attack playbook from the dashboard, API, CLI or your coding editor over MCP.", ["MCP", "CI gate"]],
+  ["shield", "Threat-model the workflow", "Scope identities, authorization, private data, dangerous actions, untrusted inputs and human controls.", ["managed assessment", "encrypted scope"]],
+  ["bot", "Attack continuously", "The house hunter tests every live configuration and retained attacks replay after prompts, tools or models change.", ["house hunter", "regression"]],
+  ["coin", "Open a real bounty", "Let people and agents attack a sandboxed copy, escrow a reward, and pay only a reproducible verified break.", ["SOL escrow", "automatic payout"]],
+  ["repeat", "Patch and prove the fix", "A confirmed attack becomes a permanent regression case; a paused bounty reopens only after the patch holds.", ["re-arm", "version bound"]],
+  ["doc", "Export the evidence", "Keep encrypted transcripts, an append-only ledger, and customer-ready mappings to OWASP, the EU AI Act and ISO 42001.", ["audit report", "JSON export"]],
+  ["lock", "Operate safely", "Use mock tools, pinned configs, ownership isolation, rate limits, token budgets, referral access and admin controls.", ["private by default", "bounded spend"]],
+];
+
 const FAQ: [string, string][] = [
   [
     "What does the managed assessment include?",
@@ -31,7 +43,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "What is trycanari?",
-    "A bug bounty platform for AI agents. A sponsor lists an agent, plants canaries in it and locks a reward in escrow. Hunters submit attacks. Each attack is replayed five times against a sandboxed copy of the agent, and if the same canary trips in three runs the reward is paid automatically.",
+    "An agent-security platform for output controls, development scans, managed assessments, continuous regression and verified bug bounties. Teams inspect declared invariants before release, test agents against adversarial inputs, preserve confirmed failures as regression cases, and can open rewards for reproducible breaks.",
   ],
   [
     "What counts as a break?",
@@ -304,20 +316,20 @@ export function Home() {
           <Icon name="chevron" size={14} />
         </Link>
         <h1>
-          <span className="mint">Prove your agent's boundaries.</span>
-          <span>Keep proving them after every change.</span>
+          <span className="mint">Break your agent before production.</span>
+          <span>Prove the fix after every change.</span>
         </h1>
         <p className="sub">
-          We threat-model one consequential workflow, attack its tools and data paths, verify the patch, and turn
-          every confirmed failure into a release-blocking regression test.
+          Inspect model outputs, scan from your editor, threat-model consequential workflows, run verified bug
+          bounties, and turn every confirmed failure into a release-blocking regression test.
         </p>
         <div className="cta">
           <WalkingMascot />
           <Link className="btn-hero wide" to="/pilot?source=home-hero">
-            Request an Assessment
+            Test My Agent
           </Link>
-          <Link className="btn-hero outline" to="/assurance">
-            See Scope and Pricing
+          <Link className="btn-hero outline" to="/#platform">
+            See Everything TryCanari Does
           </Link>
           <Link className="hero-sponsor-link" to="/#bounties">
             Security researcher? Browse {live.length || "live"} bounties →
@@ -325,6 +337,31 @@ export function Home() {
         </div>
       </section>
       <Strip />
+
+      <section className="sec platform-overview" id="platform">
+        <div className="sec-head">
+          <p className="eyebrow">One agent-security platform</p>
+          <h2>From first inspection to continuous proof</h2>
+          <p>Use one workflow before launch, during adversarial testing, after a break, and on every later release.</p>
+        </div>
+        <div className="capability-grid">
+          {CAPABILITIES.map(([icon, title, detail, tags]) => (
+            <article key={title}>
+              <Icon name={icon} size={22} />
+              <h3>{title}</h3>
+              <p>{detail}</p>
+              <div className="mini">{tags.map((tag, index) => <Tag key={tag} on={index === 0}>{tag}</Tag>)}</div>
+            </article>
+          ))}
+        </div>
+        <div className="platform-path" aria-label="The TryCanari lifecycle">
+          {[["01", "Inspect"], ["02", "Scan"], ["03", "Attack"], ["04", "Verify"], ["05", "Patch"], ["06", "Gate"]].map(([step, label]) => (
+            <span key={step}><b>{step}</b>{label}</span>
+          ))}
+        </div>
+      </section>
+
+      <ControlLab />
 
       <section className="sec" id="bounties">
         <div className="sec-head">

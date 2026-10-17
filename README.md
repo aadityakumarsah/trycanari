@@ -5,9 +5,9 @@
 <h1 align="center">trycanari</h1>
 
 <p align="center">
-  <b>Managed security assurance and continuous regression for AI agents.</b><br />
-  Threat-model consequential workflows, prove boundaries with deterministic evidence,<br />
-  and replay every confirmed failure after prompt, model or tool changes.
+  <b>Inspect, attack and continuously prove AI-agent boundaries.</b><br />
+  Check output invariants, scan while you build, run verified bounties and managed assessments,<br />
+  then replay every confirmed failure after prompt, model or tool changes.
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="811 tests" src="https://img.shields.io/badge/tests-811%20passing-6ee7b7" />
+  <img alt="816 tests" src="https://img.shields.io/badge/tests-816%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -37,21 +37,21 @@
 
 | | |
 |---|---|
-| **What it is** | A managed agent-security assessment with continuous regression, backed by a bug-bounty testing network |
+| **What it is** | One agent-security platform for output controls, development scans, managed assessment, continuous regression and verified bug bounties |
 | **Type** | Web application: JSON API, two background workers, single-page app |
 | **Backend** | Python 3.12 · FastAPI · SQLAlchemy 2 (async) · Alembic · Pydantic v2 |
 | **Frontend** | React 19 · TypeScript (strict) · Bun |
 | **Database** | PostgreSQL 16 (works on Supabase behind its pooler) |
 | **Payments** | SOL on Solana, behind a three-method wallet interface |
-| **Models** | Any OpenAI-compatible API (OpenRouter, OpenAI and others) |
+| **Models** | Any OpenAI-compatible API, including a rate-limit-aware Groq free-plan setup |
 | **Pictures** | Cloudinary, one image per account |
 | **Status** | Runs end to end against a real model. Real payments are built but a real send is not yet proven |
 
 | Number | |
 |---:|---|
-| **65** | API operations |
-| **31** | database migrations |
-| **657** | Python tests |
+| **73** | API operations |
+| **32** | database migrations |
+| **662** | Python tests |
 | **154** | web tests |
 | **~9,700** | lines of Python |
 | **~7,900** | lines of TypeScript |
@@ -60,6 +60,7 @@
 
 - [Design partner pilot](#design-partner-pilot)
 - [Managed assurance](#managed-assurance)
+- [Output controls](#output-controls)
 - [How it works](#how-it-works)
 - [Features](#features)
 - [Architecture](#architecture)
@@ -85,6 +86,17 @@ The current company milestone is real usage: 5–10 design partners, 2–3 paid 
 The founding offer is a **$2,500 fixed assessment sprint** for one agent and one consequential workflow. The product now captures an encrypted threat-model scope, readiness, service/deployment choice, price and delivery lifecycle; gives operators a private assessment queue; adds the scope and limitations to customer evidence; and continuously replays six baseline techniques plus retained confirmed breaks against versioned configurations.
 
 The exact acceptance criteria, test procedure, data handling, evidence package, status definitions and research basis are in [`docs/ASSURANCE_PLAYBOOK.md`](docs/ASSURANCE_PLAYBOOK.md). The result is evidence for the tested version and declared scope—not certification or a guarantee of safety.
+
+## Output controls
+
+TryCanari can inspect a model response before it is accepted. A workflow declares invariants for grounding,
+required or forbidden content, required JSON keys and maximum length, then returns observable evidence,
+enforcement actions, human-readable principles and targeted edge cases.
+
+Use `POST /v1/control/workflow` without retention, or create an owner-isolated project under
+`/v1/control/projects` to keep encrypted results and append-only audit events. Raw prompts, contexts and
+responses are not stored; only their SHA-256 digests are retained. A text-only provider cannot prove a causal
+latent trace, so trace is unavailable unless an activation-capable adapter supplies explicit attribution data.
 
 ## How it works
 
@@ -141,6 +153,8 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 
 **For sponsors**
 
+- Output-control projects: check grounding, required and forbidden content, JSON shape and output length; derive controls, principles and targeted edge cases
+- Encrypted control-run history with operation permissions, owner isolation and append-only audit events
 - A managed assessment workspace for workflow, identity, authorization, data, actions and human-control scope
 - A private delivery lifecycle from request through remediation, re-test and completion
 - Version-bound continuous gates with baseline probes even before the first saved break
@@ -252,6 +266,26 @@ MODEL_BACKEND=real
 MODEL_API_BASE=https://openrouter.ai/api/v1
 MODEL_API_KEY=sk-or-…
 ```
+
+For Groq's free plan, the existing OpenAI-compatible client needs no extra SDK:
+
+```bash
+MODEL_BACKEND=real
+MODEL_API_BASE=https://api.groq.com/openai/v1
+MODEL_API_KEY=gsk_…
+ATTACKER_MODEL=openai/gpt-oss-20b
+HOUSE_MODEL=openai/gpt-oss-20b
+HOUSE_ATTEMPTS=2
+BOUNTY_DAILY_TOKEN_BUDGET=50000
+PLATFORM_DAILY_TOKEN_BUDGET=180000
+```
+
+Choose `openai/gpt-oss-20b` in an agent config. Requests are serialized per worker, short provider throttles
+are retried using `Retry-After`, and longer throttles return work to the durable queue without spending an
+attempt retry. The conservative budgets reserve headroom under the current free-plan daily token allowance;
+your [Groq Console limits page](https://console.groq.com/settings/limits) is authoritative for the exact limits
+on your organization. See Groq's [OpenAI compatibility](https://console.groq.com/docs/openai) and
+[rate-limit behavior](https://console.groq.com/docs/rate-limits) documentation for provider details.
 
 **Real payments, in SOL.** The escrow wallet is an ordinary Solana keypair. The API only
 needs its address; the payment process is the only one given the secret key.
@@ -439,7 +473,7 @@ Everything comes from environment variables; `.env.example` lists them all with 
 | `DATABASE_URL` | `postgresql+asyncpg://…` |
 | `SECRET_ENCRYPTION_KEY` | 32 random bytes, base64. Losing it makes encrypted columns unreadable |
 | `APP_ENV` | `development`, `test` or `production` |
-| `MODEL_BACKEND` | `fake`, or `real` with `MODEL_API_BASE` and `MODEL_API_KEY` (any OpenAI-compatible API, such as `https://openrouter.ai/api/v1`) |
+| `MODEL_BACKEND` | `fake`, or `real` with `MODEL_API_BASE` and `MODEL_API_KEY` (for Groq: `https://api.groq.com/openai/v1`) |
 | `WALLET_BACKEND` | `fake`, or `solana` with `SOLANA_RPC_URL`, `SOLANA_CLUSTER`, `SOLANA_SECRET_KEY` and `ESCROW_ADDRESS` |
 | `CLOUDINARY_URL` | Turns on profile picture uploads |
 | `INVITE_ONLY` | `true`: hunting needs a referral code and spends credits |
@@ -473,7 +507,7 @@ src/agentbounty/
 ├── settings.py       Every setting, read from the environment
 ├── api/              Routes: public, sponsor, admin, session, Google sign-in
 ├── services/         judge · harness · attempts · payment · ledger · credits · wallet · solana
-│                     pictures · crypto · compliance · house
+│                     pictures · crypto · compliance · house · output controls
 ├── workers/          replay (verdicts) · payment (the only holder of a wallet)
 ├── models/           Tables and enum types
 ├── admin.py          Operator commands
@@ -487,7 +521,7 @@ web/
 ├── src/pages/        Home · Bounty · Dashboard · Profile · Admin · Invite · Docs · Login
 ├── src/components/   Flow · Transcript · AttemptStatus · ReferralGate · shared pieces
 └── cloudflare/       The Pages worker that proxies API paths
-migrations/versions/  0001 … 0031
+migrations/versions/  0001 … 0032
 tests/                One file per area; a scratch database per test
 docs/REFERENCE.md     The long version of everything on this page
 ```
@@ -496,7 +530,7 @@ docs/REFERENCE.md     The long version of everything on this page
 
 ```bash
 make check        # everything below, in order
-make test         # 657 Python tests, each on its own scratch database
+make test         # 662 Python tests, each on its own scratch database
 make web-test     # 154 web tests
 make lint         # ruff
 make typecheck    # mypy --strict
