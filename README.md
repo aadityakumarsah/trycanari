@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="816 tests" src="https://img.shields.io/badge/tests-816%20passing-6ee7b7" />
+  <img alt="819 tests" src="https://img.shields.io/badge/tests-819%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -50,11 +50,11 @@
 | Number | |
 |---:|---|
 | **73** | API operations |
-| **32** | database migrations |
-| **662** | Python tests |
-| **154** | web tests |
-| **~9,700** | lines of Python |
-| **~7,900** | lines of TypeScript |
+| **33** | database migrations |
+| **664** | Python tests |
+| **155** | web tests |
+| **~20,900** | lines of Python |
+| **~13,400** | lines of TypeScript |
 
 ## Contents
 
@@ -76,6 +76,7 @@
 - [Deployment](#deployment)
 - [Security](#security)
 - [What is not done](#what-is-not-done)
+- [License](#license)
 
 ## Design partner pilot
 
@@ -171,7 +172,8 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 - A browser in that server: an agent photographs, reads, clicks and scrapes your own site
 - Harder targets: mark a tool as reading untrusted content and hunters must plant
   their attack in what it returns
-- A daily scan of watched bounties, and a shared library of breaks you choose to join
+- A daily scan of watched bounties, which tells you under the bell and by email when a
+  probe trips, and a shared library of breaks you choose to join
 - An audit report: the testing set against OWASP's risks for LLM and agentic applications,
   the EU AI Act and ISO/IEC 42001, printable, with a JSON export for compliance tools
 - One-click funding from a browser wallet
@@ -587,8 +589,6 @@ for anything sensitive.
   Zcash backend it started with is not supported and is to be removed.
 - **The free model tier is small.** Each attack is replayed five times, so a free Groq or
   OpenRouter key covers a limited number of attacks a day.
-- **Nobody is told when a daily scan finds something.** A watched bounty is scanned
-  every day and the result is on its Scan tab, but no notification or email is sent.
 - **The Watch plan is paid by hand.** A sponsor sends the price with a memo; there is no
   connect-wallet button for it, and no renewal reminder.
 - **Hunters have not been asked about the shared library.** A sponsor opts in to sharing
@@ -598,6 +598,13 @@ for anything sensitive.
 - **Email addresses are not verified** at sign-up. Only Google sign-in proves one.
 - **Payouts stop at "sent".** The three-method wallet interface cannot see an outgoing
   payment confirm.
-- **CI is parked.** The workflow is at `ci/github-actions.yml`; copy it to
-  `.github/workflows/ci.yml` to switch it on.
-- **No license yet.** All rights are reserved until one is added.
+
+## License
+
+[Business Source License 1.1](LICENSE). You may read, modify, self-host and use
+TryCanari for your own agents, internally and in development, without limitation. You
+may not offer it to third parties as a hosted or managed service. On **2030-10-18** each
+released version converts to the Apache License 2.0.
+
+For a commercial license outside those terms, write to the address on the maintainer's
+profile.

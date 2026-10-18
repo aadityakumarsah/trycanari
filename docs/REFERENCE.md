@@ -533,6 +533,89 @@ once it has confirmed (twice the price, twice as long). Without the plan those c
 answer 402. An admin can give or end a plan from the People tab. Plan payments are kept
 in `deposits` and the payment audit log; they are not part of any bounty's ledger.
 
+## Output controls
+
+Output controls check a model response before it is accepted, rather than attacking an
+agent. They are the one part of the platform with no bounty, no escrow and no hunter.
+
+`GET /v1/control/capabilities` lists what this deployment can do: the primitives
+(`detect`, `trace`, `steer`, `extract`, `synthesize`) and the invariant kinds
+(`grounded`, `contains`, `excludes`, `json_schema`, `max_length`).
+
+`POST /v1/control/inspect` takes a `response`, its `context` and a list of invariants,
+each with an `id`, a `description` and a `kind`, and answers with a `verdict`,
+a `confidence` and the `evidence` behind every check. `POST /v1/control/workflow` does
+the same and adds enforcement actions, human-readable principles and targeted edge cases.
+Neither retains anything.
+
+**Nothing you send is stored.** Only the SHA-256 digests of the input and the response are
+kept (`input_digest`, `response_digest`), so a run can be compared with another run of the
+same input without the platform holding the text.
+
+A **project** keeps a history. `POST /v1/control/projects` takes a `name`, a `model`, an
+`adapter_kind` (`text` or `activation`) and the `operations` the project permits. A
+workflow run against it (`POST /v1/control/projects/{id}/workflow`) is refused with 403 if
+it asks for an operation the project does not permit, writes an encrypted result and
+append-only audit events, and is listed at `GET .../runs` and read in full at
+`GET /v1/control/runs/{id}`. Projects are owner-isolated: another account's project is a
+404, never a 403.
+
+**A text-only provider cannot prove a causal latent trace.** `trace.status` is
+`unavailable` unless an activation-capable adapter supplied explicit `attributions`, and
+`not_requested` when the run did not ask for one. Sending attributions to a project whose
+`adapter_kind` is `text` is a 422 rather than a quietly invented answer.
+
+## Managed assurance
+
+A sponsor's threat-model scope for a bounty, and the private queue that delivers against
+it. `PUT /v1/bounties/{id}/assurance` saves the scope: the `service` (`sprint` or
+`continuous`), `stage`, `deployment`, the `untrusted_inputs` the agent reads, the
+`sensitive_data` it touches, the `consequential_actions` it can take, and four pieces of
+prose — `workflow`, `feared_failure`, `identity_controls`, `human_approval`.
+
+The four prose fields are **envelope-encrypted at rest**, each under its own key; the
+columns are `*_enc` and hold no readable text. The enumerated fields are stored as JSON so
+the queue can be filtered without decrypting anything.
+
+`GET` returns the scope with a `readiness` block — `agent_configured`,
+`boundaries_defined`, `attack_surface_declared`, `consequence_documented`,
+`identity_documented`, `approval_documented` and the `ready` they add up to.
+`POST .../assurance/request` moves it from `draft` to `requested` and is a 409 until the
+scope is saved. The lifecycle then runs `scoping` → `testing` → `remediation` → `retest`
+→ `complete`, with `cancelled` as the other ending; operators move it from the admin
+assessment queue, which is left out of the published API description like the rest of the
+admin area. A completed engagement adds its scope and limitations to the customer
+evidence. The result is evidence for the tested version and declared scope, not
+certification.
+
+## Continuous regression gates
+
+Where a scan is a sweep, the gate is a yes or no for a build. `GET
+/v1/bounties/{id}/continuous` is the state; `POST /v1/bounties/{id}/continuous/gate`
+queues a run against the newest config version and answers 202 with a run to poll.
+
+A run **passes only when no saved attack succeeds**, and saved attacks are the confirmed
+breaks the bounty has accumulated, replayed against an immutable config version. The
+answer deliberately exposes only case identifiers and canary kinds — never corpus
+payloads — so a gate can run in CI output without leaking the attacks.
+`GET /v1/bounties/{id}/regressions` lists what has been retained. Describing the agent is
+required first: a bounty with no config is a 409. Both need the Watch plan where one is
+priced.
+
+## The design partner pilot
+
+`POST /v1/pilot/applications` is public and unauthenticated: `name`, `work_email`,
+`company`, `stage` (`prototype`, `beta`, `production`), a `use_case` of at least 30
+characters, and `goals` from `baseline`, `bounty`, `continuous` and `audit`.
+
+It is **idempotent on the work email**: applying twice returns the first application's id
+rather than a second row. The body also carries a `fax` field, which no real applicant
+fills in; a request that sets it gets an ordinary 201 with a plausible id and **no row is
+written**, so a bot cannot tell it was refused. Admins read applications in the Pilots
+tab, joined to that account's real signup, scan, bounty and payment activity. The offer
+and the four-week cadence are in
+[`DESIGN_PARTNER_PLAYBOOK.md`](DESIGN_PARTNER_PLAYBOOK.md).
+
 ## Attacks planted in what a tool returns
 
 The `tool_result` entry point is for the attack a hunter cannot type at the agent: an
@@ -630,12 +713,21 @@ POST /v1/notifications/read            mark some or all of them read       (acco
 ### Notifications and email
 
 A notification is a row written in the transaction that makes its event true, so it exists
-exactly when the event does, and a unique constraint on (account, kind, finding) means a
-step that runs twice tells nobody twice. A verified break tells the sponsor who broke the
-agent (`bounty_broken`) and the hunter that the payout is under review (`break_verified`).
-A payout that is sent tells the hunter (`payout_sent`) and the sponsor (`reward_paid`); one
-that could not be made automatically tells the hunter once (`payout_held`). A hunter who
-attacked without an account has nobody to tell.
+exactly when the event does, and a unique index means a step that runs twice tells nobody
+twice. A verified break tells the sponsor who broke the agent (`bounty_broken`) and the
+hunter that the payout is under review (`break_verified`). A payout that is sent tells the
+hunter (`payout_sent`) and the sponsor (`reward_paid`); one that could not be made
+automatically tells the hunter once (`payout_held`). A hunter who attacked without an
+account has nobody to tell.
+
+A scan whose probes trip tells the sponsor too (`scan_found`, with `tripped_count`). A
+probe is run once, so this is a lead and not a verified break: nothing is paid, the bounty
+is not paused and the escrow is untouched, and the notification leads to the Scan tab
+rather than to Findings. A notification is about a verified break or about a scan, never
+both and never neither, which the `subject_known` check enforces; each has its own partial
+unique index, on (account, kind, finding) and on (account, kind, scan). The daily sweep
+re-runs the scan row of an unchanged config, so a bounty that keeps failing the same probe
+is reported once, not once a day.
 
 The same rows are the email outbox. With `EMAIL_BACKEND=cloudflare` the API process sends
 them through Cloudflare Email Service (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_EMAIL_TOKEN`,
