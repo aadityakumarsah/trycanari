@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="837 tests" src="https://img.shields.io/badge/tests-837%20passing-6ee7b7" />
+  <img alt="840 tests" src="https://img.shields.io/badge/tests-840%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -51,7 +51,7 @@
 |---:|---|
 | **73** | API operations |
 | **34** | database migrations |
-| **682** | Python tests |
+| **685** | Python tests |
 | **155** | web tests |
 | **~20,900** | lines of Python |
 | **~13,400** | lines of TypeScript |

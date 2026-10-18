@@ -330,3 +330,102 @@ async def test_a_retry_after_a_failure_reuses_the_issuance_and_not_a_new_one(
     assert retried.status_code == 201, retried.text
     assert list(fake.by_issuance) == [f"{engagement_id}:0"]
     assert len(fake.issued) == 1
+
+
+# --- an invoice the provider holds that no row points at ----------------------------------
+
+
+def paid_event(invoice_id: str, *, reference: str, amount: int = 250_000) -> bytes:
+    """What Stripe sends for an invoice that was paid, metadata and all."""
+    return json.dumps(
+        {
+            "type": "invoice.paid",
+            "data": {
+                "object": {
+                    "id": invoice_id,
+                    "amount_paid": amount,
+                    "amount_due": amount,
+                    "currency": "usd",
+                    "hosted_invoice_url": "https://pay.stripe.test/i/orphan",
+                    "metadata": {"reference": reference, "issuance": f"{reference}:0"},
+                }
+            },
+        }
+    ).encode()
+
+
+async def test_a_payment_for_an_invoice_we_never_recorded_is_taken_up(
+    platform: Platform,
+) -> None:
+    """Issuing writes its row after the provider call, and an idempotency key only lasts
+    as long as the provider keeps it, so an invoice can exist at Stripe with nothing here
+    pointing at it. When the money arrives it is taken up rather than ignored."""
+    platform.app.state.settings = stripe_settings(platform.app.state.settings)
+    platform.app.state.biller = billing.FakeBilling(provider="stripe")
+    _, _, engagement_id, _ = await quoted(platform)
+
+    # Nothing was ever issued here: this is the orphan arriving paid.
+    async with platform.sessions.begin() as session:
+        assert (await session.scalars(select(AssuranceInvoice))).all() == []
+
+    body = paid_event("in_orphan", reference=engagement_id)
+    now = int(time.time())
+    answered = await post_webhook(platform, body, header=billing.sign(body, SECRET, at=now))
+    assert (answered.status_code, answered.json()["status"]) == (200, "paid")
+
+    async with platform.sessions.begin() as session:
+        invoice = (await session.scalars(select(AssuranceInvoice))).one()
+        assert (invoice.provider_invoice_id, invoice.state) == ("in_orphan", "paid")
+        assert (invoice.amount_cents, invoice.currency) == (250_000, "usd")
+        assert invoice.paid_at is not None
+        assert str(invoice.engagement_id) == engagement_id
+
+    # Delivered twice, as Stripe may: still one row.
+    again = await post_webhook(platform, body, header=billing.sign(body, SECRET, at=now))
+    assert again.json()["status"] == "paid"
+    async with platform.sessions.begin() as session:
+        assert len((await session.scalars(select(AssuranceInvoice))).all()) == 1
+
+
+async def test_an_orphan_is_not_taken_up_over_an_invoice_that_already_exists(
+    platform: Platform,
+) -> None:
+    """Two payable invoices for one assessment is a real discrepancy. Voiding one here
+    would be deciding what somebody paid for, so it is left for a person."""
+    platform.app.state.settings = stripe_settings(platform.app.state.settings)
+    provider_id = await invoiced(platform)
+    async with platform.sessions.begin() as session:
+        engagement_id = str((await session.scalars(select(AssuranceInvoice))).one().engagement_id)
+
+    body = paid_event("in_a_second_one", reference=engagement_id)
+    now = int(time.time())
+    answered = await post_webhook(platform, body, header=billing.sign(body, SECRET, at=now))
+    assert (answered.status_code, answered.json()["status"]) == (200, "unknown")
+
+    # The invoice we did issue is untouched, and no second row was written.
+    async with platform.sessions.begin() as session:
+        invoice = (await session.scalars(select(AssuranceInvoice))).one()
+        assert (invoice.provider_invoice_id, invoice.state) == (provider_id, "open")
+
+
+async def test_another_systems_invoice_is_still_ignored(platform: Platform) -> None:
+    """Adoption keys off our own metadata, so one Stripe account can serve more than one
+    system without this one claiming the others' invoices."""
+    platform.app.state.settings = stripe_settings(platform.app.state.settings)
+    platform.app.state.biller = billing.FakeBilling(provider="stripe")
+    # A real engagement exists, so this shows adoption is keyed off the metadata rather
+    # than falling back to whatever engagement happens to be around.
+    await quoted(platform)
+    now = int(time.time())
+
+    # No metadata at all, and metadata naming something that is not an engagement.
+    for body in (
+        event("in_someone_elses"),
+        paid_event("in_bad_ref", reference="not-a-uuid"),
+        paid_event("in_no_such", reference="99999999-9999-4999-8999-999999999999"),
+    ):
+        answered = await post_webhook(platform, body, header=billing.sign(body, SECRET, at=now))
+        assert (answered.status_code, answered.json()["status"]) == (200, "unknown")
+
+    async with platform.sessions.begin() as session:
+        assert (await session.scalars(select(AssuranceInvoice))).all() == []

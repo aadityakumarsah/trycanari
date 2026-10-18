@@ -309,3 +309,49 @@ async def settle_invoice(
     invoice.paid_at = datetime.now(UTC) if state == "paid" else None
     await session.flush()
     return invoice
+
+
+async def adopt_invoice(
+    session: AsyncSession,
+    provider: str,
+    provider_invoice_id: str,
+    *,
+    engagement_id: uuid.UUID,
+    amount_cents: int,
+    currency: str,
+    hosted_url: str | None,
+    state: str,
+) -> AssuranceInvoice | None:
+    """Record an invoice the provider holds that no row of ours points at.
+
+    Issuing writes its row after the provider call, and an idempotency key is only good
+    for as long as the provider keeps it, so an invoice can exist at the provider with
+    nothing here pointing at it. The engagement travels in the invoice's metadata, so
+    when money arrives for one of these it can be taken up rather than ignored.
+
+    Only into an empty slot. If the engagement already has a live invoice then two are
+    payable at once, which is a real discrepancy and a person's to settle: voiding one
+    automatically would be deciding what somebody paid for.
+    """
+    engagement = await session.get(AssuranceEngagement, engagement_id)
+    if engagement is None:
+        return None
+    bounty = await session.get(Bounty, engagement.bounty_id)
+    if bounty is None:
+        return None
+    if await live_invoice(session, engagement_id) is not None:
+        return None
+    invoice = AssuranceInvoice(
+        engagement_id=engagement_id,
+        sponsor_id=bounty.sponsor_id,
+        provider=provider,
+        provider_invoice_id=provider_invoice_id,
+        amount_cents=amount_cents,
+        currency=currency,
+        state=state,
+        hosted_url=hosted_url,
+        paid_at=datetime.now(UTC) if state == "paid" else None,
+    )
+    session.add(invoice)
+    await session.flush()
+    return invoice

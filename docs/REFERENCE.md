@@ -634,11 +634,22 @@ refused, so a captured webhook cannot be replayed later. A request that does not
 refused with 400 rather than logged and accepted. The route answers 404 unless
 `BILLING_BACKEND=stripe`, and it is left out of the published API description.
 
-Settling is idempotent, because a provider may deliver the same event more than once, and
-an event naming an invoice we never issued is answered 200 and ignored rather than treated
-as an error — one Stripe account may serve more than one system. An event we have no
-opinion about is also answered 200, so Stripe is not left retrying it forever. A paid
-invoice is not un-paid by a later event: money arrived.
+Settling is idempotent, because a provider may deliver the same event more than once. An
+event we have no opinion about is answered 200, so Stripe is not left retrying it forever.
+A paid invoice is not un-paid by a later event: money arrived.
+
+An invoice the provider holds that no row points at is **taken up** rather than ignored.
+Issuing writes its row after the provider call, and an idempotency key is only good while
+the provider keeps it — Stripe drops one after 24 hours — so this can happen even with the
+keys in place, and it happens whether or not anyone retries. The engagement travels in the
+invoice's metadata, so when money arrives for one of these the row is written then. An
+invoice carrying no metadata of ours is still ignored, since one Stripe account may serve
+several systems.
+
+Taking one up only fills an empty slot. If the engagement already has a live invoice then
+two were payable at once, which is a real discrepancy: it is logged at error level with
+both ids and left for a person, because voiding one automatically would be deciding what
+somebody paid for.
 
 ## Continuous regression gates
 

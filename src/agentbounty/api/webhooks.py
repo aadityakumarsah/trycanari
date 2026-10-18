@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Request
 
 from agentbounty.api.deps import SettingsDep, Transaction
 from agentbounty.api.ratelimit import limit_by_client
+from agentbounty.models import AssuranceInvoice
 from agentbounty.services import assurance, billing
 from agentbounty.services.errors import ServiceError
 
@@ -62,12 +64,67 @@ async def stripe(
         # so rather than left retrying it forever.
         return {"status": "ignored"}
     data = event.get("data") or {}
-    invoice_id = str((data.get("object") or {}).get("id") or "")
+    obj = data.get("object") or {}
+    invoice_id = str(obj.get("id") or "")
     if not invoice_id:
         raise ServiceError(400, "the webhook names no invoice")
     settled = await assurance.settle_invoice(session, "stripe", invoice_id, state=state)
-    if settled is None:
-        # An invoice from another system on the same Stripe account is not ours to record.
+    if settled is not None:
+        return {"status": settled.state}
+    # No row points at it. It may be another system's invoice on the same Stripe account,
+    # or one of ours that was created at the provider while the row was not written. The
+    # engagement travels in the metadata, so the second kind can still be taken up.
+    adopted = await _adopt(session, obj, invoice_id, state)
+    if adopted is None:
         logger.info("a webhook named an invoice we did not issue", extra={"invoice": invoice_id})
         return {"status": "unknown"}
-    return {"status": settled.state}
+    return {"status": adopted.state}
+
+
+async def _adopt(
+    session: Transaction, obj: Any, invoice_id: str, state: str
+) -> AssuranceInvoice | None:
+    """Take up an invoice of ours that the provider holds and no row points at."""
+    reference = str((obj.get("metadata") or {}).get("reference") or "")
+    if not reference:
+        return None
+    try:
+        engagement_id = uuid.UUID(reference)
+    except ValueError:
+        return None
+    # amount_paid is what arrived; for an invoice that was not paid, what was owed.
+    amount = obj.get("amount_paid") if state == "paid" else obj.get("amount_due")
+    if not isinstance(amount, int) or amount <= 0:
+        amount = obj.get("total")
+    currency = str(obj.get("currency") or "")
+    if not isinstance(amount, int) or amount <= 0 or len(currency) != 3:
+        logger.warning(
+            "an invoice of ours could not be taken up: the webhook named no amount",
+            extra={"invoice": invoice_id},
+        )
+        return None
+    hosted = obj.get("hosted_invoice_url")
+    adopted = await assurance.adopt_invoice(
+        session,
+        "stripe",
+        invoice_id,
+        engagement_id=engagement_id,
+        amount_cents=amount,
+        currency=currency,
+        hosted_url=str(hosted) if hosted else None,
+        state=state,
+    )
+    if adopted is None:
+        # Two payable invoices for one assessment, or an engagement that is gone. Either
+        # way a person settles it: voiding one here would decide what somebody paid for.
+        logger.error(
+            "an invoice of ours is unreconciled: the provider holds it and the"
+            " engagement already has a live invoice",
+            extra={"invoice": invoice_id, "engagement": reference},
+        )
+        return None
+    logger.warning(
+        "an invoice of ours was taken up from the provider",
+        extra={"invoice": invoice_id, "engagement": reference, "state": state},
+    )
+    return adopted
