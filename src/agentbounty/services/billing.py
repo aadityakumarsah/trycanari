@@ -54,7 +54,14 @@ class BillingBackend(Protocol):
     provider: str
 
     async def create_invoice(
-        self, *, email: str, amount_cents: int, currency: str, description: str, reference: str
+        self,
+        *,
+        email: str,
+        amount_cents: int,
+        currency: str,
+        description: str,
+        reference: str,
+        issuance: str,
     ) -> Invoice: ...
 
     async def void_invoice(self, provider_id: str) -> None: ...
@@ -69,14 +76,26 @@ class FakeBilling:
 
     provider: str = "fake"
     issued: list[Invoice] = field(default_factory=list)
+    # Keyed by issuance, the way a provider keys on an idempotency key.
+    by_issuance: dict[str, Invoice] = field(default_factory=dict)
     voided: list[str] = field(default_factory=list)
     # Set by a test to make the next calls fail the way a provider would.
     fail_with: BillingError | None = None
     _next: int = 0
 
     async def create_invoice(
-        self, *, email: str, amount_cents: int, currency: str, description: str, reference: str
+        self,
+        *,
+        email: str,
+        amount_cents: int,
+        currency: str,
+        description: str,
+        reference: str,
+        issuance: str,
     ) -> Invoice:
+        # A real provider replays its first answer for a key it has seen before.
+        if (seen := self.by_issuance.get(issuance)) is not None:
+            return seen
         if self.fail_with is not None:
             raise self.fail_with
         self._next += 1
@@ -87,6 +106,7 @@ class FakeBilling:
             currency=currency,
         )
         self.issued.append(invoice)
+        self.by_issuance[issuance] = invoice
         logger.info(
             "invoice (nobody charged, fake backend): %s %s",
             amount_cents,
@@ -114,15 +134,21 @@ class StripeBilling:
         self._key = secret_key
         self._client = client or httpx.AsyncClient(timeout=20)
 
-    async def _post(self, path: str, form: dict[str, str]) -> dict[str, Any]:
+    async def _post(
+        self, path: str, form: dict[str, str], *, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        headers = {
+            "Authorization": f"Bearer {self._key}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        # Stripe replays the original response for a key it has already seen, so a retry
+        # after a failure somewhere in the middle picks the same objects back up instead
+        # of making a second customer and a second payable invoice.
+        if idempotency_key is not None:
+            headers["Idempotency-Key"] = idempotency_key
         try:
             response = await self._client.post(
-                f"{STRIPE_API}{path}",
-                content=urlencode(form),
-                headers={
-                    "Authorization": f"Bearer {self._key}",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                },
+                f"{STRIPE_API}{path}", content=urlencode(form), headers=headers
             )
         except httpx.HTTPError as exc:
             raise BillingError(f"Stripe could not be reached: {exc}", permanent=False) from exc
@@ -142,9 +168,18 @@ class StripeBilling:
         return answer
 
     async def create_invoice(
-        self, *, email: str, amount_cents: int, currency: str, description: str, reference: str
+        self,
+        *,
+        email: str,
+        amount_cents: int,
+        currency: str,
+        description: str,
+        reference: str,
+        issuance: str,
     ) -> Invoice:
-        customer = await self._post("/customers", {"email": email})
+        customer = await self._post(
+            "/customers", {"email": email}, idempotency_key=f"{issuance}:customer"
+        )
         customer_id = str(customer.get("id") or "")
         if not customer_id:
             raise BillingError("Stripe returned a customer with no id", permanent=True)
@@ -156,9 +191,12 @@ class StripeBilling:
                 "collection_method": "send_invoice",
                 "days_until_due": "30",
                 "description": description,
-                # Our own id travels with the invoice, so a webhook names the engagement.
+                # Our own ids travel with the invoice, so a webhook can name the
+                # engagement even for an invoice no row of ours ended up pointing at.
                 "metadata[reference]": reference,
+                "metadata[issuance]": issuance,
             },
+            idempotency_key=f"{issuance}:invoice",
         )
         invoice_id = str(invoice.get("id") or "")
         if not invoice_id:
@@ -172,8 +210,11 @@ class StripeBilling:
                 "currency": currency,
                 "description": description,
             },
+            idempotency_key=f"{issuance}:item",
         )
-        finalized = await self._post(f"/invoices/{invoice_id}/finalize", {})
+        finalized = await self._post(
+            f"/invoices/{invoice_id}/finalize", {}, idempotency_key=f"{issuance}:finalize"
+        )
         hosted = finalized.get("hosted_invoice_url")
         return Invoice(
             provider_id=invoice_id,
@@ -211,10 +252,20 @@ def verify_signature(
     """
     if not header:
         raise BillingError("the webhook carried no signature", permanent=True)
-    parts = dict(piece.split("=", 1) for piece in header.split(",") if "=" in piece)
-    timestamp = parts.get("t")
-    signature = parts.get("v1")
-    if not timestamp or not signature:
+    timestamp: str | None = None
+    # While a signing secret is being rotated the header carries one v1 per active
+    # secret, so every candidate is kept: collapsing them to one would refuse a genuine
+    # delivery for the whole of the overlap.
+    candidates: list[str] = []
+    for piece in header.split(","):
+        name, _, value = piece.partition("=")
+        if not _:
+            continue
+        if name.strip() == "t":
+            timestamp = value.strip()
+        elif name.strip() == "v1":
+            candidates.append(value.strip())
+    if not timestamp or not candidates:
         raise BillingError("the webhook signature is malformed", permanent=True)
     try:
         signed_at = int(timestamp)
@@ -226,8 +277,10 @@ def verify_signature(
     expected = hmac.new(
         secret.encode(), f"{timestamp}.".encode() + payload, hashlib.sha256
     ).hexdigest()
-    # Constant time: a timing difference would leak the signature a byte at a time.
-    if not hmac.compare_digest(expected, signature):
+    # Each comparison is constant time: a timing difference would leak the signature a
+    # byte at a time. Stopping at the first match only reveals which candidate matched,
+    # and the caller supplied those.
+    if not any(hmac.compare_digest(expected, candidate) for candidate in candidates):
         raise BillingError("the webhook signature does not match", permanent=True)
 
 

@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from agentbounty.models import AssuranceInvoice
 from agentbounty.services import billing
@@ -70,6 +70,23 @@ def test_a_signature_is_required_and_does_not_last_forever() -> None:
     old = billing.sign(body, SECRET, at=now - 3600)
     with pytest.raises(billing.BillingError):
         billing.verify_signature(body, old, SECRET, now=now)
+
+
+def test_a_rotating_secret_sends_several_signatures_and_one_of_them_is_ours() -> None:
+    """While a signing secret is rotated the header carries one v1 per active secret.
+    Keeping only one of them would refuse genuine deliveries for the whole overlap."""
+    body = event("in_1")
+    now = int(time.time())
+    ours = billing.sign(body, SECRET, at=now).split("v1=")[1]
+    theirs = billing.sign(body, "whsec_the_other_one", at=now).split("v1=")[1]
+
+    # Ours last, ours first: both are accepted.
+    billing.verify_signature(body, f"t={now},v1={theirs},v1={ours}", SECRET, now=now)
+    billing.verify_signature(body, f"t={now},v1={ours},v1={theirs}", SECRET, now=now)
+
+    # Several signatures, none of them ours.
+    with pytest.raises(billing.BillingError):
+        billing.verify_signature(body, f"t={now},v1={theirs},v1={theirs}", SECRET, now=now)
 
 
 # --- the webhook --------------------------------------------------------------------------
@@ -220,3 +237,96 @@ def test_a_deployment_bills_nobody_by_default(environment: pytest.MonkeyPatch) -
     settings = load_settings()
     assert settings.billing_backend == "none"
     assert billing.make_biller(settings) is None
+
+
+# --- issuing an invoice at most once ------------------------------------------------------
+
+
+async def test_a_repeated_issuance_picks_up_the_same_invoice() -> None:
+    """A provider replays its first answer for an idempotency key it has seen. Without
+    that, a retry after a failure partway through would leave the customer holding two
+    payable invoices for one assessment."""
+    fake = billing.FakeBilling()
+    first = await fake.create_invoice(
+        email="a@example.test",
+        amount_cents=250_000,
+        currency="usd",
+        description="Assessment",
+        reference="e1",
+        issuance="e1:0",
+    )
+    same = await fake.create_invoice(
+        email="a@example.test",
+        amount_cents=250_000,
+        currency="usd",
+        description="Assessment",
+        reference="e1",
+        issuance="e1:0",
+    )
+    assert same == first
+    assert len(fake.issued) == 1
+
+    # A later lifecycle is a different issuance, and genuinely a different invoice.
+    later = await fake.create_invoice(
+        email="a@example.test",
+        amount_cents=250_000,
+        currency="usd",
+        description="Assessment",
+        reference="e1",
+        issuance="e1:1",
+    )
+    assert later.provider_id != first.provider_id
+    assert len(fake.issued) == 2
+
+
+async def test_the_issuance_id_counts_what_the_engagement_already_has(
+    platform: Platform,
+) -> None:
+    """The id must be the same across a retry that wrote no row, and different once a row
+    exists, so it is derived from the rows themselves rather than from the attempt."""
+    fake = billing.FakeBilling()
+    platform.app.state.biller = fake
+    _, _, engagement_id, admin = await quoted(platform)
+
+    made = await platform.client.post(
+        f"/v1/admin/assessments/{engagement_id}/invoice", headers=admin
+    )
+    assert made.status_code == 201, made.text
+    assert list(fake.by_issuance) == [f"{engagement_id}:0"]
+
+    # Voided, so a replacement may be issued: one row exists, so this is a new lifecycle.
+    async with platform.sessions.begin() as session:
+        await session.execute(update(AssuranceInvoice).values(state="void", paid_at=None))
+    again = await platform.client.post(
+        f"/v1/admin/assessments/{engagement_id}/invoice", headers=admin
+    )
+    assert again.status_code == 201, again.text
+    assert sorted(fake.by_issuance) == [f"{engagement_id}:0", f"{engagement_id}:1"]
+    assert len(fake.issued) == 2
+
+
+async def test_a_retry_after_a_failure_reuses_the_issuance_and_not_a_new_one(
+    platform: Platform,
+) -> None:
+    """The case the issuance id exists for: the provider may have gone as far as a
+    payable invoice before the failure, so the retry must be the same issuance and not a
+    second one."""
+    fake = billing.FakeBilling(fail_with=billing.BillingError("Stripe timed out", permanent=False))
+    platform.app.state.biller = fake
+    _, _, engagement_id, admin = await quoted(platform)
+
+    failed = await platform.client.post(
+        f"/v1/admin/assessments/{engagement_id}/invoice", headers=admin
+    )
+    assert failed.status_code == 502
+    async with platform.sessions.begin() as session:
+        assert (await session.scalars(select(AssuranceInvoice))).all() == []
+
+    # The provider recovers; the retry carries the id the failed attempt used.
+    fake.fail_with = None
+    retried = await platform.client.post(
+        f"/v1/admin/assessments/{engagement_id}/invoice", headers=admin
+    )
+    assert retried.status_code == 201, retried.text
+    assert list(fake.by_issuance) == [f"{engagement_id}:0"]
+    assert len(fake.issued) == 1

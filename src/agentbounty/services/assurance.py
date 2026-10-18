@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentbounty.models import AssuranceEngagement, AssuranceInvoice, Bounty, Sponsor, TargetConfig
@@ -231,8 +231,14 @@ async def issue_invoice(
     """Bill the sponsor for this assessment, once.
 
     The price is what an operator quoted: billing a zero is a mistake, not a free
-    assessment, so it is refused rather than sent. The provider is called before the row
-    exists, so a provider that fails leaves nothing behind to reconcile.
+    assessment, so it is refused rather than sent.
+
+    The provider is called before the row exists, so an issuance that fails partway could
+    leave a payable invoice at the provider that no row of ours points at. The issuance id
+    below is what closes that: it counts the invoices this engagement already has, so a
+    retry of a failed issuance carries the same id and the provider replays its first
+    answer instead of making a second payable invoice. Issuing again after a void sees one
+    more row, so that is a new id and genuinely a new invoice.
     """
     if biller is None:
         raise ServiceError(503, "this deployment issues no invoices")
@@ -242,6 +248,12 @@ async def issue_invoice(
         if existing.state == "paid":
             raise ServiceError(409, "this assessment is already paid for")
         raise ServiceError(409, "this assessment already has an open invoice")
+    # Committed rows only, so a retry that wrote nothing counts the same way twice.
+    already = await session.scalar(
+        select(func.count())
+        .select_from(AssuranceInvoice)
+        .where(AssuranceInvoice.engagement_id == engagement.id)
+    )
     try:
         made = await biller.create_invoice(
             email=sponsor.email,
@@ -249,6 +261,7 @@ async def issue_invoice(
             currency=currency,
             description=f"Managed agent assessment: {bounty.title}",
             reference=str(engagement.id),
+            issuance=f"{engagement.id}:{int(already or 0)}",
         )
     except billing.BillingError as exc:
         # 502 for a provider that may yet work, 400 for one that refused outright.

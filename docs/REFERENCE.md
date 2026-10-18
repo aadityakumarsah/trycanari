@@ -605,6 +605,13 @@ with no quoted price is a 409 — billing a zero is a mistake, not a free assess
 so is invoicing one that already has an open or paid invoice. The provider is called
 before the row is written, so a provider that fails leaves nothing behind to reconcile;
 that answers 502 when it is worth another try and 400 when the provider refused outright.
+
+Each issuance carries an id — the engagement, plus how many invoices it already has — and
+every request to the provider is keyed on it. A provider replays its first answer for a
+key it has seen, so a retry of an issuance that failed partway through picks the same
+invoice back up rather than leaving the customer holding two payable ones. The count comes
+from committed rows, so a failed attempt that wrote nothing retries as the same issuance,
+while issuing again after a void sees one more row and is a new invoice.
 The sponsor then sees the amount and a `hosted_url` on their own assessment, and pays on
 the provider's page. **No card details reach this service.**
 
@@ -619,7 +626,10 @@ changes money state with no session and no API key, **so the signature is the wh
 authentication**: without it, anyone who learned an invoice id could mark it paid.
 
 The signature covers the timestamp and the raw body, so the body is verified before it is
-parsed, and it is compared in constant time. A signature more than five minutes old is
+parsed, and it is compared in constant time. While a signing secret is being rotated the
+header carries one `v1` per active secret, so every candidate is checked and the delivery
+is accepted if any of them matches; keeping only one would refuse genuine deliveries for
+the whole of the overlap. A signature more than five minutes old is
 refused, so a captured webhook cannot be replayed later. A request that does not verify is
 refused with 400 rather than logged and accepted. The route answers 404 unless
 `BILLING_BACKEND=stripe`, and it is left out of the published API description.
