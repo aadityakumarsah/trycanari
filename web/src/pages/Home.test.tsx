@@ -3,6 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { forgetLoaded } from "../hooks.ts";
+import { SessionProvider } from "../session.tsx";
 import type { BountyPublic } from "../types.ts";
 import { Home, outcomeOf } from "./Home.tsx";
 
@@ -48,7 +49,7 @@ describe("the home page", () => {
     globalThis.fetch = (async () => new Response("[]", { status: 503 })) as unknown as typeof fetch;
     const view = render(
       <MemoryRouter>
-        <Home />
+        <SessionProvider><Home /></SessionProvider>
       </MemoryRouter>,
     );
     const strip = view.container.querySelector("#sponsors .editor-strip");
@@ -61,5 +62,22 @@ describe("the home page", () => {
     expect(view.getByText("Run a free baseline scan").closest("a")?.getAttribute("href")).toBe(
       "/pilot?source=home-sponsors",
     );
+    expect(view.getByRole("heading", { name: "From first inspection to continuous proof" })).toBeTruthy();
+    for (const capability of [
+      "Inspect model output",
+      "Scan while you build",
+      "Threat-model the workflow",
+      "Attack continuously",
+      "Open a real bounty",
+      "Patch and prove the fix",
+      "Export the evidence",
+      "Operate safely",
+    ]) {
+      expect(view.getByRole("heading", { name: capability })).toBeTruthy();
+    }
+    expect(view.container.querySelector("#control-lab h2")?.textContent).toBe(
+      "Inspect a model response before it ships",
+    );
+    expect(view.container.querySelector("#bounties")).not.toBeNull();
   });
 });

@@ -402,6 +402,7 @@ async def _notifications(session: Transaction, sponsor: Sponsor) -> Notification
                 amount_zatoshi=line.notification.amount_zatoshi,
                 txid=line.notification.txid,
                 house=line.actor is not None and line.actor.is_house,
+                tripped_count=line.notification.tripped_count,
                 read=line.notification.read_at is not None,
                 created_at=line.notification.created_at,
             )

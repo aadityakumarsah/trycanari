@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: agentbounty
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: agentbounty
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentbounty"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+asyncpg://agentbounty:ci-only-password@localhost:5432/agentbounty
+      # Generated for this run only: nothing outlives the job.
+      MODEL_BACKEND: fake
+      WALLET_BACKEND: fake
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - name: Generate a throwaway encryption key
+        run: echo "SECRET_ENCRYPTION_KEY=$(uv run python -c 'from agentbounty.services.crypto import generate_key; print(generate_key())')" >> "$GITHUB_ENV"
+      - run: make lint
+      - run: make typecheck
+      - name: Full suite
+        run: make test
+      - name: End-to-end test
+        run: uv run pytest tests/test_e2e.py -v
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3"
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+      - run: bun run build

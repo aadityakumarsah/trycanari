@@ -42,6 +42,16 @@ export function describe(note: Notification): Told {
         detail: `Verified in at least 3 of 5 replays. The bounty is paused and ${amount} is being paid out.`,
         to: `${dashboard}?tab=findings`,
       };
+    case "scan_found": {
+      const probes = note.tripped_count ?? 0;
+      return {
+        icon: "shield",
+        tone: "alert",
+        title: `A scan tripped a canary on ${note.bounty_title}`,
+        detail: `${probes} ${probes === 1 ? "probe" : "probes"} tripped a canary. A probe runs once, so this is a lead, not a verified break: nothing is paid and the bounty is not paused.`,
+        to: `${dashboard}?tab=scan`,
+      };
+    }
     case "reward_paid":
       return {
         icon: "coin",

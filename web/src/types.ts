@@ -833,7 +833,7 @@ export interface Hunts {
   items: Hunt[];
 }
 
-export type NotificationKind = "bounty_broken" | "break_verified" | "payout_held" | "payout_sent" | "reward_paid";
+export type NotificationKind = "bounty_broken" | "break_verified" | "payout_held" | "payout_sent" | "reward_paid" | "scan_found";
 
 export interface Notification {
   id: string;
@@ -846,6 +846,8 @@ export interface Notification {
   txid: string | null;
   /** The break was the house hunter's: nothing was paid for it. */
   house?: boolean;
+  /** How many of a scan's probes tripped a canary, on a scan_found notification. */
+  tripped_count?: number | null;
   read: boolean;
   created_at: string;
 }

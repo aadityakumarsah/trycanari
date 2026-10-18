@@ -23,6 +23,7 @@ from agentbounty.api import (
     agent_guide,
     assurance,
     chain,
+    control,
     evidence,
     google,
     health,
@@ -188,6 +189,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(pilot.admin)
     app.include_router(assurance.admin)
     app.include_router(chain.router)
+    app.include_router(control.router)
     app.include_router(agent_guide.router)
     app.include_router(evidence.router)
     app.include_router(studio.router)

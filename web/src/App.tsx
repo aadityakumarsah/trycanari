@@ -248,6 +248,13 @@ function Header({ onNavigate }: { onNavigate: () => void }) {
                   <small>Threat model, attack, patch and continuously re-test</small>
                 </span>
               </Link>
+              <Link to="/#control-lab" onClick={onNavigate}>
+                <Icon name="target" size={18} />
+                <span>
+                  <strong>Output controls</strong>
+                  <small>Inspect invariants, plan controls and generate edge cases</small>
+                </span>
+              </Link>
               <a href="/agent.md">
                 <Icon name="doc" size={18} />
                 <span>

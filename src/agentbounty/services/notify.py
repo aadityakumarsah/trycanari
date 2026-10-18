@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
@@ -39,6 +39,7 @@ SessionFactory = async_sessionmaker[AsyncSession]
 # For the sponsor of the bounty.
 BOUNTY_BROKEN = "bounty_broken"
 REWARD_PAID = "reward_paid"
+SCAN_FOUND = "scan_found"
 # For the hunter who broke it.
 BREAK_VERIFIED = "break_verified"
 PAYOUT_HELD = "payout_held"
@@ -57,11 +58,15 @@ async def _tell(
     kind: str,
     *,
     bounty_id: uuid.UUID,
-    finding_id: uuid.UUID,
+    finding_id: uuid.UUID | None = None,
+    scan_id: uuid.UUID | None = None,
+    tripped_count: int | None = None,
     actor_id: uuid.UUID | None = None,
     amount: int | None = None,
     txid: str | None = None,
 ) -> None:
+    # Each subject has its own partial unique index, so the conflict target follows it.
+    subject = "finding_id" if finding_id is not None else "scan_id"
     await session.execute(
         insert(Notification)
         .values(
@@ -69,11 +74,16 @@ async def _tell(
             kind=kind,
             bounty_id=bounty_id,
             finding_id=finding_id,
+            scan_id=scan_id,
+            tripped_count=tripped_count,
             actor_id=actor_id,
             amount_zatoshi=amount,
             txid=txid,
         )
-        .on_conflict_do_nothing(index_elements=["account_id", "kind", "finding_id"])
+        .on_conflict_do_nothing(
+            index_elements=["account_id", "kind", subject],
+            index_where=text(f"{subject} IS NOT NULL"),
+        )
     )
 
 
@@ -102,6 +112,25 @@ async def on_break(
             finding_id=finding.id,
             amount=bounty.reward_zatoshi,
         )
+
+
+async def on_scan_found(
+    session: AsyncSession, bounty: Bounty, scan_id: uuid.UUID, tripped: int
+) -> None:
+    """A scan tripped a canary: the sponsor hears about it rather than having to go and
+    look at the Scan tab. Nothing is paid and the bounty is not paused, because a probe
+    is run once and a paid break needs the same tripwire in 3 of 5 replays. Told once per
+    scan, so the daily sweep re-running does not tell anyone twice."""
+    if tripped <= 0:
+        return
+    await _tell(
+        session,
+        bounty.sponsor_id,
+        SCAN_FOUND,
+        bounty_id=bounty.id,
+        scan_id=scan_id,
+        tripped_count=tripped,
+    )
 
 
 async def on_payout_sent(session: AsyncSession, finding: Finding, payout: Payout) -> None:
@@ -225,11 +254,24 @@ async def _claim(
                 continue
             bounty = await session.get_one(Bounty, note.bounty_id)
             actor = await session.get(Sponsor, note.actor_id) if note.actor_id else None
-            finding = await session.get_one(Finding, note.finding_id)
-            attempt = await session.get_one(Attempt, finding.attempt_id)
-            canary = await session.get_one(Canary, finding.canary_id)
             note.email_state = "sending"
             note.email_tries += 1
+            # A scan notification has no attempt, no hunter and no single canary behind it.
+            canary_label: str | None = None
+            tripped_runs: int | None = None
+            payout_address: str | None = None
+            attack: tuple[tuple[str, str], ...] = ()
+            house = False
+            if note.finding_id is not None:
+                finding = await session.get_one(Finding, note.finding_id)
+                attempt = await session.get_one(Attempt, finding.attempt_id)
+                canary_label = (await session.get_one(Canary, finding.canary_id)).public_label
+                tripped_runs = finding.tripped_runs
+                payout_address = attempt.payout_address
+                attack = tuple(
+                    (str(fill.slot), fill.text) for fill in fills_from_json(attempt.payload_json)
+                )
+                house = finding.state is FindingState.WAIVED
             event = mail.Event(
                 kind=note.kind,
                 recipient_name=recipient.name,
@@ -238,15 +280,14 @@ async def _claim(
                 actor_name=actor.name if actor else None,
                 amount=note.amount_zatoshi,
                 txid=note.txid,
-                canary=canary.public_label,
-                tripped_runs=finding.tripped_runs,
+                canary=canary_label,
+                tripped_runs=tripped_runs,
                 total_runs=judge.RUNS_PER_ATTEMPT,
                 actor_github=actor.github if actor else None,
-                payout_address=attempt.payout_address,
-                attack=tuple(
-                    (str(fill.slot), fill.text) for fill in fills_from_json(attempt.payload_json)
-                ),
-                house=finding.state is FindingState.WAIVED,
+                payout_address=payout_address,
+                attack=attack,
+                house=house,
+                tripped_probes=note.tripped_count,
             )
             email = mail.compose(event, recipient.email, settings.currency, settings.public_url)
             return note.id, email

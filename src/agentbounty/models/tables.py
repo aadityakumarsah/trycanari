@@ -606,6 +606,56 @@ class ContinuousRun(Base):
     created_at: Mapped[datetime] = created_now()
 
 
+class ControlProject(Base):
+    """An isolated behavior-control workspace owned by one trycanari account."""
+
+    __tablename__ = "control_projects"
+    __table_args__ = (
+        CheckConstraint("adapter_kind IN ('text', 'activation')", name="adapter_kind_known"),
+        Index("ix_control_projects_sponsor_created", "sponsor_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    sponsor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sponsors.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    adapter_kind: Mapped[str] = mapped_column(Text, default="text", server_default="text")
+    # Granular operations this workspace is allowed to execute.
+    operations_json: Mapped[list[str]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = created_now()
+
+
+class ControlRun(Base):
+    """One encrypted control-workflow result; raw inputs are not columns."""
+
+    __tablename__ = "control_runs"
+    __table_args__ = (
+        CheckConstraint("overall IN ('pass', 'fail', 'unknown')", name="overall_known"),
+        Index("ix_control_runs_project_created", "project_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("control_projects.id"), index=True)
+    input_digest: Mapped[str] = mapped_column(String(64))
+    response_digest: Mapped[str] = mapped_column(String(64))
+    overall: Mapped[str] = mapped_column(Text)
+    result_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = created_now()
+
+
+class ControlEvent(Base):
+    """Append-only audit event for a behavior-control run."""
+
+    __tablename__ = "control_events"
+    __table_args__ = (Index("ix_control_events_run_created", "run_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("control_runs.id"), index=True)
+    action: Mapped[str] = mapped_column(Text)
+    detail_json: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = created_now()
+
+
 class Notification(Base):
     """Something an account is told: shown under the site's bell, and sent as an email.
 
@@ -616,12 +666,30 @@ class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
         # An account is told of one event once, however often the step that tells it runs.
-        UniqueConstraint("account_id", "kind", "finding_id"),
+        # NULLs are distinct in a unique index, so each subject needs its own partial one.
+        Index(
+            "uq_notifications_account_kind_finding",
+            "account_id",
+            "kind",
+            "finding_id",
+            unique=True,
+            postgresql_where=text("finding_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_notifications_account_kind_scan",
+            "account_id",
+            "kind",
+            "scan_id",
+            unique=True,
+            postgresql_where=text("scan_id IS NOT NULL"),
+        ),
         CheckConstraint(
             "kind IN ('bounty_broken', 'break_verified', 'payout_held', 'payout_sent',"
-            " 'reward_paid')",
+            " 'reward_paid', 'scan_found')",
             name="kind_known",
         ),
+        # A notification is about a verified break or a scan, never both and never neither.
+        CheckConstraint("(finding_id IS NULL) <> (scan_id IS NULL)", name="subject_known"),
         CheckConstraint(
             "email_state IN ('pending', 'sending', 'sent', 'failed', 'skipped')",
             name="email_state_known",
@@ -633,7 +701,12 @@ class Notification(Base):
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sponsors.id"))
     kind: Mapped[str] = mapped_column(Text)
     bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"))
-    finding_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("findings.id"))
+    # Set on a notification about a verified break; null on one about a scan.
+    finding_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("findings.id"))
+    # Set on a notification about a scan; null on one about a verified break.
+    scan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scans.id"))
+    # How many of the scan's probes tripped a canary, for a scan notification.
+    tripped_count: Mapped[int | None] = mapped_column(Integer)
     # The other party, when the account is told who: the hunter, for a sponsor.
     actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"))
     amount_zatoshi: Mapped[int | None] = mapped_column(BigInteger)

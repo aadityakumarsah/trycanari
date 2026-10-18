@@ -42,6 +42,7 @@ export const CONTENTS: Group[] = [
     title: "For sponsors",
     entries: [
       { id: "sponsors", title: "Quickstart for sponsors" },
+      { id: "controls", title: "Output controls" },
       { id: "assurance", title: "Managed assurance" },
       { id: "rearm", title: "Patching and re-arming" },
       { id: "editor", title: "Scanning from your editor" },
@@ -182,14 +183,15 @@ export function Docs() {
         <p className="eyebrow">Documentation</p>
         <h1>trycanari docs</h1>
         <p className="lede">
-          Everything about the bounty program: what you are asked to do, the rules, how a break is proven and
-          paid, how to list your own agent, and the full API.
+          Everything TryCanari does: inspect model output, scan and attack agents, prove breaks, manage bounties,
+          re-test patches, run continuous gates, and export the evidence through the full API.
         </p>
 
         <Section id="introduction" title="Introduction">
           <p>
-            trycanari is a bug bounty platform for AI agents. A <strong>sponsor</strong> lists an agent (its system
-            prompt, tools and model), plants tripwires in it called <strong>canaries</strong>, and locks a reward in{" "}
+            trycanari is an agent-security platform with output controls, baseline scans, managed assessments,
+            continuous regression and verified bug bounties. A <strong>sponsor</strong> lists an agent (its system
+            prompt, tools and model), plants tripwires called <strong>canaries</strong>, and locks a reward in{" "}
             {paidIn()}. A <strong>hunter</strong>, a person or another AI agent, submits an attack. The attack
             is replayed five times against a sandboxed copy of the agent. If the same canary trips in at least
             three of those runs, the reward is paid to the hunter automatically and the sponsor receives the attack
@@ -615,6 +617,47 @@ curl -X POST ${origin}/v1/bounties/<id>/canaries -H "Authorization: Bearer $KEY"
           </p>
         </Section>
 
+        <Section id="controls" title="Output controls">
+          <p>
+            The control workflow checks a model response against explicit invariants before it is accepted. It can
+            be used statelessly or inside an owner-isolated project whose encrypted runs and append-only events are
+            retained for review. Raw prompts, reference context and responses are represented in storage only by
+            SHA-256 digests.
+          </p>
+          <Table
+            head={["Invariant", "What it checks"]}
+            rows={[
+              [<code>grounded</code>, "Whether response claims have observable lexical support in supplied reference context."],
+              [<code>contains</code>, "Whether required configured text is present."],
+              [<code>excludes</code>, "Whether forbidden configured text is absent."],
+              [<code>json_schema</code>, "Whether the response is a JSON object containing all configured required keys."],
+              [<code>max_length</code>, "Whether the response stays inside a configured character limit."],
+            ]}
+          />
+          <p>
+            One workflow can detect violations, normalize attribution evidence, produce enforcement actions,
+            extract human-readable operating principles, and synthesize targeted edge cases. Text-only providers
+            cannot prove a causal latent trace, so trace is reported as unavailable unless an activation-capable
+            adapter supplies explicit component attributions.
+          </p>
+          <Code>{`curl -X POST ${origin}/v1/control/workflow \\
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \\
+  -d '{
+    "context": "Revenue was $4 million.",
+    "response": "Revenue was $9 million.",
+    "invariants": [{
+      "id": "grounded_claims",
+      "kind": "grounded",
+      "description": "Claims must be grounded in the supplied context"
+    }]
+  }'`}</Code>
+          <p>
+            Projects restrict which of <code>detect</code>, <code>trace</code>, <code>steer</code>,{" "}
+            <code>extract</code> and <code>synthesize</code> a run may request. Outputs for operations that were not
+            requested are withheld. The interactive version is on the <Link to="/#control-lab">home page</Link>.
+          </p>
+        </Section>
+
         <Section id="assurance" title="Managed assurance">
           <p>
             The managed assessment is for a tool-using agent with a concrete business consequence. The founding
@@ -993,6 +1036,14 @@ curl ${origin}/skill.md -o .claude/skills/trycanari/SKILL.md`}</Code>
               [<Endpoint method="POST" path="/v1/bounties/{id}/assurance/request" />, "Send a saved scope to the managed delivery queue."],
               [<Endpoint method="GET" path="/v1/bounties/{id}/continuous" />, "Version-bound baseline and retained-attack regression history."],
               [<Endpoint method="POST" path="/v1/bounties/{id}/continuous/gate" />, "Queue a regression gate for the current version."],
+              [<Endpoint method="GET" path="/v1/control/capabilities" />, "Supported primitives, invariants, adapter requirements and retention behavior."],
+              [<Endpoint method="POST" path="/v1/control/inspect" />, "Run stateless invariant checks and optional supplied-attribution tracing."],
+              [<Endpoint method="POST" path="/v1/control/workflow" />, "Run the complete stateless control workflow."],
+              [<Endpoint method="POST" path="/v1/control/projects" />, "Create an owner-isolated text or activation-adapter control project."],
+              [<Endpoint method="GET" path="/v1/control/projects" />, "List the signed-in sponsor's control projects."],
+              [<Endpoint method="POST" path="/v1/control/projects/{id}/workflow" />, "Run authorized operations and save encrypted results and audit events."],
+              [<Endpoint method="GET" path="/v1/control/projects/{id}/runs" />, "List a project's retained run summaries."],
+              [<Endpoint method="GET" path="/v1/control/runs/{id}" />, "Read an owned run, its decrypted result and append-only events."],
             ]}
           />
           <h3>Browser session</h3>

@@ -21,13 +21,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
-from agentbounty.models import Attempt
+from agentbounty.models import Attempt, Bounty
 from agentbounty.models import TargetConfig as TargetConfigRow
 from agentbounty.services import (
     attempts,
     continuous,
     endpoint,
     house,
+    notify,
     plans,
     playbook,
     provider,
@@ -404,14 +405,24 @@ async def process_scan(
         async with sessions.begin() as session:
             await scan.fail(session, claim)
         return
+    tripped_probes = sum(1 for result in results if result["tripped"])
     async with sessions.begin() as session:
         await scan.record(session, cipher, claim, results)
+        # In the same transaction as the result, so the sponsor is told exactly when
+        # there is something to be told about.
+        if tripped_probes:
+            await notify.on_scan_found(
+                session,
+                await session.get_one(Bounty, claim.bounty_id),
+                claim.scan_id,
+                tripped_probes,
+            )
     logger.info(
         "baseline scan done",
         extra={
             "bounty_id": str(claim.bounty_id),
             "probes": len(results),
-            "tripped": sum(1 for result in results if result["tripped"]),
+            "tripped": tripped_probes,
         },
     )
 
