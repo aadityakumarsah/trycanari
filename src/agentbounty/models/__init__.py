@@ -15,6 +15,7 @@ from agentbounty.models.enums import (
 from agentbounty.models.tables import (
     AdminAction,
     AssuranceEngagement,
+    AssuranceInvoice,
     Attempt,
     Bounty,
     Canary,
@@ -44,6 +45,7 @@ from agentbounty.models.tables import (
 __all__ = [
     "AdminAction",
     "AssuranceEngagement",
+    "AssuranceInvoice",
     "Attempt",
     "AttemptState",
     "Base",

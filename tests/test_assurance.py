@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from sqlalchemy import select, update
 
-from agentbounty.models import AdminAction, AssuranceEngagement
+from agentbounty.models import AdminAction, AssuranceEngagement, AssuranceInvoice
 from agentbounty.models import Sponsor as SponsorRow
+from agentbounty.services import billing
 
-from .platform import PATCHED_CONFIG, Platform
+from .platform import PATCHED_CONFIG, Platform, Sponsor
 
 
 def scope() -> dict[str, object]:
@@ -178,3 +179,98 @@ async def test_request_requires_a_saved_scope(platform: Platform) -> None:
     sponsor = await platform.sponsor("no-scope@example.com")
     bounty_id = await sponsor.draft()
     await sponsor.call("POST", f"/v1/bounties/{bounty_id}/assurance/request", 409)
+
+
+# --- fiat invoices for a managed assessment ----------------------------------------------
+
+
+async def quoted(
+    platform: Platform, cents: int = 250_000
+) -> tuple[Sponsor, str, str, dict[str, str]]:
+    """A requested assessment an operator has put a price on."""
+    sponsor = await platform.sponsor("billed-customer@example.com")
+    bounty_id = await sponsor.draft()
+    engagement = await sponsor.call("PUT", f"/v1/bounties/{bounty_id}/assurance", json=scope())
+    await sponsor.call("POST", f"/v1/bounties/{bounty_id}/assurance/request")
+    admin = await make_admin(platform)
+    priced = await platform.client.patch(
+        f"/v1/admin/assessments/{engagement['id']}",
+        headers=admin,
+        json={"quoted_price_cents": cents},
+    )
+    assert priced.status_code == 200, priced.text
+    return sponsor, bounty_id, engagement["id"], admin
+
+
+async def test_an_assessment_is_invoiced_once_and_the_sponsor_sees_where_to_pay(
+    platform: Platform,
+) -> None:
+    fake = billing.FakeBilling()
+    platform.app.state.biller = fake
+    sponsor, bounty_id, engagement_id, admin = await quoted(platform)
+
+    # Nothing is billed until an operator says so.
+    before = await sponsor.call("GET", f"/v1/bounties/{bounty_id}/assurance")
+    assert before["engagement"]["invoice"] is None
+
+    made = await platform.client.post(
+        f"/v1/admin/assessments/{engagement_id}/invoice", headers=admin
+    )
+    assert made.status_code == 201, made.text
+    assert (made.json()["invoice"]["amount_cents"], made.json()["invoice"]["state"]) == (
+        250_000,
+        "open",
+    )
+    # The sponsor was billed at their own address, for the quoted price.
+    (sent,) = fake.issued
+    assert sent.amount_cents == 250_000
+
+    seen = (await sponsor.call("GET", f"/v1/bounties/{bounty_id}/assurance"))["engagement"]
+    assert seen["invoice"]["state"] == "open"
+    assert seen["invoice"]["hosted_url"]
+    assert seen["invoice"]["paid_at"] is None
+
+    # Billing twice would charge twice.
+    again = await platform.client.post(
+        f"/v1/admin/assessments/{engagement_id}/invoice", headers=admin
+    )
+    assert again.status_code == 409
+    assert len(fake.issued) == 1
+
+
+async def test_an_assessment_with_no_price_is_not_invoiced(platform: Platform) -> None:
+    fake = billing.FakeBilling()
+    platform.app.state.biller = fake
+    _, _, engagement_id, admin = await quoted(platform, cents=0)
+    refused = await platform.client.post(
+        f"/v1/admin/assessments/{engagement_id}/invoice", headers=admin
+    )
+    # Billing a zero is a mistake, not a free assessment.
+    assert refused.status_code == 409
+    assert fake.issued == []
+
+
+async def test_only_an_operator_can_invoice_an_assessment(platform: Platform) -> None:
+    platform.app.state.biller = billing.FakeBilling()
+    sponsor, _, engagement_id, _ = await quoted(platform)
+    # The admin area answers 404 to anyone else: nobody invoices themselves.
+    mine = await platform.client.post(
+        f"/v1/admin/assessments/{engagement_id}/invoice", headers=sponsor.headers
+    )
+    assert mine.status_code == 404
+    assert (
+        await platform.client.post(f"/v1/admin/assessments/{engagement_id}/invoice")
+    ).status_code in (401, 404)
+
+
+async def test_a_provider_that_fails_leaves_no_invoice_behind(platform: Platform) -> None:
+    fake = billing.FakeBilling(fail_with=billing.BillingError("Stripe is down", permanent=False))
+    platform.app.state.biller = fake
+    _, _, engagement_id, admin = await quoted(platform)
+    failed = await platform.client.post(
+        f"/v1/admin/assessments/{engagement_id}/invoice", headers=admin
+    )
+    # 502, not 400: it may work on the next try.
+    assert failed.status_code == 502
+    async with platform.sessions.begin() as session:
+        assert (await session.scalars(select(AssuranceInvoice))).all() == []

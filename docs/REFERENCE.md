@@ -588,6 +588,48 @@ admin area. A completed engagement adds its scope and limitations to the custome
 evidence. The result is evidence for the tested version and declared scope, not
 certification.
 
+## Invoices for an assessment
+
+Money coming in, which is the one part of the platform that is not cryptocurrency.
+Hunters are still paid in SOL through the wallet; a company buying a $2,500 assessment
+has a finance team, and asking it to send cryptocurrency is asking it not to buy.
+
+`BILLING_BACKEND` chooses the provider: `none` issues nothing, `fake` makes an invoice
+with a local URL and charges nobody (and is refused in production, like the fake wallet),
+`stripe` creates a real invoice. A backend is a class with three methods and a `provider`
+name, so another provider is another class.
+
+An **operator** issues the invoice, from the assessment queue, not the sponsor: the price
+is negotiated, and nobody should be able to invoice themselves. Invoicing an assessment
+with no quoted price is a 409 — billing a zero is a mistake, not a free assessment — and
+so is invoicing one that already has an open or paid invoice. The provider is called
+before the row is written, so a provider that fails leaves nothing behind to reconcile;
+that answers 502 when it is worth another try and 400 when the provider refused outright.
+The sponsor then sees the amount and a `hosted_url` on their own assessment, and pays on
+the provider's page. **No card details reach this service.**
+
+One invoice per engagement is enforced by a partial unique index over the states that are
+still owed or settled, so a voided invoice does not block a replacement. A paid one knows
+when it was paid, which the `paid_has_a_time` check enforces.
+
+### The webhook
+
+`POST /v1/webhooks/stripe` is how an invoice becomes paid. It is the only route that
+changes money state with no session and no API key, **so the signature is the whole of its
+authentication**: without it, anyone who learned an invoice id could mark it paid.
+
+The signature covers the timestamp and the raw body, so the body is verified before it is
+parsed, and it is compared in constant time. A signature more than five minutes old is
+refused, so a captured webhook cannot be replayed later. A request that does not verify is
+refused with 400 rather than logged and accepted. The route answers 404 unless
+`BILLING_BACKEND=stripe`, and it is left out of the published API description.
+
+Settling is idempotent, because a provider may deliver the same event more than once, and
+an event naming an invoice we never issued is answered 200 and ignored rather than treated
+as an error — one Stripe account may serve more than one system. An event we have no
+opinion about is also answered 200, so Stripe is not left retrying it forever. A paid
+invoice is not un-paid by a later event: money arrived.
+
 ## Continuous regression gates
 
 Where a scan is a sweep, the gate is a yes or no for a build. `GET

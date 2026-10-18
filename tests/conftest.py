@@ -62,6 +62,10 @@ def _no_sign_in_provider_from_the_developers_env(monkeypatch: pytest.MonkeyPatch
         "CLOUDFLARE_ACCOUNT_ID",
         "CLOUDFLARE_EMAIL_TOKEN",
         "EMAIL_FROM",
+        "BILLING_BACKEND",
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "BILLING_CURRENCY",
     ):
         monkeypatch.delenv(name, raising=False)
     # Tests never call a real model, whatever the developer's own environment uses.
@@ -178,3 +182,20 @@ async def platform(service_settings: Settings) -> AsyncIterator[Platform]:
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield Platform(app, client)
     await app.state.engine.dispose()
+
+
+@pytest.fixture
+def environment(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
+    """A complete, valid environment that a test can then break."""
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:hunter2@localhost/db")
+    monkeypatch.setenv("SECRET_ENCRYPTION_KEY", generate_key())
+    monkeypatch.setenv("MODEL_BACKEND", "fake")
+    monkeypatch.setenv("WALLET_BACKEND", "fake")
+    for optional in ("MODEL_API_BASE", "MODEL_API_KEY", "FEE_RATE", "ZCASH_NETWORK", "DIRECT_URL"):
+        monkeypatch.delenv(optional, raising=False)
+    for optional in ("ESCROW_ADDRESS", "PAYOUT_MAX_ZATOSHI", "PAYOUT_DAILY_MAX_ZATOSHI"):
+        monkeypatch.delenv(optional, raising=False)
+    for optional in ("ZIPHER_CLI_PATH", "ZIPHER_DATA_DIR", "ZIPHER_SERVER", "ZIPHER_SEED"):
+        monkeypatch.delenv(optional, raising=False)
+    return monkeypatch

@@ -3,27 +3,9 @@ from __future__ import annotations
 import pytest
 
 from agentbounty.db import engine_options
-from agentbounty.services.crypto import generate_key
 from agentbounty.settings import SettingsError, load_settings
 
 REQUIRED = ("APP_ENV", "DATABASE_URL", "SECRET_ENCRYPTION_KEY", "MODEL_BACKEND")
-
-
-@pytest.fixture
-def environment(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
-    """A complete, valid environment that a test can then break."""
-    monkeypatch.setenv("APP_ENV", "test")
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:hunter2@localhost/db")
-    monkeypatch.setenv("SECRET_ENCRYPTION_KEY", generate_key())
-    monkeypatch.setenv("MODEL_BACKEND", "fake")
-    monkeypatch.setenv("WALLET_BACKEND", "fake")
-    for optional in ("MODEL_API_BASE", "MODEL_API_KEY", "FEE_RATE", "ZCASH_NETWORK", "DIRECT_URL"):
-        monkeypatch.delenv(optional, raising=False)
-    for optional in ("ESCROW_ADDRESS", "PAYOUT_MAX_ZATOSHI", "PAYOUT_DAILY_MAX_ZATOSHI"):
-        monkeypatch.delenv(optional, raising=False)
-    for optional in ("ZIPHER_CLI_PATH", "ZIPHER_DATA_DIR", "ZIPHER_SERVER", "ZIPHER_SEED"):
-        monkeypatch.delenv(optional, raising=False)
-    return monkeypatch
 
 
 def test_a_complete_environment_loads(environment: pytest.MonkeyPatch) -> None:
