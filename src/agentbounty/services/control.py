@@ -160,14 +160,12 @@ def check(invariant: Invariant, response: str, context: str) -> Check:
                 evidence = (
                     f"Missing required keys: {', '.join(missing)}."
                     if missing
-                    else f"All {len(required)} required keys are present."
-                ,)
+                    else f"All {len(required)} required keys are present.",
+                )
     return Check(invariant.id, invariant.kind, verdict, confidence, evidence)
 
 
-def inspect(
-    response: str, context: str, invariants: Iterable[Invariant]
-) -> tuple[Check, ...]:
+def inspect(response: str, context: str, invariants: Iterable[Invariant]) -> tuple[Check, ...]:
     return tuple(check(invariant, response, context) for invariant in invariants)
 
 
@@ -314,8 +312,7 @@ async def save_run(
     session.add(row)
     await session.flush()
     session.add_all(
-        ControlEvent(run_id=row.id, action=action, detail_json=detail)
-        for action, detail in events
+        ControlEvent(run_id=row.id, action=action, detail_json=detail) for action, detail in events
     )
     await session.flush()
     return row
@@ -347,8 +344,6 @@ async def own_run(
         raise ServiceError(404, "Control run not found")
     run, project = pair
     events = await session.scalars(
-        select(ControlEvent)
-        .where(ControlEvent.run_id == run.id)
-        .order_by(ControlEvent.created_at)
+        select(ControlEvent).where(ControlEvent.run_id == run.id).order_by(ControlEvent.created_at)
     )
     return run, project, tuple(events)

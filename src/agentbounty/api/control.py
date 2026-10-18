@@ -105,8 +105,7 @@ async def capabilities(_: SponsorDep) -> dict[str, object]:
 async def inspect(body: InspectIn, _: SponsorDep) -> InspectOut:
     checks = _checks(body)
     attributions = (
-        control.Attribution(item.component, item.score, item.source)
-        for item in body.attributions
+        control.Attribution(item.component, item.score, item.source) for item in body.attributions
     )
     return InspectOut(
         run_id=control.run_id(),
@@ -138,8 +137,7 @@ def _workflow(body: InspectIn) -> WorkflowOut:
     invariants = _invariants(body)
     checks = _checks(body)
     attributions = (
-        control.Attribution(item.component, item.score, item.source)
-        for item in body.attributions
+        control.Attribution(item.component, item.score, item.source) for item in body.attributions
     )
     check_output = [
         CheckOut(
@@ -274,9 +272,7 @@ async def project_workflow(
     requested = list(dict.fromkeys(body.operations))
     control.require_operations(project.operations_json, requested)
     if body.attributions and project.adapter_kind != "activation":
-        raise ServiceError(
-            422, "attributions require a project with an activation-capable adapter"
-        )
+        raise ServiceError(422, "attributions require a project with an activation-capable adapter")
     result = _only_requested(_workflow(body), requested)
     result_data = result.model_dump()
     events: list[tuple[str, dict[str, object]]] = [

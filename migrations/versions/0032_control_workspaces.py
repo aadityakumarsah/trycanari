@@ -24,18 +24,14 @@ def upgrade() -> None:
         sa.Column("name", sa.Text(), nullable=False),
         sa.Column("model", sa.Text(), nullable=False),
         sa.Column("adapter_kind", sa.Text(), server_default="text", nullable=False),
-        sa.Column(
-            "operations_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False
-        ),
+        sa.Column("operations_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.CheckConstraint(
-            "adapter_kind IN ('text', 'activation')", name="adapter_kind_known"
-        ),
+        sa.CheckConstraint("adapter_kind IN ('text', 'activation')", name="adapter_kind_known"),
         sa.ForeignKeyConstraint(["sponsor_id"], ["sponsors.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -87,9 +83,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_control_events_run_id", "control_events", ["run_id"])
-    op.create_index(
-        "ix_control_events_run_created", "control_events", ["run_id", "created_at"]
-    )
+    op.create_index("ix_control_events_run_created", "control_events", ["run_id", "created_at"])
     op.execute('ALTER TABLE "control_projects" ENABLE ROW LEVEL SECURITY')
     op.execute('ALTER TABLE "control_runs" ENABLE ROW LEVEL SECURITY')
     op.execute('ALTER TABLE "control_events" ENABLE ROW LEVEL SECURITY')

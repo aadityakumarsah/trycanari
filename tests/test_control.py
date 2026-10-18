@@ -144,9 +144,7 @@ async def test_projects_enforce_operations_and_keep_encrypted_history(
     )
     assert denied["detail"] == "project does not permit: synthesize"
 
-    stored = await sponsor.call(
-        "POST", f"/v1/control/projects/{project['id']}/workflow", json=body
-    )
+    stored = await sponsor.call("POST", f"/v1/control/projects/{project['id']}/workflow", json=body)
     assert stored["trace"]["status"] == "not_requested"
     assert stored["principles"] == []
     assert stored["edge_cases"] == []
