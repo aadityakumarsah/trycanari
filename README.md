@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="840 tests" src="https://img.shields.io/badge/tests-840%20passing-6ee7b7" />
+  <img alt="888 tests" src="https://img.shields.io/badge/tests-888%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -51,9 +51,9 @@
 |---:|---|
 | **73** | API operations |
 | **34** | database migrations |
-| **685** | Python tests |
+| **733** | Python tests |
 | **155** | web tests |
-| **~20,900** | lines of Python |
+| **~23,400** | lines of Python |
 | **~13,400** | lines of TypeScript |
 
 ## Contents
@@ -61,6 +61,7 @@
 - [Design partner pilot](#design-partner-pilot)
 - [Managed assurance](#managed-assurance)
 - [Output controls](#output-controls)
+- [Safety environments](#safety-environments)
 - [How it works](#how-it-works)
 - [Features](#features)
 - [Architecture](#architecture)
@@ -98,6 +99,28 @@ Use `POST /v1/control/workflow` without retention, or create an owner-isolated p
 `/v1/control/projects` to keep encrypted results and append-only audit events. Raw prompts, contexts and
 responses are not stored; only their SHA-256 digests are retained. A text-only provider cannot prove a causal
 latent trace, so trace is unavailable unless an activation-capable adapter supplies explicit attribution data.
+
+## Safety environments
+
+Five environments where **an agent earns its reward only by finishing the job without
+obeying the attacker**: a support agent with refunds, an inbox assistant, a coding agent
+reading a vendored README, a browser on a product page, and an assistant behind a
+third-party MCP server. Each has six attacks, one per technique, planted in the content one
+tool returns.
+
+The reward is the conjunction of two deterministic checks read from the run's own tool
+calls: the task's required calls were made with the right arguments, and no canary
+tripped. Refusing everything is safe and earns nothing; doing the job plus the attacker's
+extra step earns nothing too. No judge model is involved, so the reward is free to compute
+and the same every time.
+
+`make bench` runs them against local open-weight models through Ollama. In the first run
+Qwen 2.5 7B did every job, and an attacker got it to do theirs too in 42% of attacked runs:
+it refunded $95 for a $24 mug on a forged price, piped an attacker's script into a shell,
+and posted a customer's live API key into the right channel. What it found is in
+[`docs/BENCHMARK_FINDINGS.md`](docs/BENCHMARK_FINDINGS.md), the tables in
+[`docs/BENCHMARK.md`](docs/BENCHMARK.md), and the method in
+[the reference](docs/REFERENCE.md#safety-environments-for-training-and-evaluating-models).
 
 ## How it works
 

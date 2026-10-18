@@ -16,3 +16,7 @@ render.env
 .env.*
 !.env.example
 demo-sponsor-key.txt
+
+# Benchmark runs, with every transcript. They are the data a lab would buy, and this
+# repository is public, so they stay local. The aggregate report in docs/ is committed.
+benchmarks/

@@ -3,7 +3,7 @@
 ENV := $(if $(wildcard .env),--env-file .env,)
 API_PORT ?= 8000
 
-.PHONY: up down migrate seed e2e test lint typecheck fmt dupes web-install web-build web-dev web-test web-typecheck web-deploy check
+.PHONY: up down migrate seed e2e bench test lint typecheck fmt dupes web-install web-build web-dev web-test web-typecheck web-deploy check
 
 up:
 	docker compose up --build --detach --wait
@@ -19,6 +19,15 @@ migrate:
 # wallet it is funded by a simulated deposit and is live within seconds.
 seed:
 	PYTHONPATH=src uv run $(ENV) python -m agentbounty.demo --api http://127.0.0.1:$(API_PORT)
+
+# The agent safety environments against local open-weight models. Needs Ollama running,
+# with the models pulled (`ollama pull qwen2.5:7b`). Runs land in benchmarks/, which git
+# ignores, and the summary in docs/BENCHMARK.md. Override BENCH_MODELS to choose others.
+BENCH_MODELS ?= --model qwen2.5:7b --model llama3.1:8b
+bench:
+	mkdir -p benchmarks
+	PYTHONPATH=src uv run python -m agentbounty.environments $(BENCH_MODELS) \
+		--out benchmarks/runs.jsonl --report docs/BENCHMARK.md
 
 # The definition of done, in one test.
 e2e:
