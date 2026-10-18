@@ -9,7 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 
 from agentbounty.api.admin import Limit, Offset, record
-from agentbounty.api.deps import AdminDep, CipherDep, OwnBounty, Transaction
+from agentbounty.api.deps import (
+    AdminDep,
+    BillerDep,
+    CipherDep,
+    OwnBounty,
+    SettingsDep,
+    Transaction,
+)
 from agentbounty.api.ratelimit import limit_by_client
 from agentbounty.api.schemas import (
     AdminAssuranceOut,
@@ -19,8 +26,9 @@ from agentbounty.api.schemas import (
     AssuranceOut,
     AssuranceReadiness,
     AssuranceStateOut,
+    InvoiceOut,
 )
-from agentbounty.models import AssuranceEngagement, Bounty, Sponsor
+from agentbounty.models import AssuranceEngagement, AssuranceInvoice, Bounty, Sponsor
 from agentbounty.services import assurance
 from agentbounty.services.crypto import Cipher
 
@@ -31,6 +39,20 @@ admin = APIRouter(
     include_in_schema=False,
     dependencies=[Depends(limit_by_client)],
 )
+
+
+def _invoice_out(invoice: AssuranceInvoice | None) -> InvoiceOut | None:
+    if invoice is None:
+        return None
+    return InvoiceOut(
+        id=invoice.id,
+        amount_cents=invoice.amount_cents,
+        currency=invoice.currency,
+        state=invoice.state,  # type: ignore[arg-type]
+        hosted_url=invoice.hosted_url,
+        paid_at=invoice.paid_at,
+        created_at=invoice.created_at,
+    )
 
 
 async def _out(
@@ -59,6 +81,7 @@ async def _out(
             cipher, engagement.limitations_enc, assurance.LIMITATIONS
         ),
         quoted_price_cents=engagement.quoted_price_cents,
+        invoice=_invoice_out(await assurance.live_invoice(session, engagement.id)),
         tested_config_hash=engagement.tested_config_hash,
         tested_config_version=engagement.tested_config_version,
         readiness=AssuranceReadiness(**ready.__dict__, ready=ready.ready),
@@ -208,6 +231,51 @@ async def update_assessment(
         "assurance_updated",
         account,
         f"{bounty.title}: {engagement.status}",
+    )
+    await session.flush()
+    return await _admin_out(session, cipher, engagement, bounty, account)
+
+
+@admin.post("/{engagement_id}/invoice", status_code=201)
+async def invoice_assessment(
+    engagement_id: uuid.UUID,
+    session: Transaction,
+    cipher: CipherDep,
+    operator: AdminDep,
+    biller: BillerDep,
+    settings: SettingsDep,
+) -> AdminAssuranceOut:
+    """Bill the sponsor for a quoted assessment.
+
+    An operator does this, not the sponsor: the price is negotiated, and nobody should be
+    able to invoice themselves. The sponsor then pays on the provider's own page, so no
+    card details reach this service.
+    """
+    row = await session.execute(
+        select(AssuranceEngagement, Bounty, Sponsor)
+        .join(Bounty, Bounty.id == AssuranceEngagement.bounty_id)
+        .join(Sponsor, Sponsor.id == Bounty.sponsor_id)
+        .where(AssuranceEngagement.id == engagement_id)
+        .with_for_update()
+    )
+    found = row.one_or_none()
+    if found is None:
+        raise HTTPException(404, "assessment not found")
+    engagement, bounty, account = found
+    invoice = await assurance.issue_invoice(
+        session,
+        biller,
+        bounty,
+        engagement,
+        account,
+        currency=settings.billing_currency,
+    )
+    record(
+        session,
+        operator,
+        "assurance_invoiced",
+        account,
+        f"{bounty.title}: {invoice.amount_cents} {invoice.currency}",
     )
     await session.flush()
     return await _admin_out(session, cipher, engagement, bounty, account)

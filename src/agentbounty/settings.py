@@ -151,6 +151,18 @@ class Settings(BaseSettings):
     email_from_name: str = "trycanari"
     email_poll_seconds: float = Field(default=10.0, gt=0)
 
+    # Invoices for a managed assessment, which a company pays by card or bank transfer.
+    # Hunters are still paid in SOL: this is the money coming in, not the money going out.
+    # "none" issues no invoices; "fake" makes one with a local URL and nothing is charged;
+    # "stripe" creates a real Stripe invoice and marks it paid from a signed webhook.
+    billing_backend: Literal["none", "fake", "stripe"] = "none"
+    stripe_secret_key: SecretStr | None = None
+    # Stripe signs every webhook with this. Without it an unsigned POST could mark an
+    # invoice paid, so it is required, not optional.
+    stripe_webhook_secret: SecretStr | None = None
+    # The currency invoices are issued in, as a three-letter ISO code.
+    billing_currency: str = "usd"
+
     # The house hunter: the platform's own attacker, run by the replay worker against
     # every config that goes live (services/house.py). It costs model calls: one to write
     # each attack, and five replays to judge it. A break it finds is never paid for.
@@ -186,6 +198,8 @@ class Settings(BaseSettings):
         "cloudflare_account_id",
         "cloudflare_email_token",
         "email_from",
+        "stripe_secret_key",
+        "stripe_webhook_secret",
         "payout_max_zatoshi",
         "payout_daily_max_zatoshi",
         "house_model",
@@ -260,6 +274,22 @@ class Settings(BaseSettings):
             # The session cookie is marked Secure in production, so it needs HTTPS.
             if self.app_env == "production" and not self.public_url.startswith("https://"):
                 raise ValueError("PUBLIC_URL must be https when APP_ENV=production")
+        return self
+
+    @model_validator(mode="after")
+    def _billing_backend_is_usable(self) -> Self:
+        if self.billing_backend == "stripe":
+            if not (self.stripe_secret_key and self.stripe_webhook_secret):
+                raise ValueError(
+                    "BILLING_BACKEND=stripe needs STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET"
+                )
+            # The invoice links the customer back to the site to see what they paid for.
+            if self.public_url is None:
+                raise ValueError("BILLING_BACKEND=stripe needs PUBLIC_URL")
+        if self.billing_backend == "fake" and self.app_env == "production":
+            raise ValueError("BILLING_BACKEND=fake charges nobody: not on a production deployment")
+        if len(self.billing_currency) != 3 or not self.billing_currency.isalpha():
+            raise ValueError("BILLING_CURRENCY is a three-letter ISO code, such as usd")
         return self
 
     @model_validator(mode="after")

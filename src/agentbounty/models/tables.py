@@ -233,6 +233,47 @@ class AssuranceEngagement(Base):
     )
 
 
+class AssuranceInvoice(Base):
+    """What was billed for one assessment, and whether it cleared.
+
+    The provider holds the payment; this row is our own record of it. Hunters are paid in
+    SOL through the wallet, which this does not touch: an assessment is money coming in.
+    """
+
+    __tablename__ = "assurance_invoices"
+    __table_args__ = (
+        # One live invoice per engagement. A voided one may be replaced, so the index
+        # counts only the states that are still owed or settled.
+        Index(
+            "uq_assurance_invoices_live",
+            "engagement_id",
+            unique=True,
+            postgresql_where=text("state IN ('open', 'paid')"),
+        ),
+        # A provider's id is the key a webhook arrives with, so it must find one row.
+        UniqueConstraint("provider", "provider_invoice_id"),
+        CheckConstraint(
+            "state IN ('open', 'paid', 'void', 'uncollectible')", name="invoice_state_known"
+        ),
+        CheckConstraint("amount_cents > 0", name="invoice_amount_positive"),
+        CheckConstraint("(state = 'paid') = (paid_at IS NOT NULL)", name="paid_has_a_time"),
+        Index("ix_assurance_invoices_engagement_id", "engagement_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("assurance_engagements.id"))
+    # Denormalised so a webhook can find the payer without walking back to the bounty.
+    sponsor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sponsors.id"), index=True)
+    provider: Mapped[str] = mapped_column(Text)
+    provider_invoice_id: Mapped[str] = mapped_column(Text)
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3))
+    state: Mapped[str] = mapped_column(Text, default="open", server_default="open", index=True)
+    hosted_url: Mapped[str | None] = mapped_column(Text)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_now()
+
+
 class PlatformSetting(Base):
     """A setting the owner changes while the service runs. The value is ciphertext."""
 

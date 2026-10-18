@@ -15,6 +15,7 @@ from .conftest import alembic_config, scratch_database
 
 TABLES = {
     "assurance_engagements",
+    "assurance_invoices",
     "control_events",
     "control_projects",
     "control_runs",
@@ -150,6 +151,7 @@ def test_a_bounty_already_live_is_not_handed_to_the_house_hunter() -> None:
                 "continuous_runs",
                 "pilot_applications",
                 "assurance_engagements",
+                "assurance_invoices",
                 "control_events",
                 "control_projects",
                 "control_runs",

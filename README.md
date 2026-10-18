@@ -25,7 +25,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white" />
   <br />
-  <img alt="819 tests" src="https://img.shields.io/badge/tests-819%20passing-6ee7b7" />
+  <img alt="840 tests" src="https://img.shields.io/badge/tests-840%20passing-6ee7b7" />
   <img alt="mypy strict" src="https://img.shields.io/badge/mypy-strict-6ee7b7" />
   <img alt="ruff" src="https://img.shields.io/badge/lint-ruff-6ee7b7" />
   <img alt="Solana" src="https://img.shields.io/badge/payouts-SOL-9945FF?logo=solana&logoColor=white" />
@@ -42,7 +42,7 @@
 | **Backend** | Python 3.12 · FastAPI · SQLAlchemy 2 (async) · Alembic · Pydantic v2 |
 | **Frontend** | React 19 · TypeScript (strict) · Bun |
 | **Database** | PostgreSQL 16 (works on Supabase behind its pooler) |
-| **Payments** | SOL on Solana, behind a three-method wallet interface |
+| **Payments** | Rewards out in SOL on Solana; assessments invoiced in fiat through Stripe |
 | **Models** | Any OpenAI-compatible API, including a rate-limit-aware Groq free-plan setup |
 | **Pictures** | Cloudinary, one image per account |
 | **Status** | Runs end to end against a real model. Real payments are built but a real send is not yet proven |
@@ -50,8 +50,8 @@
 | Number | |
 |---:|---|
 | **73** | API operations |
-| **33** | database migrations |
-| **664** | Python tests |
+| **34** | database migrations |
+| **685** | Python tests |
 | **155** | web tests |
 | **~20,900** | lines of Python |
 | **~13,400** | lines of TypeScript |
@@ -158,6 +158,8 @@ Nobody judges a break. A canary tripped or it did not, and the transcript is the
 - Encrypted control-run history with operation permissions, owner isolation and append-only audit events
 - A managed assessment workspace for workflow, identity, authorization, data, actions and human-control scope
 - A private delivery lifecycle from request through remediation, re-test and completion
+- An invoice in ordinary money for the assessment, paid by card or bank transfer, so
+  buying one needs no cryptocurrency
 - Version-bound continuous gates with baseline probes even before the first saved break
 - A house hunter: the platform's own attacker agent goes at every agent the day it is
   listed, and again on every patch. It is never paid; a break it finds costs nothing

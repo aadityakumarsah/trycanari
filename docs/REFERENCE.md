@@ -588,6 +588,69 @@ admin area. A completed engagement adds its scope and limitations to the custome
 evidence. The result is evidence for the tested version and declared scope, not
 certification.
 
+## Invoices for an assessment
+
+Money coming in, which is the one part of the platform that is not cryptocurrency.
+Hunters are still paid in SOL through the wallet; a company buying a $2,500 assessment
+has a finance team, and asking it to send cryptocurrency is asking it not to buy.
+
+`BILLING_BACKEND` chooses the provider: `none` issues nothing, `fake` makes an invoice
+with a local URL and charges nobody (and is refused in production, like the fake wallet),
+`stripe` creates a real invoice. A backend is a class with three methods and a `provider`
+name, so another provider is another class.
+
+An **operator** issues the invoice, from the assessment queue, not the sponsor: the price
+is negotiated, and nobody should be able to invoice themselves. Invoicing an assessment
+with no quoted price is a 409 — billing a zero is a mistake, not a free assessment — and
+so is invoicing one that already has an open or paid invoice. The provider is called
+before the row is written, so a provider that fails leaves nothing behind to reconcile;
+that answers 502 when it is worth another try and 400 when the provider refused outright.
+
+Each issuance carries an id — the engagement, plus how many invoices it already has — and
+every request to the provider is keyed on it. A provider replays its first answer for a
+key it has seen, so a retry of an issuance that failed partway through picks the same
+invoice back up rather than leaving the customer holding two payable ones. The count comes
+from committed rows, so a failed attempt that wrote nothing retries as the same issuance,
+while issuing again after a void sees one more row and is a new invoice.
+The sponsor then sees the amount and a `hosted_url` on their own assessment, and pays on
+the provider's page. **No card details reach this service.**
+
+One invoice per engagement is enforced by a partial unique index over the states that are
+still owed or settled, so a voided invoice does not block a replacement. A paid one knows
+when it was paid, which the `paid_has_a_time` check enforces.
+
+### The webhook
+
+`POST /v1/webhooks/stripe` is how an invoice becomes paid. It is the only route that
+changes money state with no session and no API key, **so the signature is the whole of its
+authentication**: without it, anyone who learned an invoice id could mark it paid.
+
+The signature covers the timestamp and the raw body, so the body is verified before it is
+parsed, and it is compared in constant time. While a signing secret is being rotated the
+header carries one `v1` per active secret, so every candidate is checked and the delivery
+is accepted if any of them matches; keeping only one would refuse genuine deliveries for
+the whole of the overlap. A signature more than five minutes old is
+refused, so a captured webhook cannot be replayed later. A request that does not verify is
+refused with 400 rather than logged and accepted. The route answers 404 unless
+`BILLING_BACKEND=stripe`, and it is left out of the published API description.
+
+Settling is idempotent, because a provider may deliver the same event more than once. An
+event we have no opinion about is answered 200, so Stripe is not left retrying it forever.
+A paid invoice is not un-paid by a later event: money arrived.
+
+An invoice the provider holds that no row points at is **taken up** rather than ignored.
+Issuing writes its row after the provider call, and an idempotency key is only good while
+the provider keeps it — Stripe drops one after 24 hours — so this can happen even with the
+keys in place, and it happens whether or not anyone retries. The engagement travels in the
+invoice's metadata, so when money arrives for one of these the row is written then. An
+invoice carrying no metadata of ours is still ignored, since one Stripe account may serve
+several systems.
+
+Taking one up only fills an empty slot. If the engagement already has a live invoice then
+two were payable at once, which is a real discrepancy: it is logged at error level with
+both ids and left for a person, because voiding one automatically would be deciding what
+somebody paid for.
+
 ## Continuous regression gates
 
 Where a scan is a sweep, the gate is a yes or no for a build. `GET

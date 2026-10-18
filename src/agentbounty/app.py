@@ -34,11 +34,12 @@ from agentbounty.api import (
     spa,
     sponsor,
     studio,
+    webhooks,
 )
 from agentbounty.api.ratelimit import RateLimiter
 from agentbounty.db import create_engine, create_session_factory
 from agentbounty.logs import configure_logging
-from agentbounty.services import endpoint, mail, notify
+from agentbounty.services import billing, endpoint, mail, notify
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
 from agentbounty.services.wallet import escrow_address
@@ -101,6 +102,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if mailing is not None and sender is not None:
             mailing.cancel()
             await sender.aclose()
+        biller: billing.BillingBackend | None = app.state.biller
+        if biller is not None:
+            await biller.aclose()
         await engine.dispose()
 
     app = FastAPI(
@@ -118,6 +122,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
     app.state.cipher = Cipher(settings.secret_encryption_key.get_secret_value())
+    # Invoices for a managed assessment. None when this deployment bills nobody; a
+    # test puts its own backend here.
+    app.state.biller = billing.make_biller(settings) if settings.app_env != "test" else None
     # Known from configuration, so this process can tell a sponsor where to deposit
     # without holding a wallet. A missing or malformed address stops the app starting.
     app.state.escrow_address = escrow_address(settings)
@@ -189,6 +196,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(pilot.admin)
     app.include_router(assurance.admin)
     app.include_router(chain.router)
+    app.include_router(webhooks.router)
     app.include_router(control.router)
     app.include_router(agent_guide.router)
     app.include_router(evidence.router)

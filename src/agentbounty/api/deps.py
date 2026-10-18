@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentbounty.api.session import session_identity, sponsor_of
 from agentbounty.db import get_transaction
 from agentbounty.models import Bounty, Sponsor
+from agentbounty.services import billing, credits
 from agentbounty.services import bounty as bounty_service
-from agentbounty.services import credits
 from agentbounty.services.crypto import Cipher
 from agentbounty.settings import Settings
 
@@ -27,6 +27,12 @@ def get_settings(request: Request) -> Settings:
 def get_cipher(request: Request) -> Cipher:
     cipher: Cipher = request.app.state.cipher
     return cipher
+
+
+def get_biller(request: Request) -> billing.BillingBackend | None:
+    """The invoice backend, or None where this deployment bills nobody."""
+    biller: billing.BillingBackend | None = request.app.state.biller
+    return biller
 
 
 def bearer_token(authorization: Annotated[str | None, Header()] = None) -> str:
@@ -93,6 +99,7 @@ async def own_bounty(
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 CipherDep = Annotated[Cipher, Depends(get_cipher)]
+BillerDep = Annotated[billing.BillingBackend | None, Depends(get_biller)]
 SponsorDep = Annotated[Sponsor, Depends(current_sponsor)]
 MaybeSponsor = Annotated[Sponsor | None, Depends(maybe_sponsor)]
 AdminDep = Annotated[Sponsor, Depends(current_admin)]

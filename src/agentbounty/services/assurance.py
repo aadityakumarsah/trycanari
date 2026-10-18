@@ -7,10 +7,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentbounty.models import AssuranceEngagement, Bounty, TargetConfig
+from agentbounty.models import AssuranceEngagement, AssuranceInvoice, Bounty, Sponsor, TargetConfig
+from agentbounty.services import billing
 from agentbounty.services import bounty as bounty_service
 from agentbounty.services.crypto import Cipher
 from agentbounty.services.errors import ServiceError
@@ -204,3 +205,153 @@ def apply_admin_update(
             _encrypt(cipher, limitations, LIMITATIONS) if limitations.strip() else None
         )
     engagement.updated_at = now
+
+
+async def live_invoice(session: AsyncSession, engagement_id: uuid.UUID) -> AssuranceInvoice | None:
+    """The invoice that is still owed or settled, if there is one. A voided invoice is
+    history: it does not stop a new one being issued."""
+    return await session.scalar(
+        select(AssuranceInvoice)
+        .where(
+            AssuranceInvoice.engagement_id == engagement_id,
+            AssuranceInvoice.state.in_(("open", "paid")),
+        )
+        .limit(1)
+    )
+
+
+async def issue_invoice(
+    session: AsyncSession,
+    biller: billing.BillingBackend | None,
+    bounty: Bounty,
+    engagement: AssuranceEngagement,
+    sponsor: Sponsor,
+    currency: str,
+) -> AssuranceInvoice:
+    """Bill the sponsor for this assessment, once.
+
+    The price is what an operator quoted: billing a zero is a mistake, not a free
+    assessment, so it is refused rather than sent.
+
+    The provider is called before the row exists, so an issuance that fails partway could
+    leave a payable invoice at the provider that no row of ours points at. The issuance id
+    below is what closes that: it counts the invoices this engagement already has, so a
+    retry of a failed issuance carries the same id and the provider replays its first
+    answer instead of making a second payable invoice. Issuing again after a void sees one
+    more row, so that is a new id and genuinely a new invoice.
+    """
+    if biller is None:
+        raise ServiceError(503, "this deployment issues no invoices")
+    if engagement.quoted_price_cents <= 0:
+        raise ServiceError(409, "quote a price before invoicing the assessment")
+    if (existing := await live_invoice(session, engagement.id)) is not None:
+        if existing.state == "paid":
+            raise ServiceError(409, "this assessment is already paid for")
+        raise ServiceError(409, "this assessment already has an open invoice")
+    # Committed rows only, so a retry that wrote nothing counts the same way twice.
+    already = await session.scalar(
+        select(func.count())
+        .select_from(AssuranceInvoice)
+        .where(AssuranceInvoice.engagement_id == engagement.id)
+    )
+    try:
+        made = await biller.create_invoice(
+            email=sponsor.email,
+            amount_cents=engagement.quoted_price_cents,
+            currency=currency,
+            description=f"Managed agent assessment: {bounty.title}",
+            reference=str(engagement.id),
+            issuance=f"{engagement.id}:{int(already or 0)}",
+        )
+    except billing.BillingError as exc:
+        # 502 for a provider that may yet work, 400 for one that refused outright.
+        raise ServiceError(
+            400 if exc.permanent else 502, f"the invoice was not created: {exc}"
+        ) from exc
+    invoice = AssuranceInvoice(
+        engagement_id=engagement.id,
+        sponsor_id=sponsor.id,
+        provider=biller.provider,
+        provider_invoice_id=made.provider_id,
+        amount_cents=made.amount_cents,
+        currency=made.currency,
+        state="open",
+        hosted_url=made.hosted_url,
+    )
+    session.add(invoice)
+    await session.flush()
+    return invoice
+
+
+async def settle_invoice(
+    session: AsyncSession, provider: str, provider_invoice_id: str, *, state: str
+) -> AssuranceInvoice | None:
+    """Record what the provider says became of an invoice.
+
+    Returns None for an id we never issued, so a webhook for someone else's invoice is
+    ignored rather than treated as an error. Settling twice changes nothing: a provider
+    may deliver the same event more than once.
+    """
+    invoice = await session.scalar(
+        select(AssuranceInvoice)
+        .where(
+            AssuranceInvoice.provider == provider,
+            AssuranceInvoice.provider_invoice_id == provider_invoice_id,
+        )
+        .with_for_update()
+    )
+    if invoice is None or invoice.state == state:
+        return invoice
+    if invoice.state == "paid":
+        # Money already arrived. Nothing a later event says undoes that on its own.
+        return invoice
+    invoice.state = state
+    invoice.paid_at = datetime.now(UTC) if state == "paid" else None
+    await session.flush()
+    return invoice
+
+
+async def adopt_invoice(
+    session: AsyncSession,
+    provider: str,
+    provider_invoice_id: str,
+    *,
+    engagement_id: uuid.UUID,
+    amount_cents: int,
+    currency: str,
+    hosted_url: str | None,
+    state: str,
+) -> AssuranceInvoice | None:
+    """Record an invoice the provider holds that no row of ours points at.
+
+    Issuing writes its row after the provider call, and an idempotency key is only good
+    for as long as the provider keeps it, so an invoice can exist at the provider with
+    nothing here pointing at it. The engagement travels in the invoice's metadata, so
+    when money arrives for one of these it can be taken up rather than ignored.
+
+    Only into an empty slot. If the engagement already has a live invoice then two are
+    payable at once, which is a real discrepancy and a person's to settle: voiding one
+    automatically would be deciding what somebody paid for.
+    """
+    engagement = await session.get(AssuranceEngagement, engagement_id)
+    if engagement is None:
+        return None
+    bounty = await session.get(Bounty, engagement.bounty_id)
+    if bounty is None:
+        return None
+    if await live_invoice(session, engagement_id) is not None:
+        return None
+    invoice = AssuranceInvoice(
+        engagement_id=engagement_id,
+        sponsor_id=bounty.sponsor_id,
+        provider=provider,
+        provider_invoice_id=provider_invoice_id,
+        amount_cents=amount_cents,
+        currency=currency,
+        state=state,
+        hosted_url=hosted_url,
+        paid_at=datetime.now(UTC) if state == "paid" else None,
+    )
+    session.add(invoice)
+    await session.flush()
+    return invoice

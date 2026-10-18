@@ -881,6 +881,22 @@ class AssuranceReadiness(BaseModel):
     ready: bool
 
 
+InvoiceState = Literal["open", "paid", "void", "uncollectible"]
+
+
+class InvoiceOut(BaseModel):
+    """What was billed for an assessment. The provider holds the payment; a sponsor pays
+    it at `hosted_url`, which is the provider's page and never one of ours."""
+
+    id: uuid.UUID
+    amount_cents: int
+    currency: str
+    state: InvoiceState
+    hosted_url: str | None
+    paid_at: datetime | None
+    created_at: datetime
+
+
 class AssuranceOut(BaseModel):
     id: uuid.UUID
     bounty_id: uuid.UUID
@@ -897,6 +913,8 @@ class AssuranceOut(BaseModel):
     human_approval: str
     limitations: str
     quoted_price_cents: int
+    # The invoice that is owed or settled, where one has been issued.
+    invoice: InvoiceOut | None = None
     tested_config_hash: str | None
     tested_config_version: int | None
     readiness: AssuranceReadiness
