@@ -666,12 +666,30 @@ class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
         # An account is told of one event once, however often the step that tells it runs.
-        UniqueConstraint("account_id", "kind", "finding_id"),
+        # NULLs are distinct in a unique index, so each subject needs its own partial one.
+        Index(
+            "uq_notifications_account_kind_finding",
+            "account_id",
+            "kind",
+            "finding_id",
+            unique=True,
+            postgresql_where=text("finding_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_notifications_account_kind_scan",
+            "account_id",
+            "kind",
+            "scan_id",
+            unique=True,
+            postgresql_where=text("scan_id IS NOT NULL"),
+        ),
         CheckConstraint(
             "kind IN ('bounty_broken', 'break_verified', 'payout_held', 'payout_sent',"
-            " 'reward_paid')",
+            " 'reward_paid', 'scan_found')",
             name="kind_known",
         ),
+        # A notification is about a verified break or a scan, never both and never neither.
+        CheckConstraint("(finding_id IS NULL) <> (scan_id IS NULL)", name="subject_known"),
         CheckConstraint(
             "email_state IN ('pending', 'sending', 'sent', 'failed', 'skipped')",
             name="email_state_known",
@@ -683,7 +701,12 @@ class Notification(Base):
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sponsors.id"))
     kind: Mapped[str] = mapped_column(Text)
     bounty_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bounties.id"))
-    finding_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("findings.id"))
+    # Set on a notification about a verified break; null on one about a scan.
+    finding_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("findings.id"))
+    # Set on a notification about a scan; null on one about a verified break.
+    scan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scans.id"))
+    # How many of the scan's probes tripped a canary, for a scan notification.
+    tripped_count: Mapped[int | None] = mapped_column(Integer)
     # The other party, when the account is told who: the hunter, for a sponsor.
     actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sponsors.id"))
     amount_zatoshi: Mapped[int | None] = mapped_column(BigInteger)

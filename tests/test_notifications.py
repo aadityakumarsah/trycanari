@@ -17,8 +17,10 @@ from agentbounty.models import Notification
 from agentbounty.models import Sponsor as SponsorRow
 from agentbounty.money import ZEC
 from agentbounty.services import mail, notify
+from agentbounty.services.model import FakeModel
 from agentbounty.services.payment import SpendingCaps
 from agentbounty.settings import Settings
+from agentbounty.workers import replay
 
 from .platform import HUNTER, REWARD, STRONG, WEAK, Platform, Sponsor
 
@@ -383,3 +385,57 @@ async def test_a_demo_account_is_on_no_leaderboard_and_a_deleted_bounty_in_no_fe
     feed = (await client.get("/v1/activity")).json()
     assert feed["recent_breaks"] == []
     assert feed["stats"]["verified_breaks"] == 1
+
+
+async def test_a_scan_that_trips_a_canary_tells_the_sponsor_once(platform: Platform) -> None:
+    """The daily scan used to leave its result sitting on the Scan tab for nobody. A scan
+    that trips tells the sponsor; the same scan run again never tells them twice."""
+    sponsor, _, bounty_id, _ = await broken(platform)
+    path = f"/v1/bounties/{bounty_id}/scan"
+
+    # The bounty was broken, so the attack it fell to is one of the scan's probes and
+    # that one trips: six of seven hold.
+    await sponsor.call("POST", path, 202)
+    assert await replay.work_once(platform.sessions, platform.cipher, FakeModel(), max_tries=3)
+    done = await sponsor.call("GET", path)
+    assert (done["total"], done["held"]) == (7, 6)
+
+    told = await sponsor.call("GET", "/v1/notifications")
+    assert sorted(kinds(told)) == ["bounty_broken", "scan_found"]
+    note = next(item for item in told["items"] if item["kind"] == "scan_found")
+    assert (note["bounty_id"], note["tripped_count"]) == (bounty_id, 1)
+    # A lead, not a verified break: nobody is named and nothing is owed.
+    assert (note["actor"], note["amount_zatoshi"], note["read"]) == (None, None, False)
+
+    # The daily sweep re-runs the scan of an unchanged config, which is the same scan row,
+    # so the sponsor is not told a second time.
+    await sponsor.call("POST", path, 202, params={"again": True})
+    assert await replay.work_once(platform.sessions, platform.cipher, FakeModel(), max_tries=3)
+    assert sorted(kinds(await sponsor.call("GET", "/v1/notifications"))) == [
+        "bounty_broken",
+        "scan_found",
+    ]
+
+
+async def test_a_scan_email_names_the_bounty_and_never_a_hunter() -> None:
+    """A scan email is built from a notification with no finding behind it, so it must not
+    reach for an attempt, a canary or a hunter that is not there."""
+    event = mail.Event(
+        kind="scan_found",
+        recipient_name="Ada Sponsor",
+        bounty_id="b1",
+        bounty_title="Support agent",
+        actor_name=None,
+        amount=None,
+        txid=None,
+        tripped_probes=3,
+    )
+    email = mail.compose(event, "sponsor@example.com", ZEC, "https://trycanari.test")
+    assert "Support agent" in email.subject
+    assert "3 probes" in email.html
+    assert "Probes tripped: 3" in email.text
+    assert "?tab=scan" in email.text
+    # No hunter is named and no amount is owed: a scan has neither.
+    assert "Broken by" not in email.text
+    assert "Amount" not in email.text
+    assert "Replays tripped" not in email.text

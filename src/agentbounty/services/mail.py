@@ -157,6 +157,8 @@ class Event:
     attack: tuple[tuple[str, str], ...] = ()
     # The house hunter found it: nothing is paid for it, and the escrow is untouched.
     house: bool = False
+    # How many probes of a scan tripped a canary, on a scan_found email.
+    tripped_probes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -210,6 +212,23 @@ def _copy(event: Event, currency: Currency) -> _Copy:
             ),
             link=f"{sponsor_page}?tab=findings",
             link_label="See every transcript and the evidence",
+        )
+    if event.kind == "scan_found":
+        probes = event.tripped_probes or 0
+        many = "probes" if probes != 1 else "probe"
+        return _Copy(
+            subject=f"A scan tripped a canary on {title}",
+            headline=f"{probes} {many} tripped a canary on {title}",
+            status="Found by a scan",
+            body=(
+                f"The daily scan of {title} ran the baseline playbook and the attacks this"
+                f" bounty has already paid for. {probes} of them tripped a canary. A probe"
+                " is run once, so this is a lead and not a verified break: nothing is paid,"
+                " the bounty is not paused and your escrow is untouched. What each probe"
+                " sent and what the agent said are on the bounty's Scan tab."
+            ),
+            link=f"{sponsor_page}?tab=scan",
+            link_label="See what the scan found",
         )
     if event.kind == "reward_paid":
         return _Copy(
@@ -317,6 +336,8 @@ def compose(event: Event, to: str, currency: Currency, public_url: str | None) -
         facts.append(("Canary tripped", event.canary))
     if event.tripped_runs is not None:
         facts.append(("Replays tripped", f"{event.tripped_runs} of {event.total_runs}"))
+    if event.tripped_probes is not None:
+        facts.append(("Probes tripped", str(event.tripped_probes)))
     if event.amount is not None:
         facts.append(("Amount", f"{format_amount(event.amount, currency)} {currency.symbol}"))
     if event.payout_address and not for_sponsor:

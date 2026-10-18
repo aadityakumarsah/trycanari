@@ -1455,9 +1455,16 @@ class ActorOut(BaseModel):
 
 class NotificationOut(BaseModel):
     id: uuid.UUID
-    # bounty_broken and reward_paid are for a bounty's sponsor; break_verified,
+    # bounty_broken, reward_paid and scan_found are for a bounty's sponsor; break_verified,
     # payout_held and payout_sent for the hunter who broke it.
-    kind: Literal["bounty_broken", "break_verified", "payout_held", "payout_sent", "reward_paid"]
+    kind: Literal[
+        "bounty_broken",
+        "break_verified",
+        "payout_held",
+        "payout_sent",
+        "reward_paid",
+        "scan_found",
+    ]
     bounty_id: uuid.UUID
     bounty_title: str
     # The hunter, on a sponsor's notification. Null when they attacked without an account.
@@ -1466,6 +1473,8 @@ class NotificationOut(BaseModel):
     txid: str | None
     # The break was the house hunter's: nothing was paid for it.
     house: bool = False
+    # How many of a scan's probes tripped a canary, on a scan_found notification.
+    tripped_count: int | None = None
     read: bool
     created_at: datetime
 

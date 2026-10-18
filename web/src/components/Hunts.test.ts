@@ -102,6 +102,18 @@ group("a notification", () => {
     expect(describe({ ...note, kind: "payout_sent", actor: null }).title).toBe("You were paid 2.5 ZEC");
     expect(describe({ ...note, kind: "payout_held", actor: null }).to).toBe("/attempts");
   });
+
+  test("tells a sponsor a scan found a lead, and leads to the scan", () => {
+    const scan = { ...note, kind: "scan_found" as const, actor: null, amount_zatoshi: null, tripped_count: 3 };
+    const said = describe(scan);
+    expect(said.title).toBe("A scan tripped a canary on Treasury agent");
+    expect(said.detail).toContain("3 probes");
+    // A probe runs once, so it is never presented as a verified break or a payout.
+    expect(said.detail).toContain("not a verified break");
+    expect(said.detail).not.toContain("ZEC");
+    expect(said.to).toBe("/dashboard/b/b1?tab=scan");
+    expect(describe({ ...scan, tripped_count: 1 }).detail).toContain("1 probe tripped");
+  });
 });
 
 test("a hunter is called by their name, then their handle, then nothing", () => {
