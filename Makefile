@@ -3,7 +3,7 @@
 ENV := $(if $(wildcard .env),--env-file .env,)
 API_PORT ?= 8000
 
-.PHONY: up down migrate seed e2e test lint typecheck fmt web-install web-build web-dev web-test web-typecheck web-deploy check
+.PHONY: up down migrate seed e2e test lint typecheck fmt dupes web-install web-build web-dev web-test web-typecheck web-deploy check
 
 up:
 	docker compose up --build --detach --wait
@@ -26,6 +26,18 @@ e2e:
 
 test:
 	uv run $(ENV) pytest
+
+# Editor and cloud-sync tools drop byte-identical copies beside a file: "pilot 2.py"
+# next to "pilot.py". They are untracked, so CI never sees them, but two copies of one
+# migration give Alembic two heads and take the whole suite down locally. Fail loudly
+# instead of letting that happen quietly.
+dupes:
+	@found=$$(find src tests migrations docs web/src -name '* [0-9].*' 2>/dev/null); \
+	if [ -n "$$found" ]; then \
+		echo "Sync duplicates found. Delete these and run again:"; \
+		echo "$$found" | sed 's/^/  /'; \
+		exit 1; \
+	fi
 
 lint:
 	uv run ruff check .
@@ -62,4 +74,4 @@ web-typecheck: web-install
 	cd web && bun run typecheck
 
 # Everything CI runs.
-check: lint typecheck test web-typecheck web-test web-build
+check: dupes lint typecheck test web-typecheck web-test web-build
